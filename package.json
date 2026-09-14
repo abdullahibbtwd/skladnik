@@ -1,0 +1,30 @@
+{
+  "name": "skladnik",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "dotenv -e .env -- turbo dev",
+    "build": "turbo build",
+    "infra:up": "docker compose -f docker-compose.dev.yml up -d",
+    "infra:down": "docker compose -f docker-compose.dev.yml down",
+    "infra:logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "db:wait": "docker compose -f docker-compose.dev.yml exec -T postgres sh -c 'until pg_isready -U \"$${POSTGRES_USER:-skladnik}\" -d \"$${POSTGRES_DB:-skladnik}\"; do sleep 1; done'",
+    "dev:all": "npm run infra:up && npm run db:wait && npm run db:migrate && npm run dev",
+    "db:generate": "dotenv -e .env -- npm run db:generate --workspace=@skladnik/api",
+    "db:migrate": "dotenv -e .env -- npm run db:migrate:deploy --workspace=@skladnik/api && npm run db:generate",
+    "db:migrate:dev": "dotenv -e .env -- npm run db:migrate --workspace=@skladnik/api",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^10.0.0",
+    "turbo": "^2.5.6",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

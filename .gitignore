@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+.turbo
+.env
+*.log
+.DS_Store
+coverage
+.idea
+.vscode/*
+!.vscode/extensions.json
+apps/web/dist
+packages/shared/dist

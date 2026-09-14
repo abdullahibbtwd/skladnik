@@ -1,0 +1,9 @@
+node_modules
+dist
+.turbo
+.git
+.env
+*.log
+apps/web/dist
+apps/web/node_modules
+packages/shared/dist
