@@ -44,5 +44,6 @@ WORKDIR /app/apps/api
 RUN npx prisma generate
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV SKLADNIK_IN_DOCKER=1
 EXPOSE 3000
 ENTRYPOINT ["/entrypoint.sh"]

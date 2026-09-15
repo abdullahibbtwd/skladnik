@@ -10,6 +10,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.client = new Redis(config.getOrThrow<string>('REDIS_URL'), {
       maxRetriesPerRequest: 3,
       lazyConnect: true,
+      connectTimeout: 10_000,
+      retryStrategy: (times) => Math.min(times * 200, 2000),
     });
   }
 

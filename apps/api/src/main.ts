@@ -22,9 +22,9 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const port = config.get<string>('PORT') ?? '3003';
-  await app.listen(port);
-  console.log(`API listening on http://localhost:${port}`);
+  const port = Number(config.get<string>('PORT') ?? process.env.PORT ?? 3000);
+  await app.listen(port, '0.0.0.0');
+  console.log(`API listening on http://0.0.0.0:${port}`);
 }
 
 void bootstrap();

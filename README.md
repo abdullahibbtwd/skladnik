@@ -106,14 +106,16 @@ That produces a Linux container for your Mac’s CPU (Apple Silicon → linux/ar
 
 ## Coolify
 
-Build succeeded; the API then went **unhealthy** because Coolify injects the laptop `.env` into the container (`DATABASE_URL=…@localhost`, `PORT=3003`, `MINIO_PORT=9100`). Those values are for `npm run dev` on your Mac, not for containers talking to each other.
+Coolify injects the laptop `.env` (`DATABASE_URL=…@localhost`, `PORT=3003`, `MINIO_PORT=9100`, `NODE_ENV=development`). Those values are for `npm run dev` on your Mac. The API entrypoint always uses Compose DNS (`postgres`, `redis`, `minio`) and binds **3000** inside the container.
 
 In Coolify environment variables:
 
-1. **NODE_ENV** — `production`, **Runtime only** (uncheck “Available at Buildtime”).
+1. **NODE_ENV** — `production`, **Runtime only** (uncheck “Available at Buildtime”). The build warning is expected if it stays checked; images still install devDependencies.
 2. **WEB_ORIGIN** — your public site URL (`https://your-domain`).
-3. Prefer **not** to copy `DATABASE_URL` / `REDIS_URL` / `MINIO_ENDPOINT` from `.env`. Compose already points them at `postgres`, `redis`, and `minio`. The API entrypoint also rewrites `localhost` → those hostnames if Coolify still injects them.
+3. You can leave `DATABASE_URL` / `REDIS_URL` / `MINIO_*` as in `.env`. The entrypoint overwrites hosts and in-network ports.
 
-Redeploy after this commit. If it still fails, open the **api** container logs — `prisma migrate deploy` or MinIO bucket setup will be the first error.
+Every API container start runs `prisma generate` then `prisma migrate deploy` before the server listens.
+
+Push, then redeploy. If it still fails, open the **api** container logs — look for `prisma generate failed`, `prisma migrate deploy failed`, or `skladnik-api: port=`.
 
 

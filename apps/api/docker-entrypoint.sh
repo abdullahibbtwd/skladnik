@@ -1,31 +1,37 @@
 #!/bin/sh
 set -eu
 
-# Coolify injects the laptop .env (localhost, PORT=3003, MINIO_PORT=9100).
-# Inside Compose those must be the other containers and port 3000.
+# Coolify passes the laptop .env (localhost, PORT=3003, MINIO_PORT=9100).
+# Ignore those hosts: Compose DNS is always postgres / redis / minio, and
+# this process must bind 3000 (the published host port is 3003).
 
 export NODE_ENV=production
 export PORT=3000
+export SKLADNIK_IN_DOCKER=1
 
-if [ -n "${DATABASE_URL:-}" ]; then
-  export DATABASE_URL="$(printf '%s' "$DATABASE_URL" | sed 's/@localhost:/@postgres:/g; s/@127.0.0.1:/@postgres:/g')"
-else
-  export DATABASE_URL="postgresql://${POSTGRES_USER:-skladnik}:${POSTGRES_PASSWORD:-skladnik}@postgres:5432/${POSTGRES_DB:-skladnik}"
-fi
-
-if [ -n "${REDIS_URL:-}" ]; then
-  export REDIS_URL="$(printf '%s' "$REDIS_URL" | sed 's@://localhost:@://redis:@g; s@://127.0.0.1:@://redis:@g')"
-else
-  export REDIS_URL="redis://redis:6379"
-fi
-
-case "${MINIO_ENDPOINT:-}" in
-  localhost | 127.0.0.1 | "") export MINIO_ENDPOINT=minio ;;
-esac
-
-# Host mapping is 9100:9000; the MinIO process always listens on 9000 in-network.
+USER_NAME="${POSTGRES_USER:-skladnik}"
+PASSWORD="${POSTGRES_PASSWORD:-skladnik}"
+DB_NAME="${POSTGRES_DB:-skladnik}"
+export DATABASE_URL="postgresql://${USER_NAME}:${PASSWORD}@postgres:5432/${DB_NAME}"
+export REDIS_URL="redis://redis:6379"
+export MINIO_ENDPOINT=minio
 export MINIO_PORT=9000
+export MINIO_USE_SSL=false
+export MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER:-minioadmin}}"
+export MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}"
 
-echo "Starting API on :${PORT} db=${DATABASE_URL%%@*}@…"
-npx prisma migrate deploy
+echo "skladnik-api: port=${PORT} postgres=${USER_NAME}@postgres/${DB_NAME} redis=redis minio=${MINIO_ENDPOINT}:${MINIO_PORT}"
+
+echo "skladnik-api: prisma generate"
+if ! npx prisma generate; then
+  echo "skladnik-api: prisma generate failed" >&2
+  exit 1
+fi
+
+echo "skladnik-api: prisma migrate deploy"
+if ! npx prisma migrate deploy; then
+  echo "skladnik-api: prisma migrate deploy failed" >&2
+  exit 1
+fi
+
 exec node dist/main.js

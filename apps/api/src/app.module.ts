@@ -13,6 +13,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      ignoreEnvFile: process.env.SKLADNIK_IN_DOCKER === '1',
       envFilePath: [
         join(process.cwd(), '.env'),
         join(process.cwd(), '..', '..', '.env'),

@@ -47,18 +47,25 @@ export class StorageService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= 10; attempt += 1) {
+    // Do not block or crash the API if MinIO is slow. Coolify marks the
+    // whole stack failed when this process exits before it listens.
+    void this.ensureBucketInBackground();
+  }
+
+  private async ensureBucketInBackground() {
+    for (let attempt = 1; attempt <= 15; attempt += 1) {
       try {
         await this.ensurePrivateBucket();
+        if (attempt > 1) {
+          console.log(`[minio] bucket ready after attempt ${attempt}`);
+        }
         return;
       } catch (error) {
-        lastError = error;
-        console.error(`[minio] bucket setup failed (attempt ${attempt}/10)`);
+        console.error(`[minio] bucket setup failed (attempt ${attempt}/15)`, error);
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
-    throw lastError;
+    console.error('[minio] continuing without a ready bucket; uploads will fail until MinIO is reachable');
   }
 
   async ping(): Promise<boolean> {
