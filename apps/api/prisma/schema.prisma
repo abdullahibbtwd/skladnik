@@ -7,9 +7,335 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Throwaway connectivity probe for this infrastructure phase.
-// Replace with real models (Company, User, …) in stage 1.
-model Ping {
-  id        Int      @id @default(autoincrement())
+// ---------------------------------------------------------------------------
+// Tenancy & identity (§3)
+// Every row below Company is company-scoped. Auth never trusts a companyId
+// from the request body — only the JWT / session.
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  OWNER
+  SITE_MANAGER
+  STAFF
+  ACCOUNTANT
+}
+
+enum SiteType {
+  STORE
+  KITCHEN
+  BAR
+  WAREHOUSE
+}
+
+enum PartnerKind {
+  SUPPLIER
+  CUSTOMER
+  BOTH
+}
+
+enum DocumentType {
+  INVOICE
+  PROTOCOL
+  RECEIPT
+  CREDIT_NOTE
+}
+
+enum DocumentStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum StockDirection {
+  IN
+  OUT
+}
+
+/// Top-level tenant. Created in the same transaction as the first Owner user.
+model Company {
+  id        String   @id @default(uuid())
+  name      String
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users           User[]
+  sites           Site[]
+  productGroups   ProductGroup[]
+  products        Product[]
+  productBarcodes ProductBarcode[]
+  partners        Partner[]
+  batches         Batch[]
+  documents       Document[]
+  stockMovements  StockMovement[]
+  activityLogs    ActivityLog[]
+  invitations     Invitation[]
+}
+
+/// Physical location: store / kitchen / bar / warehouse (§4.1).
+model Site {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  type      SiteType @default(STORE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userSites      UserSite[]
+  documents      Document[]
+  stockMovements StockMovement[]
+  invitationSites InvitationSite[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  companyId    String
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sites       UserSite[]
+  activityLogs ActivityLog[]
+  invitations Invitation[] @relation("InvitedBy")
+
+  @@index([companyId])
+}
+
+/// Site managers and Staff only see assigned sites. Owner / Accountant skip this
+/// table and receive allSites=true on the token.
+model UserSite {
+  userId     String
+  siteId     String
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, siteId])
+  @@index([siteId])
+}
+
+/// Owner-issued invite; signup link is pre-tied to Company + role (+ optional sites).
+model Invitation {
+  id          String    @id @default(uuid())
+  companyId   String
+  email       String
+  role        UserRole
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedBy User             @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Restrict)
+  sites     InvitationSite[]
+
+  @@unique([companyId, email])
+  @@index([companyId])
+}
+
+model InvitationSite {
+  invitationId String
+  siteId       String
+
+  invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  site       Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([invitationId, siteId])
+}
+
+// ---------------------------------------------------------------------------
+// Master data (§4.1)
+// ---------------------------------------------------------------------------
+
+model ProductGroup {
+  id        String   @id @default(uuid())
+  companyId String
+  parentId  String?
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent   ProductGroup?  @relation("GroupTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children ProductGroup[] @relation("GroupTree")
+  products Product[]
+
+  @@index([companyId, parentId, name])
+  @@index([companyId])
+  @@index([parentId])
+}
+
+model Product {
+  id             String   @id @default(uuid())
+  companyId      String
+  groupId        String?
+  name           String
+  code           String
+  unit           String   @default("pcs")
+  vatRate        Decimal  @db.Decimal(5, 2)
+  purchasePrice  Decimal  @db.Decimal(12, 4)
+  sellingPrice   Decimal  @db.Decimal(12, 4)
+  minStock       Decimal  @default(0) @db.Decimal(12, 3)
+  batchTracking  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  group          ProductGroup?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  barcodes       ProductBarcode[]
+  batches        Batch[]
+  documentLines  DocumentLine[]
+  stockMovements StockMovement[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([groupId])
+}
+
+model ProductBarcode {
+  id        String @id @default(uuid())
+  companyId String
+  productId String
+  barcode   String
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, barcode])
+  @@index([productId])
+}
+
+model Partner {
+  id        String      @id @default(uuid())
+  companyId String
+  kind      PartnerKind @default(SUPPLIER)
+  name      String
+  taxId     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@index([companyId])
+}
+
+model Batch {
+  id                String    @id @default(uuid())
+  companyId         String
+  productId         String
+  batchNumber       String
+  expiryDate        DateTime? @db.Date
+  quantityRemaining Decimal   @default(0) @db.Decimal(12, 3)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  documentLines  DocumentLine[]
+  stockMovements StockMovement[]
+
+  @@unique([companyId, productId, batchNumber])
+  @@index([companyId])
+  @@index([productId])
+  @@index([expiryDate])
+}
+
+// ---------------------------------------------------------------------------
+// Documents & stock
+// ---------------------------------------------------------------------------
+
+model Document {
+  id         String         @id @default(uuid())
+  companyId  String
+  siteId     String
+  partnerId  String?
+  type       DocumentType
+  status     DocumentStatus @default(DRAFT)
+  number     String
+  issuedOn   DateTime       @db.Date
+  notes      String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  postedAt   DateTime?
+
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  partner        Partner?        @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  lines          DocumentLine[]
+  stockMovements StockMovement[]
+
+  @@unique([companyId, number])
+  @@index([companyId])
+  @@index([siteId])
+  @@index([partnerId])
+}
+
+model DocumentLine {
+  id         String  @id @default(uuid())
+  documentId String
+  productId  String
+  batchId    String?
+  quantity   Decimal @db.Decimal(12, 3)
+  unitPrice  Decimal @db.Decimal(12, 4)
+  vatRate    Decimal @db.Decimal(5, 2)
+  position   Int     @default(0)
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch    Batch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([productId])
+}
+
+/// Immutable ledger. Do not update or delete rows from application code.
+model StockMovement {
+  id         String         @id @default(uuid())
+  companyId  String
+  siteId     String
+  documentId String?
+  productId  String
+  batchId    String?
+  direction  StockDirection
+  quantity   Decimal        @db.Decimal(12, 3)
+  occurredAt DateTime       @default(now())
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch    Batch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([siteId, productId])
+  @@index([documentId])
+}
+
+/// Generic mutation log (§4.9).
+model ActivityLog {
+  id         String   @id @default(uuid())
+  companyId  String
+  userId     String?
+  entityType String
+  entityId   String
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([entityType, entityId])
 }

@@ -9,7 +9,7 @@ import {
   Boxes,
   FileSpreadsheet
 } from 'lucide-react';
-import { SampleInvoice } from './HeroSection';
+import type { SampleInvoice } from './HeroSection';
 
 const DEMO_MODAL_INVOICE: SampleInvoice = {
   id: 'dairy-modal-scan',
@@ -118,116 +118,57 @@ export const InteractiveModal: React.FC<InteractiveModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-        {/* Modal Header */}
-        <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div
-              style={{
-                width: '2rem',
-                height: '2rem',
-                borderRadius: '0.5rem',
-                background: 'var(--sky)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FFFFFF'
-              }}
-            >
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[rgba(30,27,75,0.45)] p-0 backdrop-blur-md sm:items-center sm:p-6" onClick={onClose}>
+      <div
+        className="max-h-[92dvh] w-full max-w-[840px] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white text-ops-ink shadow-[0_24px_80px_-20px_rgba(30,27,75,0.28)] sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 md:px-6 md:py-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-ops-teal text-white">
               <Boxes size={16} />
             </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '1rem', color: '#FFFFFF' }}>
-                Interactive Invoice OCR Simulator
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
-                Experience 20s extraction &amp; live inventory reconciliation
+            <div className="min-w-0">
+              <div className="font-display text-[0.95rem] font-semibold text-ops-ink md:text-base">Invoice OCR simulator</div>
+              <div className="font-sans text-xs text-slate-500">
+                20s extraction and live inventory
               </div>
             </div>
           </div>
-
-          <button onClick={onClose} className="modal-close-btn" aria-label="Close modal">
+          <button onClick={onClose} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-ops-canvas hover:text-ops-ink" aria-label="Close modal">
             <X size={18} />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="modal-body">
+        <div className="p-4 md:p-6">
           {scanStep === 1 && (
             <div>
-              <div
-                style={{
-                  border: '2px dashed rgba(255, 255, 255, 0.15)',
-                  borderRadius: '0.75rem',
-                  padding: '2.5rem 1.5rem',
-                  textAlign: 'center',
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  marginBottom: '1.5rem'
-                }}
-              >
-                <div
-                  style={{
-                    width: '3.5rem',
-                    height: '3.5rem',
-                    borderRadius: '50%',
-                    background: 'var(--sky-subtle)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto 1rem',
-                    color: 'var(--sky)'
-                  }}
-                >
+              <div className="mb-6 rounded-xl border-2 border-dashed border-slate-200 bg-ops-canvas px-4 py-8 text-center md:px-6 md:py-10">
+                <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-ops-ai/10 text-ops-ai">
                   <Camera size={26} />
                 </div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-                  Simulate Paper Invoice Capture
-                </h3>
-                <p
-                  style={{
-                    fontSize: '0.9rem',
-                    color: '#94A3B8',
-                    maxWidth: '440px',
-                    margin: '0 auto 1.5rem'
-                  }}
-                >
+                <h3 className="mb-2 font-display text-lg font-semibold text-ops-ink md:text-xl">Simulate paper invoice capture</h3>
+                <p className="mx-auto mb-6 max-w-[440px] font-sans text-[0.9rem] text-slate-500">
                   Click the button below to test how our AI reads supplier headers, calculates line
                   taxes, and checks warehouse catalogs in under 20 seconds.
                 </p>
-
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-                  <button onClick={handleStartScan} className="btn-primary">
+                <div className="flex justify-center">
+                  <button
+                    onClick={handleStartScan}
+                    className="inline-flex items-center gap-2 rounded-lg bg-ops-teal px-5 py-[0.65rem] font-display text-[0.925rem] font-medium text-white shadow-[0_4px_14px_rgba(13,148,136,0.28)] hover:bg-ops-teal-hover"
+                  >
                     <Zap size={16} />
                     <span>Run 20s OCR Pipeline</span>
                   </button>
                 </div>
               </div>
-
-              {/* Sample Paper Preview */}
-              <div
-                style={{
-                  background: '#0D1322',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '0.5rem',
-                  padding: '1rem'
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: '#94A3B8',
-                    marginBottom: '0.5rem'
-                  }}
-                >
-                  Included Sample Document:
+              <div className="rounded-lg border border-slate-200 bg-ops-canvas p-4">
+                <div className="mb-2 font-display text-xs font-medium text-slate-500">Included Sample Document:</div>
+                <div className="flex flex-col gap-1 text-[0.85rem] sm:flex-row sm:justify-between">
+                  <span className="font-medium text-ops-ink">Metro Fresh Dairy Sp. z o.o.</span>
+                  <span className="font-mono text-ops-teal">FV/2026/09/1402</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                  <span style={{ color: '#FFFFFF', fontWeight: 600 }}>Metro Fresh Dairy Sp. z o.o.</span>
-                  <span style={{ color: '#38BDF8', fontFamily: 'var(--font-mono)' }}>FV/2026/09/1402</span>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '0.25rem' }}>
+                <div className="mt-1 font-sans text-xs text-slate-500">
                   3 line items &bull; Total: € 482.40 &bull; EANs: 590123401, 590123402, 590123403
                 </div>
               </div>
@@ -235,188 +176,64 @@ export const InteractiveModal: React.FC<InteractiveModalProps> = ({
           )}
 
           {scanStep === 2 && (
-            <div style={{ padding: '3.5rem 1.5rem', textAlign: 'center' }}>
-              <div
-                style={{
-                  width: '4rem',
-                  height: '4rem',
-                  borderRadius: '50%',
-                  background: 'var(--sky-subtle)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 1.5rem',
-                  color: 'var(--sky)'
-                }}
-              >
-                <ScanLine size={28} className="pulse-dot" />
+            <div className="px-6 py-14 text-center">
+              <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full bg-ops-ai/10 text-ops-ai">
+                <ScanLine size={28} className="animate-pulse-dot" />
               </div>
-
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-                AI Vision Processing Document...
-              </h3>
-              <p style={{ fontSize: '0.85rem', color: '#94A3B8', marginBottom: '1.5rem' }}>
-                Detecting table borders &bull; Matching SKUs against catalog &bull; Verifying
-                FEFO expirations
+              <h3 className="mb-2 font-display text-[1.15rem] font-semibold text-ops-ink">AI vision processing document...</h3>
+              <p className="mb-6 font-sans text-[0.85rem] text-slate-500">
+                Detecting table borders &bull; Matching SKUs against catalog &bull; Verifying FEFO expirations
               </p>
-
-              <div
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  borderRadius: '9999px',
-                  height: '8px',
-                  maxWidth: '400px',
-                  margin: '0 auto 1rem',
-                  overflow: 'hidden'
-                }}
-              >
-                <div
-                  style={{
-                    background: 'var(--sky)',
-                    height: '100%',
-                    width: `${progress}%`,
-                    transition: 'width 0.3s ease'
-                  }}
-                />
+              <div className="mx-auto mb-4 h-2 max-w-[400px] overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full bg-ops-ai transition-[width] duration-300" style={{ width: `${progress}%` }} />
               </div>
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.8rem',
-                  color: '#38BDF8'
-                }}
-              >
-                {progress}% completed
-              </span>
+              <span className="font-mono text-[0.8rem] text-ops-ai">{progress}% completed</span>
             </div>
           )}
 
           {scanStep === 3 && (
             <div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: 'rgba(16, 185, 129, 0.1)',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  padding: '0.85rem 1.25rem',
-                  borderRadius: '0.5rem',
-                  marginBottom: '1.25rem'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <CheckCircle2 size={18} color="#10B981" />
-                  <span style={{ fontWeight: 600, color: '#6EE7B7', fontSize: '0.85rem' }}>
-                    Scan Completed Successfully &bull; 3 Line Items Reconciled
+              <div className="mb-5 flex flex-col gap-2 rounded-lg border border-ops-teal/20 bg-teal-50 px-4 py-[0.85rem] sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={18} color="#0D9488" />
+                  <span className="font-display text-[0.85rem] font-medium text-ops-teal">
+                    Scan complete · 3 line items reconciled
                   </span>
                 </div>
-                <span
-                  style={{
-                    fontSize: '0.75rem',
-                    color: '#94A3B8',
-                    fontFamily: 'var(--font-mono)'
-                  }}
-                >
-                  Duration: 18.2s
-                </span>
+                <span className="font-mono text-xs text-slate-500">Duration: 18.2s</span>
               </div>
-
-              {/* Summary Grid */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                  gap: '0.75rem',
-                  marginBottom: '1.5rem'
-                }}
-              >
-                <div
-                  style={{
-                    background: '#151D33',
-                    padding: '0.85rem',
-                    borderRadius: '0.5rem',
-                    border: '1px solid rgba(255, 255, 255, 0.06)'
-                  }}
-                >
-                  <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                    Supplier Verified
-                  </span>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FFFFFF' }}>
-                    Metro Fresh Dairy
+              <div className="mb-6 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+                {[
+                  ['Supplier Verified', 'Metro Fresh Dairy', 'text-ops-ink'],
+                  ['FEFO Urgency Alert', '1 Item Critical (< 5d)', 'text-ops-warn'],
+                  ['Tax Document', 'Annex 38 XML Ready', 'text-ops-accent'],
+                ].map(([label, value, color]) => (
+                  <div key={label} className="rounded-lg border border-slate-200 bg-ops-canvas p-[0.85rem]">
+                    <span className="font-sans text-[0.72rem] text-slate-500">{label}</span>
+                    <div className={`font-display text-[0.9rem] font-medium ${color}`}>{value}</div>
                   </div>
-                </div>
-                <div
-                  style={{
-                    background: '#151D33',
-                    padding: '0.85rem',
-                    borderRadius: '0.5rem',
-                    border: '1px solid rgba(255, 255, 255, 0.06)'
-                  }}
-                >
-                  <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                    FEFO Urgency Alert
-                  </span>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FCD34D' }}>
-                    1 Item Critical (&lt; 5d)
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: '#151D33',
-                    padding: '0.85rem',
-                    borderRadius: '0.5rem',
-                    border: '1px solid rgba(255, 255, 255, 0.06)'
-                  }}
-                >
-                  <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                    Tax Document
-                  </span>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#38BDF8' }}>
-                    Annex 38 XML Ready
-                  </div>
-                </div>
+                ))}
               </div>
-
-              {/* Action Buttons */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.75rem',
-                  justifyContent: 'flex-end',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-                  paddingTop: '1rem'
-                }}
-              >
+              <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
                 <button
                   onClick={() => setScanStep(1)}
-                  className="btn-ghost-dark"
-                  style={{ fontSize: '0.85rem' }}
+                  className="rounded-lg px-4 py-[0.6rem] font-display text-[0.85rem] font-medium text-slate-500 hover:bg-ops-canvas hover:text-ops-ink"
                 >
                   Scan Another
                 </button>
                 <button
                   onClick={handleDownloadXml}
-                  className="btn-ghost-dark"
-                  style={{
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    fontSize: '0.85rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem'
-                  }}
+                  className="inline-flex items-center justify-center gap-[0.35rem] rounded-lg border border-slate-200 px-4 py-[0.6rem] font-display text-[0.85rem] font-medium text-ops-ink hover:border-ops-accent/30 hover:bg-indigo-50 hover:text-ops-accent"
                 >
                   {downloadedXml ? (
                     <>
-                      <CheckCircle2 size={15} color="#10B981" />
-                      <span>XML Downloaded</span>
+                      <CheckCircle2 size={15} color="#0D9488" />
+                      XML Downloaded
                     </>
                   ) : (
                     <>
                       <Download size={15} />
-                      <span>Download Annex 38 XML</span>
+                      Download Annex 38 XML
                     </>
                   )}
                 </button>
@@ -427,17 +244,10 @@ export const InteractiveModal: React.FC<InteractiveModalProps> = ({
                       onCommitInventory(DEMO_MODAL_INVOICE);
                     }
                   }}
-                  className="btn-primary"
-                  style={{
-                    background: 'var(--emerald)',
-                    fontSize: '0.85rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.4rem'
-                  }}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-ops-teal px-4 py-[0.65rem] font-display text-[0.85rem] font-medium text-white shadow-[0_4px_14px_rgba(13,148,136,0.28)] hover:bg-ops-teal-hover"
                 >
                   <FileSpreadsheet size={16} />
-                  <span>Commit to Live Inventory</span>
+                  Commit to Live Inventory
                 </button>
               </div>
             </div>

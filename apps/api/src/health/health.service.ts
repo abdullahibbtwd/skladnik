@@ -15,14 +15,14 @@ export class HealthService {
   ) {}
 
   async check() {
-    const [postgres, redis, minio, ping] = await Promise.all([
+    const [postgres, redis, minio, prisma] = await Promise.all([
       this.probe('postgres', () => this.prisma.$queryRaw`SELECT 1`),
       this.probe('redis', () => this.redis.ping()),
       this.probe('minio', () => this.storage.ping()),
-      this.probe('prisma', () => this.prisma.ping.count()),
+      this.probe('prisma', () => this.prisma.company.count()),
     ]);
 
-    const checks = { postgres, redis, minio, prisma: ping };
+    const checks = { postgres, redis, minio, prisma };
     const status = Object.values(checks).every((value) => value === 'ok')
       ? 'ok'
       : 'degraded';

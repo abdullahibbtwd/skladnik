@@ -11,7 +11,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { StorageService } from './storage.service';
+import { Public } from '../auth/decorators/public.decorator';
 
+@Public()
 @Controller()
 export class StorageController {
   constructor(private readonly storage: StorageService) {}

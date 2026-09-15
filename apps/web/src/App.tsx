@@ -1,71 +1,71 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
-import { HeroSection, SampleInvoice, SAMPLE_INVOICES } from './components/HeroSection';
+import { HeroSection, SAMPLE_INVOICES, type SampleInvoice } from './components/HeroSection';
 import { CoreFeatures } from './components/CoreFeatures';
 import { HowItWorks } from './components/HowItWorks';
 import { PricingSection } from './components/PricingSection';
 import { Footer } from './components/Footer';
 import { InteractiveModal } from './components/InteractiveModal';
 import { AuthModal } from './components/AuthModal';
-import { DashboardModal } from './components/DashboardModal';
+import { AuthPage } from './pages/AuthPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { OverviewPanel } from './components/dashboard/OverviewPanel';
+import {
+  AuditPanel,
+  ExpiryPanel,
+  InventoryPanel,
+  InvoicesPanel,
+  PosPanel,
+  SettingsPanel,
+} from './components/dashboard/WorkspacePanels';
+import { useMeQuery } from './lib/auth-session';
+import { useIsAuthenticated } from './lib/auth-store';
 
-interface User {
-  name: string;
-  email: string;
-  storeName: string;
+function SessionSplash() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-ops-canvas font-display text-sm text-slate-500">
+      Restoring session…
+    </div>
+  );
 }
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [scanDemoOpen, setScanDemoOpen] = useState<boolean>(false);
-  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isAuthenticated = useIsAuthenticated();
+  const { isFetched } = useMeQuery();
+  const [scanDemoOpen, setScanDemoOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
-  const [dashboardModalOpen, setDashboardModalOpen] = useState<boolean>(false);
   const [pendingInvoice, setPendingInvoice] = useState<SampleInvoice | null>(null);
   const [committedInvoices, setCommittedInvoices] = useState<SampleInvoice[]>([]);
 
-  const handleOpenScanDemo = () => {
-    setScanDemoOpen(true);
-  };
-
-  const handleCloseScanDemo = () => {
-    setScanDemoOpen(false);
-  };
-
-  const handleOpenLogin = () => {
-    setAuthMode('login');
+  useEffect(() => {
+    const auth = searchParams.get('auth');
+    if (auth !== 'login' && auth !== 'signup') return;
+    setAuthMode(auth);
     setAuthModalOpen(true);
-  };
+    const next = new URLSearchParams(searchParams);
+    next.delete('auth');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
-  const handleOpenSignup = () => {
-    setAuthMode('signup');
-    setAuthModalOpen(true);
-  };
-
-  const handleCloseAuthModal = () => {
-    setAuthModalOpen(false);
-  };
-
-  // The Conversion Point: Commit to Live Inventory
   const handleCommitInventory = (invoice: SampleInvoice) => {
-    if (user) {
-      // Already logged in: commit immediately and show dashboard
+    if (isAuthenticated) {
       setCommittedInvoices((prev) => {
         const exists = prev.some((inv) => inv.id === invoice.id);
         return exists ? prev : [...prev, invoice];
       });
-      setDashboardModalOpen(true);
+      navigate('/app');
     } else {
-      // Visitor: Preserve invoice data and open value-oriented signup
       setPendingInvoice(invoice);
       setAuthMode('signup');
       setAuthModalOpen(true);
     }
   };
 
-  // Auth Success: preserve pending demo invoice and transition to Dashboard
-  const handleAuthSuccess = (newUser: User) => {
-    setUser(newUser);
+  const handleAuthSuccess = () => {
     if (pendingInvoice) {
       setCommittedInvoices((prev) => {
         const exists = prev.some((inv) => inv.id === pendingInvoice.id);
@@ -73,78 +73,86 @@ export default function App() {
       });
       setPendingInvoice(null);
     } else if (committedInvoices.length === 0) {
-      // Pre-seed with default sample if signing up directly
       setCommittedInvoices([SAMPLE_INVOICES[0]]);
     }
     setAuthModalOpen(false);
-    setDashboardModalOpen(true);
+    navigate('/app');
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setDashboardModalOpen(false);
-  };
+  const landing = (
+    <div className="w-full max-w-full overflow-x-hidden bg-ops-canvas pt-[4.5rem] font-sans text-ops-ink">
+      <Navbar onOpenDemo={() => setScanDemoOpen(true)} />
 
-  return (
-    <div className="app-root">
-      {/* Top Sticky Header */}
-      <Navbar
-        onOpenDemo={handleOpenScanDemo}
-        onOpenLogin={handleOpenLogin}
-        onOpenSignup={handleOpenSignup}
-        onOpenDashboard={() => setDashboardModalOpen(true)}
-        onLogout={handleLogout}
-        user={user}
-      />
-
-      {/* Hero Section with Interactive App Preview */}
       <main>
         <HeroSection
-          onOpenDemo={handleOpenScanDemo}
+          onOpenDemo={() => setScanDemoOpen(true)}
           onCommitInventory={handleCommitInventory}
           isCommitted={committedInvoices.length > 0}
         />
-
-        {/* Core Features Section */}
-        <CoreFeatures onOpenDemo={handleOpenScanDemo} />
-
-        {/* How It Works 3-Step Section */}
+        <CoreFeatures onOpenDemo={() => setScanDemoOpen(true)} />
         <HowItWorks />
-
-        {/* Store Pricing Section */}
-        <PricingSection onOpenDemo={handleOpenScanDemo} />
+        <PricingSection onOpenDemo={() => setScanDemoOpen(true)} />
       </main>
 
-      {/* Footer */}
       <Footer />
 
-      {/* Interactive Scan Simulator Modal */}
-      <InteractiveModal
-        isOpen={scanDemoOpen}
-        onClose={handleCloseScanDemo}
-        onCommitInventory={handleCommitInventory}
-      />
-
-      {/* Sign Up / Login Modal with Preserved Demo Result Support */}
       <AuthModal
         isOpen={authModalOpen}
-        onClose={handleCloseAuthModal}
+        onClose={() => setAuthModalOpen(false)}
         initialMode={authMode}
         pendingInvoice={pendingInvoice}
         onSuccess={handleAuthSuccess}
       />
-
-      {/* Live Store Dashboard View (Post-Signup/Login) */}
-      {user && (
-        <DashboardModal
-          isOpen={dashboardModalOpen}
-          onClose={() => setDashboardModalOpen(false)}
-          user={user}
-          committedInvoices={committedInvoices}
-          onOpenScanDemo={handleOpenScanDemo}
-          onLogout={handleLogout}
-        />
-      )}
     </div>
+  );
+
+  return (
+    <>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            !isAuthenticated && !isFetched ? (
+              <SessionSplash />
+            ) : isAuthenticated ? (
+              <Navigate to="/app" replace />
+            ) : (
+              <AuthPage mode="login" pendingInvoice={null} onSuccess={handleAuthSuccess} />
+            )
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            !isAuthenticated && !isFetched ? (
+              <SessionSplash />
+            ) : isAuthenticated ? (
+              <Navigate to="/app" replace />
+            ) : (
+              <AuthPage mode="signup" pendingInvoice={pendingInvoice} onSuccess={handleAuthSuccess} />
+            )
+          }
+        />
+        <Route
+          path="/app"
+          element={<DashboardPage committedInvoices={committedInvoices} onScan={() => setScanDemoOpen(true)} />}
+        >
+          <Route index element={<OverviewPanel />} />
+          <Route path="invoices" element={<InvoicesPanel />} />
+          <Route path="inventory" element={<InventoryPanel />} />
+          <Route path="expiry" element={<ExpiryPanel />} />
+          <Route path="pos" element={<PosPanel />} />
+          <Route path="audit" element={<AuditPanel />} />
+          <Route path="settings" element={<SettingsPanel />} />
+        </Route>
+        <Route path="*" element={landing} />
+      </Routes>
+
+      <InteractiveModal
+        isOpen={scanDemoOpen}
+        onClose={() => setScanDemoOpen(false)}
+        onCommitInventory={handleCommitInventory}
+      />
+    </>
   );
 }

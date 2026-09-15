@@ -2,7 +2,9 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Controller, Get, NotFoundException, Param, Post } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { TEST_QUEUE } from './queue.constants';
+import { Public } from '../auth/decorators/public.decorator';
 
+@Public()
 @Controller()
 export class QueueController {
   constructor(@InjectQueue(TEST_QUEUE) private readonly testQueue: Queue) {}

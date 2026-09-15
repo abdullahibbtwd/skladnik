@@ -47,8 +47,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${MINIO_PORT:-9100}:9000"
+      - "${MINIO_CONSOLE_PORT:-9101}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -67,7 +67,7 @@ services:
     container_name: skladnik-api
     restart: unless-stopped
     ports:
-      - "${PORT:-3001}:3000"
+      - "${PORT:-3003}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -80,6 +80,12 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-invoices}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me-please}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me-please}
+      JWT_ACCESS_EXPIRES: ${JWT_ACCESS_EXPIRES:-15m}
+      JWT_REFRESH_EXPIRES: ${JWT_REFRESH_EXPIRES:-7d}
+      COOKIE_SECURE: "false"
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5176}
       GLM_API_KEY: ${GLM_API_KEY:-}
     depends_on:
       postgres:
@@ -110,7 +116,7 @@ services:
     container_name: skladnik-web
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-5173}:80"
+      - "${WEB_PORT:-5176}:80"
     depends_on:
       api:
         condition: service_healthy

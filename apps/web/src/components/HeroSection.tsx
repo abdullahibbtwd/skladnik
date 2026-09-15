@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Camera,
-  Smartphone,
   CheckCircle2,
   AlertTriangle,
   Clock,
@@ -15,6 +14,7 @@ import {
   ArrowRight,
   Boxes
 } from 'lucide-react';
+import { cn, fefoPillClass } from '../lib/cn';
 
 export interface SampleInvoice {
   id: string;
@@ -159,121 +159,101 @@ interface HeroSectionProps {
 export const HeroSection: React.FC<HeroSectionProps> = ({
   onOpenDemo,
   onCommitInventory,
-  isCommitted = false
+  isCommitted = false,
 }) => {
   const [selectedSample, setSelectedSample] = useState<SampleInvoice>(SAMPLE_INVOICES[0]);
   const [isRescanning, setIsRescanning] = useState(false);
 
   const handleRescan = () => {
     setIsRescanning(true);
-    setTimeout(() => {
-      setIsRescanning(false);
-    }, 600);
-  };
-
-  const handleCommit = () => {
-    onCommitInventory(selectedSample);
+    setTimeout(() => setIsRescanning(false), 600);
   };
 
   return (
-    <section className="hero-fullscreen">
-      <div className="container-hero">
-        <div className="hero-2col-layout">
-          {/* LEFT COLUMN: Sales Pitch & Trust Proof */}
-          <div className="hero-pitch-column">
-            {/* Clean Professional Category Badge */}
-            <div className="hero-category-pill">
-              <Boxes size={15} className="hero-category-icon" />
-              <span>Smart Retail &amp; Stock Management</span>
+    <section className="relative flex w-full items-center justify-center overflow-x-hidden bg-ops-canvas py-8 text-ops-ink md:min-h-[calc(100vh-4.5rem)] md:py-14">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute top-[-8rem] left-1/4 size-[28rem] rounded-full bg-ops-accent/[0.07] blur-[120px]" />
+        <div className="absolute right-0 bottom-0 size-[22rem] rounded-full bg-ops-teal/[0.08] blur-[110px]" />
+      </div>
+      <div className="relative mx-auto w-full max-w-[1240px] px-4 md:px-6">
+        <div className="grid w-full grid-cols-1 items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:gap-11">
+          <div className="flex w-full min-w-0 flex-col items-center text-center lg:items-start lg:text-left">
+            <div className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-[0.3rem] font-display text-[0.72rem] font-medium text-slate-500 md:text-[0.78rem]">
+              <Boxes size={14} className="shrink-0 text-ops-teal" />
+              <span className="truncate">Retail stock, from paper invoices</span>
             </div>
 
-            {/* High-Impact Headline */}
-            <h1 className="hero-main-title">
+            <h1 className="mb-4 font-display text-[1.85rem] leading-[1.18] font-semibold tracking-tight text-ops-ink sm:text-[2.2rem] md:mb-[1.15rem] md:text-[3rem] md:leading-[1.12]">
               Snap an Invoice.
               <br />
               Control Expiry.
               <br />
-              <span className="hero-title-highlight">Run Your Store.</span>
+              <span className="inline-block font-semibold text-ops-teal">Run Your Store.</span>
             </h1>
 
-            {/* Subtitle */}
-            <p className="hero-lead-text">
+            <p className="mb-6 max-w-[520px] px-1 font-sans text-[0.95rem] leading-relaxed text-slate-500 md:mb-8 md:text-[1.05rem]">
               Turn paper invoices into live stock in under 20 seconds. Built for
               neighbourhood grocery stores, cafés, and retail outlets.
             </p>
 
-            {/* Action Buttons - Single Impactful Primary CTA */}
-            <div className="hero-button-row">
-              <button onClick={onOpenDemo} className="btn-hero-primary-clean">
-                <Camera size={18} strokeWidth={2.2} />
+            <div className="mb-7 flex w-full max-w-[520px] flex-wrap items-center justify-center gap-3 lg:mb-9 lg:max-w-none lg:justify-start">
+              <button
+                onClick={onOpenDemo}
+                className="inline-flex w-full items-center justify-center gap-[0.65rem] rounded-[0.55rem] bg-ops-teal px-5 py-[0.75rem] font-display text-[0.92rem] font-medium text-white shadow-[0_4px_14px_rgba(13,148,136,0.28)] transition-all hover:bg-ops-teal-hover sm:w-auto sm:px-[1.45rem]"
+              >
+                <Camera size={17} strokeWidth={2} />
                 <span>Try Invoice Scan Demo</span>
               </button>
             </div>
 
-            {/* Integrated Trust & Proof Badges */}
-            <div className="hero-trust-bar">
-              <div className="hero-trust-item">
-                <div className="trust-mini-icon sky">
-                  <Zap size={14} />
+            <div className="grid w-full max-w-[520px] grid-cols-2 gap-x-4 gap-y-4 border-t border-slate-200 pt-6 md:gap-x-7 md:gap-y-5 md:pt-[1.85rem] lg:max-w-none">
+              {[
+                { icon: Zap, title: '20s OCR Speed', sub: 'Instant paper intake', tone: 'teal' },
+                { icon: ShieldCheck, title: '0% Manual Errors', sub: 'Auto catalog match', tone: 'indigo' },
+                { icon: FileCheck2, title: 'Annex 38 Ready', sub: 'Tax audit compliant', tone: 'warn' },
+                { icon: MonitorSmartphone, title: 'Works Anywhere', sub: 'Mobile & counter POS', tone: 'teal' },
+              ].map((item) => (
+                <div key={item.title} className="flex min-w-0 items-start gap-2.5 md:items-center md:gap-3">
+                  <div
+                    className={cn(
+                      'flex size-8 shrink-0 items-center justify-center rounded-lg border md:size-9',
+                      item.tone === 'teal' && 'border-ops-teal/20 bg-teal-50 text-ops-teal',
+                      item.tone === 'indigo' && 'border-ops-accent/20 bg-indigo-50 text-ops-accent',
+                      item.tone === 'warn' && 'border-ops-ai/20 bg-purple-50 text-ops-ai',
+                    )}
+                  >
+                    <item.icon size={14} />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block font-display text-[0.78rem] leading-snug font-medium text-ops-ink md:text-[0.88rem]">{item.title}</span>
+                    <span className="block font-sans text-[0.7rem] leading-snug text-slate-500">{item.sub}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="trust-strong">20s OCR Speed</span>
-                  <span className="trust-sub">Instant paper intake</span>
-                </div>
-              </div>
-
-              <div className="hero-trust-item">
-                <div className="trust-mini-icon emerald">
-                  <ShieldCheck size={14} />
-                </div>
-                <div>
-                  <span className="trust-strong">0% Manual Errors</span>
-                  <span className="trust-sub">Auto catalog match</span>
-                </div>
-              </div>
-
-              <div className="hero-trust-item">
-                <div className="trust-mini-icon slate">
-                  <FileCheck2 size={14} />
-                </div>
-                <div>
-                  <span className="trust-strong">Annex 38 Ready</span>
-                  <span className="trust-sub">Tax audit compliant</span>
-                </div>
-              </div>
-
-              <div className="hero-trust-item">
-                <div className="trust-mini-icon sky">
-                  <MonitorSmartphone size={14} />
-                </div>
-                <div>
-                  <span className="trust-strong">Works Anywhere</span>
-                  <span className="trust-sub">Mobile &amp; counter POS</span>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* RIGHT COLUMN: The Interactive App Preview */}
-          <div className="hero-preview-column">
-            <div className="preview-card-shell">
-              {/* Window Header */}
-              <div className="preview-card-header">
-                <div className="preview-session-info">
-                  <span className="live-status-dot" />
-                  <span className="preview-engine-tag">skladnik-ocr-engine v2.4 (Active Session)</span>
+          <div className="w-full min-w-0">
+            <div className="w-full min-w-0 overflow-hidden rounded-[0.85rem] border border-slate-200 bg-white shadow-[0_16px_40px_-12px_rgba(30,27,75,0.14)]">
+              <div className="flex flex-col gap-2 border-b border-slate-100 bg-ops-canvas px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between md:px-[1.15rem]">
+                <div className="flex items-center gap-[0.55rem]">
+                  <span className="size-[0.55rem] rounded-full bg-ops-teal shadow-[0_0_8px_#0d9488]" />
+                  <span className="font-mono text-[0.68rem] font-medium text-slate-500 md:text-xs">
+                    OCR engine <span className="hidden sm:inline">v2.4 · Active</span>
+                  </span>
                 </div>
-
-                <div className="preview-sample-tabs">
-                  <span className="sample-label">Sample Invoice:</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="hidden shrink-0 font-display text-[0.72rem] font-medium text-slate-500 sm:inline">Sample:</span>
                   {SAMPLE_INVOICES.map((sample) => (
                     <button
                       key={sample.id}
-                      onClick={() => {
-                        setSelectedSample(sample);
-                        setStockCommitted(false);
-                      }}
-                      className={`sample-tab-btn ${selectedSample.id === sample.id ? 'active' : ''}`}
+                      onClick={() => setSelectedSample(sample)}
+                      className={cn(
+                        'shrink-0 rounded-[0.35rem] border px-2.5 py-[0.28rem] font-display text-[0.7rem] font-medium transition-all md:px-[0.6rem] md:text-[0.72rem]',
+                        selectedSample.id === sample.id
+                          ? 'border-ops-teal bg-ops-teal text-white'
+                          : 'border-slate-200 bg-white text-slate-500 hover:border-ops-accent/30 hover:text-ops-ink',
+                      )}
                     >
                       {sample.name}
                     </button>
@@ -281,150 +261,160 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 </div>
               </div>
 
-              {/* Split Interactive Body */}
-              <div className="preview-split-body">
-                {/* Left Side: Clean Thermal Paper Receipt */}
-                <div className="preview-paper-side">
-                  <div className="paper-top-action">
-                    <div className="paper-source-tag">
+              <div className="grid w-full grid-cols-1 bg-white lg:min-h-[440px] lg:grid-cols-[minmax(0,1fr)_44px_minmax(0,1.35fr)]">
+                <div className="flex min-w-0 flex-col overflow-hidden border-slate-100 bg-ops-canvas/50 p-3 md:p-[1.05rem] lg:border-r">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-[0.35rem] font-display text-[0.72rem] font-medium tracking-wide text-ops-ai uppercase">
                       <Camera size={13} />
                       <span>Scanned Camera Frame</span>
                     </div>
-                    <button onClick={handleRescan} className="paper-rescan-btn">
-                      <RefreshCw size={12} className={isRescanning ? 'spin-icon' : ''} />
+                    <button
+                      onClick={handleRescan}
+                      className="inline-flex items-center gap-[0.3rem] rounded bg-white px-[0.45rem] py-[0.2rem] font-display text-[0.7rem] text-slate-500 transition-all hover:text-ops-ink"
+                    >
+                      <RefreshCw size={12} className={isRescanning ? 'animate-spin' : ''} />
                       <span>Rescan</span>
                     </button>
                   </div>
 
-                  {/* Physical Paper Document */}
-                  <div className="receipt-paper">
-                    {/* Subtle clean sky blue laser scanning beam */}
-                    <div className="clean-scan-beam" />
-
-                    {/* Paper Document Header */}
-                    <div className="receipt-header">
-                      <div className="receipt-supplier-name">{selectedSample.supplier}</div>
-                      <div className="receipt-meta-clean">
-                        <span>Inv: <strong>{selectedSample.invNumber}</strong></span>
-                        <span>Date: <strong>{selectedSample.date}</strong></span>
-                        <span>VAT: <strong>{selectedSample.taxId}</strong></span>
-                        <span className="receipt-tax-verified">TAX VERIFIED</span>
+                  <div className="relative flex min-w-0 flex-1 flex-col justify-between overflow-x-auto rounded-lg border border-slate-200 bg-white p-3 font-mono text-[0.72rem] text-ops-ink shadow-[0_8px_20px_-10px_rgba(30,27,75,0.12)] md:p-[1.05rem] md:text-[0.74rem]">
+                    <div className="animate-scan-beam absolute inset-x-0 top-0 z-10 h-0.5 bg-ops-ai opacity-85 shadow-[0_0_8px_#9333ea]" />
+                    <div>
+                      <div className="mb-[0.55rem] border-b-[1.5px] border-dashed border-slate-300 pb-[0.55rem]">
+                        <div className="mb-1 font-sans text-[0.8rem] font-semibold text-slate-900">{selectedSample.supplier}</div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[0.68rem] text-slate-500">
+                          <span>
+                            Inv: <strong className="font-mono text-slate-800">{selectedSample.invNumber}</strong>
+                          </span>
+                          <span>
+                            Date: <strong className="font-mono">{selectedSample.date}</strong>
+                          </span>
+                          <span>
+                            VAT: <strong className="font-mono">{selectedSample.taxId}</strong>
+                          </span>
+                          <span className="font-display text-[0.62rem] font-medium tracking-wide text-ops-teal uppercase">Tax verified</span>
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Paper Table */}
-                    <div className="receipt-table-wrap">
-                      <table className="receipt-table">
+                      <table className="w-full border-collapse text-left">
                         <thead>
-                          <tr>
-                            <th style={{ width: '60%' }}>Item / Description</th>
-                            <th style={{ width: '18%', textAlign: 'center' }}>Qty</th>
-                            <th style={{ width: '22%', textAlign: 'right' }}>Price</th>
+                          <tr className="text-[0.62rem] tracking-wide text-slate-500 uppercase">
+                            <th className="w-[60%] pb-1 font-semibold">Item / Description</th>
+                            <th className="w-[18%] pb-1 text-center font-semibold">Qty</th>
+                            <th className="w-[22%] pb-1 text-right font-semibold">Price</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedSample.items.map((item, idx) => (
-                            <tr key={idx}>
-                              <td>
-                                <div className="receipt-item-title">{item.description}</div>
-                                <div className="receipt-item-sku">SKU: {item.sku}</div>
+                          {selectedSample.items.map((item) => (
+                            <tr key={item.sku} className="border-t border-slate-100">
+                              <td className="py-1.5">
+                                <div className="font-sans text-[0.72rem] font-medium text-slate-900">{item.description}</div>
+                                <div className="font-mono text-[0.62rem] text-slate-500">SKU: {item.sku}</div>
                               </td>
-                              <td style={{ textAlign: 'center' }}>
-                                <span className="receipt-qty-tag">{item.qty}x</span>
+                              <td className="text-center">
+                                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.68rem] font-medium">{item.qty}x</span>
                               </td>
-                              <td style={{ textAlign: 'right' }}>
-                                <span className="receipt-price-val">{item.unitPrice}</span>
-                              </td>
+                              <td className="text-right font-mono text-[0.72rem] font-medium">{item.unitPrice}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
-
-                    {/* Paper Footer */}
-                    <div className="receipt-footer">
-                      <span className="receipt-total-label">Gross Invoice Total:</span>
-                      <span className="receipt-total-value">{selectedSample.total}</span>
-                    </div>
-
-                    <div className="receipt-status-line">
-                      <ScanLine size={12} color="#0EA5E9" />
-                      <span>OCR Bounding Boxes: 100% Detected</span>
+                    <div>
+                      <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
+                        <span className="font-sans text-[0.7rem] font-medium text-slate-500">Gross Invoice Total:</span>
+                        <span className="font-mono text-sm font-semibold text-slate-900">{selectedSample.total}</span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-1 text-[0.65rem] text-slate-500">
+                        <ScanLine size={12} color="#9333EA" />
+                        <span>OCR Bounding Boxes: 100% Detected</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Center Pipeline Divider */}
-                <div className="preview-pipeline-divider">
-                  <div className="pipeline-arrow-badge">
+                <div className="flex items-center justify-center gap-2 px-4 py-2 lg:hidden">
+                  <span className="h-px flex-1 bg-slate-200" />
+                  <span className="font-mono text-[0.62rem] tracking-wider text-slate-400">20s pipeline</span>
+                  <span className="h-px flex-1 bg-slate-200" />
+                </div>
+
+                <div className="hidden flex-col items-center justify-center gap-3 overflow-hidden lg:flex">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ops-teal text-white">
                     <ArrowRight size={13} />
                   </div>
-                  <span className="pipeline-text">20s AI Pipeline</span>
+                  <span className="font-mono text-[0.58rem] tracking-wider text-slate-400 uppercase [writing-mode:vertical-rl]">20s pipeline</span>
                 </div>
 
-                {/* Right Side: Structured AI Stock Data */}
-                <div className="preview-data-side">
-                  {/* Status Pills */}
-                  <div className="data-side-header">
-                    <div className="data-badges-left">
-                      <span className="badge-pill-reader">
+                <div className="flex min-w-0 flex-col p-3 md:p-[1.05rem]">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-ops-ai/20 bg-purple-50 px-2 py-0.5 font-display text-[0.65rem] font-medium text-ops-ai">
                         <ScanLine size={12} />
-                        <span>AI Camera Reader: Active</span>
+                        Camera reader
                       </span>
-                      <span className="badge-pill-annex">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-ops-teal/20 bg-teal-50 px-2 py-0.5 font-display text-[0.65rem] font-medium text-ops-teal">
                         <FileCheck2 size={12} />
-                        <span>Annex 38 Ready</span>
+                        Annex 38
                       </span>
                     </div>
-                    <span className="speed-stat-tag">
+                    <span className="inline-flex items-center gap-1 font-mono text-[0.68rem] text-slate-400">
                       <Zap size={12} />
-                      <span>Processed in 18.4s</span>
+                      18.4s
                     </span>
                   </div>
 
-                  {/* Clean Structured Data Table */}
-                  <div className="structured-table-container">
-                    <table className="clean-data-table">
+                  <div className="flex flex-1 flex-col gap-2 lg:hidden">
+                    {selectedSample.items.map((item) => (
+                      <div key={item.sku} className="rounded-lg border border-slate-200 bg-ops-canvas px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-geist text-[0.78rem] font-medium text-ops-ink">{item.description}</div>
+                            <div className="font-mono text-[0.62rem] text-slate-500">{item.sku}</div>
+                          </div>
+                          <span className="shrink-0 font-mono text-[0.72rem] font-medium text-ops-teal">+{item.qty}</span>
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <span className={fefoPillClass(item.fefoStatus)}>
+                            {item.fefoStatus === 'urgent' ? <AlertTriangle size={11} /> : <Clock size={11} />}
+                            <span>{item.fefoLabel}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[0.65rem] font-medium text-ops-teal">
+                            <CheckCircle2 size={11} />
+                            Confirmed
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="hidden min-w-0 flex-1 overflow-x-auto lg:block">
+                    <table className="w-full min-w-[420px] border-collapse text-left">
                       <thead>
-                        <tr>
-                          <th style={{ width: '40%' }}>Item &amp; Code</th>
-                          <th style={{ width: '18%', textAlign: 'right' }}>Stock Qty</th>
-                          <th style={{ width: '23%', textAlign: 'center' }}>FEFO Expiry</th>
-                          <th style={{ width: '19%', textAlign: 'right' }}>Audit Status</th>
+                        <tr className="border-b border-slate-100 text-[0.62rem] tracking-wide text-slate-500 uppercase">
+                          <th className="w-[40%] pb-2 font-medium">Item &amp; Code</th>
+                          <th className="w-[18%] pb-2 text-right font-medium">Stock Qty</th>
+                          <th className="w-[23%] pb-2 text-center font-medium">FEFO Expiry</th>
+                          <th className="w-[19%] pb-2 text-right font-medium">Audit Status</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {selectedSample.items.map((item, idx) => (
-                          <tr key={idx}>
-                            <td>
-                              <div className="data-item-name">{item.description}</div>
-                              <div className="data-item-code">{item.sku}</div>
+                        {selectedSample.items.map((item) => (
+                          <tr key={item.sku} className="border-b border-slate-100">
+                            <td className="py-2">
+                              <div className="font-geist text-[0.75rem] font-medium text-ops-ink">{item.description}</div>
+                              <div className="font-mono text-[0.62rem] text-slate-500">{item.sku}</div>
                             </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <span className="data-qty-num">+{item.qty} units</span>
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <span
-                                className={`fefo-pill ${
-                                  item.fefoStatus === 'urgent'
-                                    ? 'fefo-pill-urgent'
-                                    : item.fefoStatus === 'warning'
-                                    ? 'fefo-pill-warning'
-                                    : 'fefo-pill-safe'
-                                }`}
-                              >
-                                {item.fefoStatus === 'urgent' ? (
-                                  <AlertTriangle size={11} />
-                                ) : (
-                                  <Clock size={11} />
-                                )}
+                            <td className="text-right font-mono text-[0.72rem] font-medium text-ops-teal">+{item.qty} units</td>
+                            <td className="text-center">
+                              <span className={fefoPillClass(item.fefoStatus)}>
+                                {item.fefoStatus === 'urgent' ? <AlertTriangle size={11} /> : <Clock size={11} />}
                                 <span>{item.fefoLabel}</span>
                               </span>
                             </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <span className="confirmed-stock-pill">
+                            <td className="text-right">
+                              <span className="inline-flex items-center justify-end gap-1 rounded px-[0.45rem] py-[0.18rem] text-[0.65rem] font-medium text-ops-teal">
                                 <CheckCircle2 size={11} />
-                                <span>Confirmed</span>
+                                Confirmed
                               </span>
                             </td>
                           </tr>
@@ -433,38 +423,39 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                     </table>
                   </div>
 
-                  {/* Bottom Summary Bar */}
-                  <div className="data-side-footer">
-                    <div className="summary-group">
-                      <div className="summary-stat-cell">
-                        <span className="stat-label">Verified Items</span>
-                        <span className="stat-number">{selectedSample.items.length} lines</span>
+                  <div className="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <div className="flex gap-4">
+                      <div>
+                        <span className="block text-[0.62rem] tracking-wide text-slate-500">Items</span>
+                        <span className="font-mono text-[0.78rem] font-medium text-ops-ink">{selectedSample.items.length} lines</span>
                       </div>
-                      <div className="summary-stat-cell">
-                        <span className="stat-label">Total Volume</span>
-                        <span className="stat-number">
+                      <div>
+                        <span className="block text-[0.62rem] tracking-wide text-slate-500">Volume</span>
+                        <span className="font-mono text-[0.78rem] font-medium text-ops-ink">
                           {selectedSample.items.reduce((acc, curr) => acc + curr.qty, 0)} pcs
                         </span>
                       </div>
-                      <div className="summary-stat-cell">
-                        <span className="stat-label">Tax Total</span>
-                        <span className="stat-number highlight-sky">{selectedSample.total}</span>
+                      <div>
+                        <span className="block text-[0.62rem] tracking-wide text-slate-500">Tax total</span>
+                        <span className="font-mono text-[0.78rem] font-medium text-ops-teal">{selectedSample.total}</span>
                       </div>
                     </div>
-
                     <button
-                      onClick={handleCommit}
-                      className={`btn-commit-clean ${isCommitted ? 'committed' : ''}`}
+                      onClick={() => onCommitInventory(selectedSample)}
+                      className={cn(
+                        'inline-flex w-full items-center justify-center gap-[0.35rem] rounded-[0.35rem] px-[0.85rem] py-[0.5rem] font-display text-[0.76rem] font-medium text-white transition-all sm:w-auto',
+                        isCommitted ? 'bg-ops-teal-hover' : 'bg-ops-teal hover:bg-ops-teal-hover',
+                      )}
                     >
                       {isCommitted ? (
                         <>
                           <CheckCircle2 size={14} />
-                          <span>Inventory Saved</span>
+                          Inventory Saved
                         </>
                       ) : (
                         <>
                           <FileSpreadsheet size={14} />
-                          <span>Commit to Live Inventory</span>
+                          Commit to Live Inventory
                         </>
                       )}
                     </button>
