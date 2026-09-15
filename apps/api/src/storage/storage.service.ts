@@ -47,7 +47,18 @@ export class StorageService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    await this.ensurePrivateBucket();
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      try {
+        await this.ensurePrivateBucket();
+        return;
+      } catch (error) {
+        lastError = error;
+        console.error(`[minio] bucket setup failed (attempt ${attempt}/10)`);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+    throw lastError;
   }
 
   async ping(): Promise<boolean> {

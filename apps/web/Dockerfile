@@ -1,12 +1,18 @@
+# Static web build. npm ci runs on Linux so esbuild/vite binaries match Alpine,
+# not the Mac host.
 FROM node:22-alpine AS deps
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
-COPY package.json package-lock.json* ./
+ENV CI=true
+ENV NODE_ENV=development
+COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
-RUN npm install
+RUN npm ci --include=dev
 
 FROM node:22-alpine AS build
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./

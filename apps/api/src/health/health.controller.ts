@@ -8,6 +8,11 @@ import { HealthService } from './health.service';
 export class HealthController {
   constructor(private readonly health: HealthService) {}
 
+  @Get('live')
+  live() {
+    return { status: 'ok' };
+  }
+
   @Get()
   async check(@Res({ passthrough: true }) res: Response) {
     const result = await this.health.check();

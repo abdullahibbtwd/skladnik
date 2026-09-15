@@ -1,17 +1,15 @@
 # Full stack: Postgres, Redis, MinIO, API, and web.
+# Coolify: set NODE_ENV=production as Runtime only (not build-time).
 # Dev infra only: docker compose -f docker-compose.dev.yml up -d
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: skladnik-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-skladnik}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skladnik}
       POSTGRES_DB: ${POSTGRES_DB:-skladnik}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,10 +22,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: skladnik-redis
     restart: unless-stopped
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -40,23 +35,19 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: skladnik-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    ports:
-      - "${MINIO_PORT:-9100}:9000"
-      - "${MINIO_CONSOLE_PORT:-9101}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 12
+      start_period: 15s
     networks:
       - skladnik
 
@@ -64,18 +55,20 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: skladnik-api
     restart: unless-stopped
     ports:
       - "${PORT:-3003}:3000"
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: "3000"
+      POSTGRES_USER: ${POSTGRES_USER:-skladnik}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skladnik}
+      POSTGRES_DB: ${POSTGRES_DB:-skladnik}
       DATABASE_URL: postgresql://${POSTGRES_USER:-skladnik}:${POSTGRES_PASSWORD:-skladnik}@postgres:5432/${POSTGRES_DB:-skladnik}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio
-      MINIO_PUBLIC_ENDPOINT: localhost
-      MINIO_PORT: 9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-minio}
+      MINIO_PORT: "9000"
       MINIO_USE_SSL: "false"
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
@@ -84,7 +77,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me-please}
       JWT_ACCESS_EXPIRES: ${JWT_ACCESS_EXPIRES:-15m}
       JWT_REFRESH_EXPIRES: ${JWT_REFRESH_EXPIRES:-7d}
-      COOKIE_SECURE: "false"
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5176}
       GLM_API_KEY: ${GLM_API_KEY:-}
     depends_on:
@@ -100,12 +93,12 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://localhost:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3000/health/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 12
+      start_period: 90s
     networks:
       - skladnik
 
@@ -113,7 +106,6 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    container_name: skladnik-web
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-5176}:80"
@@ -125,7 +117,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
     networks:
       - skladnik
 
@@ -136,5 +128,4 @@ volumes:
 
 networks:
   skladnik:
-    name: skladnik
     driver: bridge

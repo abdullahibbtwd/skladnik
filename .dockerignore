@@ -1,9 +1,19 @@
+# Mac host node_modules must never enter the image — native bcrypt/prisma
+# binaries from darwin would break on a Linux server. Install happens inside
+# the Linux container from package-lock.json.
 node_modules
+**/node_modules
 dist
+**/dist
 .turbo
 .git
 .env
+.env.*
+!.env.example
 *.log
+**/.DS_Store
+coverage
+*.md
 apps/web/dist
-apps/web/node_modules
 packages/shared/dist
+apps/api/dist

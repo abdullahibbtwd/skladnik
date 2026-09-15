@@ -89,3 +89,31 @@ npm run auth:prove
 ```
 
 `Ping` is gone; it was replaced by the core tenant schema.
+
+## Docker (Mac laptop → Linux server)
+
+# Images **never copy your Mac `node_modules`**. `.dockerignore` excludes them, and both Dockerfiles run `npm ci` inside Linux Alpine from `package-lock.json`. That is what compiles `bcrypt` and Prisma engines for the server, not for darwin.
+
+Coolify should **build on the Linux host** (`docker compose up --build`). Do not copy an image built on your Mac onto an Intel VPS — let Coolify build there so `bcrypt` and Prisma match the server CPU.
+
+Local Mac check:
+
+```bash
+docker compose build
+```
+
+That produces a Linux container for your Mac’s CPU (Apple Silicon → linux/arm64). The production server does the same install for linux/amd64. Both work because install happens **inside** the image.
+
+## Coolify
+
+Build succeeded; the API then went **unhealthy** because Coolify injects the laptop `.env` into the container (`DATABASE_URL=…@localhost`, `PORT=3003`, `MINIO_PORT=9100`). Those values are for `npm run dev` on your Mac, not for containers talking to each other.
+
+In Coolify environment variables:
+
+1. **NODE_ENV** — `production`, **Runtime only** (uncheck “Available at Buildtime”).
+2. **WEB_ORIGIN** — your public site URL (`https://your-domain`).
+3. Prefer **not** to copy `DATABASE_URL` / `REDIS_URL` / `MINIO_ENDPOINT` from `.env`. Compose already points them at `postgres`, `redis`, and `minio`. The API entrypoint also rewrites `localhost` → those hostnames if Coolify still injects them.
+
+Redeploy after this commit. If it still fails, open the **api** container logs — `prisma migrate deploy` or MinIO bucket setup will be the first error.
+
+
