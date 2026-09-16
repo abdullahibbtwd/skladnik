@@ -26,7 +26,7 @@ ENV DATABASE_URL="postgresql://skladnik:skladnik@postgres:5432/skladnik"
 RUN npm run build --workspace=@skladnik/shared
 WORKDIR /app/apps/api
 RUN npx prisma generate
-RUN npm run build
+RUN npm run build && test -f dist/main.js
 
 FROM node:22-alpine AS runner
 RUN apk add --no-cache openssl libc6-compat

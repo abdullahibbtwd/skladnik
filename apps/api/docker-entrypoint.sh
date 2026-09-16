@@ -34,4 +34,13 @@ if ! npx prisma migrate deploy; then
   exit 1
 fi
 
-exec node dist/main.js
+if [ -f dist/main.js ]; then
+  exec node dist/main.js
+fi
+if [ -f dist/src/main.js ]; then
+  exec node dist/src/main.js
+fi
+
+echo "skladnik-api: missing compiled entry (dist/main.js)" >&2
+ls -la dist dist/src 2>/dev/null || true
+exit 1
