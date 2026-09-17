@@ -35,14 +35,19 @@ enum PartnerKind {
 }
 
 enum DocumentType {
+  /// Търговски документ / purchase invoice
   INVOICE
+  /// Складова разписка — изписване / goods handover or dispatch
   PROTOCOL
+  /// Стокова разписка / goods receipt note
   RECEIPT
+  /// Кредитно/дебитно известие
   CREDIT_NOTE
 }
 
 enum DocumentStatus {
   DRAFT
+  REVIEW
   POSTED
   CANCELLED
 }
@@ -50,6 +55,30 @@ enum DocumentStatus {
 enum StockDirection {
   IN
   OUT
+}
+
+enum ProductStatus {
+  ACTIVE
+  PENDING_REVIEW
+  ARCHIVED
+}
+
+enum UnitOfMeasure {
+  PCS
+  PACK
+  KG
+  CASE
+  CARTON
+  JAR
+  OTHER
+}
+
+enum CaptureExtractionStatus {
+  IDLE
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
 }
 
 /// Top-level tenant. Created in the same transaction as the first Owner user.
@@ -67,6 +96,10 @@ model Company {
   partners        Partner[]
   batches         Batch[]
   documents       Document[]
+  documentCaptures DocumentCapture[]
+  documentLines   DocumentLine[]
+  supplierCodes   SupplierProductCode[]
+  unitAliases     UnitAlias[]
   stockMovements  StockMovement[]
   activityLogs    ActivityLog[]
   invitations     Invitation[]
@@ -74,21 +107,27 @@ model Company {
 
 /// Physical location: store / kitchen / bar / warehouse (§4.1).
 model Site {
-  id        String   @id @default(uuid())
-  companyId String
-  name      String
-  type      SiteType @default(STORE)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String    @id @default(uuid())
+  companyId     String
+  name          String
+  type          SiteType  @default(STORE)
+  address       String?
+  managerUserId String?
+  isActive      Boolean   @default(true)
+  deactivatedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  userSites      UserSite[]
-  documents      Document[]
-  stockMovements StockMovement[]
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  manager         User?            @relation("SiteManager", fields: [managerUserId], references: [id], onDelete: SetNull)
+  userSites       UserSite[]
+  documents       Document[]
+  stockMovements  StockMovement[]
   invitationSites InvitationSite[]
 
   @@unique([companyId, name])
   @@index([companyId])
+  @@index([managerUserId])
 }
 
 model User {
@@ -104,6 +143,7 @@ model User {
 
   company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   sites       UserSite[]
+  managedSites Site[]      @relation("SiteManager")
   activityLogs ActivityLog[]
   invitations Invitation[] @relation("InvitedBy")
 
@@ -134,6 +174,7 @@ model Invitation {
   invitedById String
   expiresAt   DateTime
   acceptedAt  DateTime?
+  revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 
   company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -177,30 +218,40 @@ model ProductGroup {
 }
 
 model Product {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   companyId      String
   groupId        String?
   name           String
   code           String
-  unit           String   @default("pcs")
-  vatRate        Decimal  @db.Decimal(5, 2)
-  purchasePrice  Decimal  @db.Decimal(12, 4)
-  sellingPrice   Decimal  @db.Decimal(12, 4)
-  minStock       Decimal  @default(0) @db.Decimal(12, 3)
-  batchTracking  Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  /// Canonical unit after alias lookup. OCR still stores the raw string on DocumentLine.ocrUnit.
+  unit           UnitOfMeasure @default(PCS)
+  /// Pieces (or kg) contained in one of `unit` — e.g. CASE of 20 pcs.
+  packSize       Decimal       @default(1) @db.Decimal(12, 3)
+  vatRate        Decimal       @db.Decimal(5, 2)
+  purchasePrice  Decimal       @db.Decimal(12, 4)
+  sellingPrice   Decimal       @db.Decimal(12, 4)
+  minStock       Decimal       @default(0) @db.Decimal(12, 3)
+  batchTracking  Boolean       @default(false)
+  /// PENDING_REVIEW = auto-created from an invoice; bulk-review before treating as master data.
+  status         ProductStatus @default(ACTIVE)
+  createdFromDocumentId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   group          ProductGroup?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  createdFrom    Document?        @relation("ProductsCreatedFromDocument", fields: [createdFromDocumentId], references: [id], onDelete: SetNull)
   barcodes       ProductBarcode[]
+  supplierCodes  SupplierProductCode[]
   batches        Batch[]
   documentLines  DocumentLine[]
   stockMovements StockMovement[]
 
   @@unique([companyId, code])
   @@index([companyId])
+  @@index([companyId, status])
   @@index([groupId])
+  @@index([createdFromDocumentId])
 }
 
 model ProductBarcode {
@@ -216,21 +267,68 @@ model ProductBarcode {
   @@index([productId])
 }
 
+/// Counterparty on a document. Role (supplier vs customer) comes from printed
+/// field labels, never from position on the page — supplier templates vary.
 model Partner {
   id        String      @id @default(uuid())
   companyId String
   kind      PartnerKind @default(SUPPLIER)
   name      String
-  taxId     String?
+  taxId       String?
+  address     String?
+  mol         String?
+  phone       String?
+  email       String?
+  bankAccount String?
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
-  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  documents Document[]
+  company       Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documents     Document[]
+  supplierCodes SupplierProductCode[]
 
+  @@index([companyId])
+  @@unique([companyId, taxId])
+}
+
+/// Maps a supplier's printed product code onto our Product. Same SKU will have
+/// a different code per supplier — do not store that code only on Product.
+model SupplierProductCode {
+  id            String   @id @default(uuid())
+  companyId     String
+  partnerId     String
+  productId     String
+  supplierCode  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, partnerId, supplierCode])
+  @@index([productId])
+  @@index([partnerId])
+}
+
+/// Raw unit strings from invoices ("бр.", "стек", "кашон", "пак") → enum.
+/// Conversion to base pieces (case = 20 pcs) lives on Product.packSize.
+model UnitAlias {
+  id        String        @id @default(uuid())
+  companyId String
+  raw       String
+  unit      UnitOfMeasure
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, raw])
   @@index([companyId])
 }
 
+/// Real invoices print batch number + expiry as separate columns per line.
+/// expiryDate is required in application code when Product.batchTracking = true.
 model Batch {
   id                String    @id @default(uuid())
   companyId         String
@@ -253,51 +351,108 @@ model Batch {
 }
 
 // ---------------------------------------------------------------------------
-// Documents & stock
+// Documents & stock (§4.2)
+// type maps to the four paper forms:
+//   INVOICE     — търговски документ / purchase invoice (stock IN)
+//   RECEIPT     — стокова разписка / goods receipt note (stock IN)
+//   PROTOCOL    — складова разписка — изписване / handover or dispatch (stock OUT)
+//   CREDIT_NOTE — кредитно/дебитно известие
+// Extra photos of the same invoice attach as DocumentCapture pages — they are
+// not a new Document.
 // ---------------------------------------------------------------------------
 
 model Document {
-  id         String         @id @default(uuid())
-  companyId  String
-  siteId     String
-  partnerId  String?
-  type       DocumentType
-  status     DocumentStatus @default(DRAFT)
-  number     String
-  issuedOn   DateTime       @db.Date
-  notes      String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  postedAt   DateTime?
+  id               String         @id @default(uuid())
+  companyId        String
+  siteId           String
+  partnerId        String?
+  type             DocumentType
+  status           DocumentStatus @default(DRAFT)
+  direction        StockDirection @default(IN)
+  /// Printed "№" — documentNumber on the paper.
+  number           String
+  issuedOn         DateTime       @db.Date
+  deliveryAddress  String?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  postedAt         DateTime?
 
-  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  site           Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  partner        Partner?        @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-  lines          DocumentLine[]
-  stockMovements StockMovement[]
+  company          Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site             Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  partner          Partner?        @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  lines            DocumentLine[]
+  captures         DocumentCapture[]
+  productsCreated  Product[]       @relation("ProductsCreatedFromDocument")
+  stockMovements   StockMovement[]
 
   @@unique([companyId, number])
   @@index([companyId])
+  @@index([companyId, status])
   @@index([siteId])
   @@index([partnerId])
 }
 
-model DocumentLine {
-  id         String  @id @default(uuid())
-  documentId String
-  productId  String
-  batchId    String?
-  quantity   Decimal @db.Decimal(12, 3)
-  unitPrice  Decimal @db.Decimal(12, 4)
-  vatRate    Decimal @db.Decimal(5, 2)
-  position   Int     @default(0)
+/// One photographed page of a document (page 2 of a goods receipt, etc.).
+model DocumentCapture {
+  id                 String                   @id @default(uuid())
+  companyId          String
+  documentId         String
+  pageNumber         Int                      @default(1)
+  imageKey           String
+  /// Valid extracted JSON only when extractionStatus = SUCCEEDED.
+  ocrRaw             Json?
+  extractionStatus   CaptureExtractionStatus  @default(IDLE)
+  extractionError    String?
+  /// GLM self-reported: high | medium | low
+  confidence         String?
+  createdAt          DateTime                 @default(now())
 
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  batch    Batch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  document Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  lines    DocumentLine[]
+
+  @@unique([documentId, pageNumber])
+  @@index([companyId])
+}
+
+model DocumentLine {
+  id                   String         @id @default(uuid())
+  companyId            String
+  documentId           String
+  productId            String?
+  batchId              String?
+  position             Int            @default(0)
+  /// Supplier's printed Код / № for this row (also stored on SupplierProductCode once matched).
+  supplierProductCode  String?
+  ocrDescription       String?
+  ocrUnit              String?
+  unit                 UnitOfMeasure?
+  quantity             Decimal        @db.Decimal(12, 3)
+  unitPrice            Decimal        @db.Decimal(12, 4)
+  discountPercent      Decimal        @default(0) @db.Decimal(5, 2)
+  finalUnitPrice       Decimal?       @db.Decimal(12, 4)
+  lineTotal            Decimal?       @db.Decimal(12, 4)
+  vatRate              Decimal        @db.Decimal(5, 2)
+  ocrBatchNumber       String?
+  ocrExpiryDate        DateTime?      @db.Date
+  /// Staff checkmark on paper / line-level confirm on the review screen.
+  verified             Boolean        @default(false)
+  sourceCaptureId      String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  company       Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  document      Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  product       Product?         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch         Batch?           @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  sourceCapture DocumentCapture? @relation(fields: [sourceCaptureId], references: [id], onDelete: SetNull)
 
   @@index([documentId])
+  @@index([companyId])
   @@index([productId])
+  @@index([documentId, verified])
+  @@index([sourceCaptureId])
 }
 
 /// Immutable ledger. Do not update or delete rows from application code.

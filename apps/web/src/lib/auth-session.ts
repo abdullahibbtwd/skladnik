@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -7,9 +6,17 @@ import {
   loginRequest,
   logoutRequest,
   signupRequest,
+  signupWithInviteRequest,
   type SessionUser,
 } from './auth-api';
-import { applySession, clearSession } from './auth-store';
+import { applySession, clearSession, useAuthStore } from './auth-store';
+
+export function appReturnPath(state: unknown): string {
+  if (!state || typeof state !== 'object' || !('from' in state)) return '/app';
+  const from = (state as { from: unknown }).from;
+  if (typeof from !== 'string' || !from.startsWith('/app')) return '/app';
+  return from;
+}
 
 const ACCESS_STALE_MS = 5 * 60 * 1000;
 const REFRESH_AHEAD_MS = 12 * 60 * 1000;
@@ -29,16 +36,13 @@ export function useMeQuery() {
     retry: false,
   });
 
-  useEffect(() => {
-    if (query.isPending) return;
-    if (query.data) {
-      applySession(query.data);
-      return;
+  if (query.isSuccess) {
+    const current = useAuthStore.getState().user;
+    if (query.data !== current) {
+      if (query.data) applySession(query.data);
+      else clearSession();
     }
-    if (query.isSuccess) {
-      clearSession();
-    }
-  }, [query.data, query.isPending, query.isSuccess]);
+  }
 
   return query;
 }
@@ -56,6 +60,15 @@ export function useSignupMutation() {
   return useMutation({
     mutationFn: (input: { email: string; password: string; name: string; companyName: string }) =>
       signupRequest(input),
+    onSuccess: (user) => cacheSession(queryClient, user),
+  });
+}
+
+export function useSignupWithInviteMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { token: string; email: string; password: string; name: string }) =>
+      signupWithInviteRequest(input),
     onSuccess: (user) => cacheSession(queryClient, user),
   });
 }

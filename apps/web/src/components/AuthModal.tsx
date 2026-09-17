@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Boxes, X } from 'lucide-react';
-import type { SampleInvoice } from './HeroSection';
+import { useTranslation } from 'react-i18next';
 import { AuthForm } from './AuthForm';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMode: 'signup' | 'login';
-  pendingInvoice: SampleInvoice | null;
   onSuccess: () => void;
 }
 
@@ -15,9 +14,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   initialMode,
-  pendingInvoice,
   onSuccess,
 }) => {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
 
   useEffect(() => {
@@ -42,7 +41,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
             <span className="font-display text-[1.05rem] font-semibold text-ops-ink">Skladnik</span>
           </div>
-          <button onClick={onClose} className="rounded-md p-1.5 text-slate-400 hover:bg-ops-canvas hover:text-ops-ink" aria-label="Close modal">
+          <button onClick={onClose} className="rounded-md p-1.5 text-slate-400 hover:bg-ops-canvas hover:text-ops-ink" aria-label={t('common.closeModal')}>
             <X size={18} />
           </button>
         </div>
@@ -51,7 +50,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <AuthForm
             mode={mode}
             onModeChange={setMode}
-            pendingInvoice={mode === 'signup' ? pendingInvoice : null}
             onSuccess={onSuccess}
             idPrefix="modal"
             variant="modal"

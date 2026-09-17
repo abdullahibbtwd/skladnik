@@ -42,10 +42,14 @@ export class SiteAccessGuard implements CanActivate {
 
     const site = await this.prisma.site.findFirst({
       where: { id: siteId, companyId: user.companyId },
-      select: { id: true },
+      select: { id: true, isActive: true },
     });
     if (!site) {
       throw new ForbiddenException('Site is outside your company');
+    }
+
+    if (!site.isActive && !user.allSites) {
+      throw new ForbiddenException('Site is outside your assigned locations');
     }
 
     if (!user.allSites && !user.siteIds.includes(siteId)) {

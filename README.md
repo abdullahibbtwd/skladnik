@@ -75,6 +75,12 @@ Signup creates a `Company` and an `Owner` in one transaction. Sessions are JWTs 
 | `GET` | `/tenancy/sites` | sites visible to this user |
 | `GET` | `/tenancy/sites/:siteId` | 403 if the site is outside company or assignment |
 | `GET` | `/tenancy/owner-only` | `@Roles('OWNER')` probe |
+| `GET`/`POST`/`PATCH`/`DELETE` | `/sites` | Company sites (Owner writes; others see assigned) |
+| `GET`/`PATCH`/`DELETE` | `/users` | Company users — Owner only |
+| `GET`/`POST` | `/invites` | Pending invites — Owner only; public `GET /invites/:token` |
+| `POST` | `/auth/signup-with-invite` | Join an existing company from an invite token |
+
+Invites are emailed with **Resend** (`RESEND_API_KEY`). If the key is missing, the invite is still created and the owner gets a copyable `/signup?invite=` link.
 
 Seed users (password `DevPassword123!`):
 
@@ -92,7 +98,7 @@ npm run auth:prove
 
 ## Docker (Mac laptop → Linux server)
 
-# Images **never copy your Mac `node_modules`**. `.dockerignore` excludes them, and both Dockerfiles run `npm ci` inside Linux Alpine from `package-lock.json`. That is what compiles `bcrypt` and Prisma engines for the server, not for darwin.
+Images **never copy your Mac `node_modules`**. `.dockerignore` excludes them, and both Dockerfiles run `npm ci` inside Linux Alpine from `package-lock.json`. That is what compiles `bcrypt` and Prisma engines for the server, not for darwin.
 
 Coolify should **build on the Linux host** (`docker compose up --build`). Do not copy an image built on your Mac onto an Intel VPS — let Coolify build there so `bcrypt` and Prisma match the server CPU.
 

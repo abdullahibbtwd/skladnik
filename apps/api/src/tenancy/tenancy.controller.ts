@@ -18,7 +18,7 @@ export class TenancyController {
         select: { id: true, name: true },
       }),
       this.prisma.user.count({ where: { companyId: user.companyId } }),
-      this.prisma.site.count({ where: { companyId: user.companyId } }),
+      this.prisma.site.count({ where: { companyId: user.companyId, isActive: true } }),
       this.prisma.product.count({ where: { companyId: user.companyId } }),
     ]);
 
@@ -36,8 +36,8 @@ export class TenancyController {
   @Get('sites')
   async sites(@CurrentUser() user: AuthUser) {
     const where = user.allSites
-      ? { companyId: user.companyId }
-      : { companyId: user.companyId, id: { in: user.siteIds } };
+      ? { companyId: user.companyId, isActive: true }
+      : { companyId: user.companyId, isActive: true, id: { in: user.siteIds } };
 
     const sites = await this.prisma.site.findMany({
       where,

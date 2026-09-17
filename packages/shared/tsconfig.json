@@ -1,8 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "commonjs",
+    "moduleResolution": "bundler",
     "declaration": true,
     "declarationMap": true,
     "outDir": "dist",

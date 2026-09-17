@@ -80,6 +80,11 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5176}
       GLM_API_KEY: ${GLM_API_KEY:-}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      GLM_BASE_URL: ${GLM_BASE_URL:-https://api.z.ai/api/paas/v4}
+      GLM_MODEL: ${GLM_MODEL:-glm-5v-turbo}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-Skladnik <beth.t@example.com>}
     depends_on:
       postgres:
         condition: service_healthy

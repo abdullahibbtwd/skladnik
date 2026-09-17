@@ -77,13 +77,17 @@ export class StorageService implements OnModuleInit {
     return `${this.publicBaseUrl}/${this.bucket}/${key}`;
   }
 
-  async upload(file: Express.Multer.File): Promise<{
+  async upload(
+    file: Express.Multer.File,
+    keyPrefix?: string,
+  ): Promise<{
     key: string;
     signedUrl: string;
     publicUrl: string;
   }> {
     const safeName = file.originalname.replace(/[^\w.\-]+/g, '_');
-    const key = `${Date.now()}-${safeName}`;
+    const folder = keyPrefix ? `${keyPrefix.replace(/^\/+|\/+$/g, '')}/` : '';
+    const key = `${folder}${Date.now()}-${safeName}`;
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,

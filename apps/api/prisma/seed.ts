@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole, SiteType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { seedUnitAliases } from '../src/units/seed-unit-aliases';
 
 const prisma = new PrismaClient();
 
@@ -78,6 +79,9 @@ async function main() {
     companyId: riverside.id,
     passwordHash,
   });
+
+  await seedUnitAliases(prisma, metro.id);
+  await seedUnitAliases(prisma, riverside.id);
 
   console.log('Seeded two tenants. Password for all seed users: DevPassword123!');
   console.log('  owner-a@skladnik.dev  → Metro Corner Market (OWNER, all sites)');

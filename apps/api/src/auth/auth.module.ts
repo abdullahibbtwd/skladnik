@@ -10,9 +10,10 @@ import { RolesGuard } from './guards/roles.guard';
 import { SiteAccessGuard } from './guards/site-access.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
+import { InvitesModule } from '../invites/invites.module';
 
 @Module({
-  imports: [PassportModule, JwtModule.register({})],
+  imports: [PassportModule, JwtModule.register({}), InvitesModule],
   controllers: [AuthController],
   providers: [
     AuthService,

@@ -18,13 +18,14 @@
     "db:migrate:dev": "dotenv -e .env -- npm run db:migrate --workspace=@skladnik/api",
     "db:seed": "dotenv -e .env -- npm run db:seed --workspace=@skladnik/api",
     "auth:prove": "npm run auth:prove --workspace=@skladnik/api",
+    "documents:prove": "npm run documents:prove --workspace=@skladnik/api",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
   },
   "devDependencies": {
     "dotenv-cli": "^10.0.0",
     "turbo": "^2.5.6",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=20"

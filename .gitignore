@@ -11,3 +11,7 @@ coverage
 !.vscode/extensions.json
 apps/web/dist
 packages/shared/dist
+*.tsbuildinfo
+
+# Personal work log — not for the repo
+PROGRESS.txt

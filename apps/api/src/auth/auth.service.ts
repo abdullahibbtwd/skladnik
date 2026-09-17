@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import type { CookieOptions, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { seedUnitAliases } from '../units/seed-unit-aliases';
 import { RedisService } from '../redis/redis.service';
 import {
   ACCESS_COOKIE,
@@ -54,6 +55,7 @@ export class AuthService {
       const company = await tx.company.create({
         data: { name: dto.companyName.trim() },
       });
+      await seedUnitAliases(tx, company.id);
       const created = await tx.user.create({
         data: {
           email,
@@ -92,6 +94,10 @@ export class AuthService {
 
   async login(user: User, res: Response) {
     return this.establishSession(user, res, 'LOGIN');
+  }
+
+  async issueSession(user: User, res: Response, activity?: 'LOGIN' | 'SIGNUP') {
+    return this.establishSession(user, res, activity);
   }
 
   async me(authUser: AuthUser): Promise<{ user: SessionUser }> {

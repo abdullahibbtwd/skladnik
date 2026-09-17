@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, CheckCircle2, FileSpreadsheet, Mail, ShieldCheck, Store } from 'lucide-react';
+import { ArrowRight, Mail, ShieldCheck, Store } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import type { SampleInvoice } from './HeroSection';
 import { FieldError, FieldLabel, PasswordField, textFieldClass } from './PasswordField';
-import { useLoginMutation, useSignupMutation } from '../lib/auth-session';
+import { useLoginMutation, useSignupMutation, useSignupWithInviteMutation } from '../lib/auth-session';
+import { useInvitePreviewQuery } from '../lib/workspace-session';
+import { useTranslation } from 'react-i18next';
 
 type AuthMode = 'signup' | 'login';
 
 interface AuthFormProps {
   mode: AuthMode;
   onModeChange?: (mode: AuthMode) => void;
-  pendingInvoice?: SampleInvoice | null;
+  inviteToken?: string | null;
   onSuccess: () => void;
   idPrefix: string;
   variant: 'page' | 'modal';
@@ -19,11 +20,12 @@ interface AuthFormProps {
 export const AuthForm: React.FC<AuthFormProps> = ({
   mode,
   onModeChange,
-  pendingInvoice = null,
+  inviteToken = null,
   onSuccess,
   idPrefix,
   variant,
 }) => {
+  const { t } = useTranslation();
   const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,7 +33,10 @@ export const AuthForm: React.FC<AuthFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   const login = useLoginMutation();
   const signup = useSignupMutation();
-  const loading = login.isPending || signup.isPending;
+  const signupInvite = useSignupWithInviteMutation();
+  const inviteQuery = useInvitePreviewQuery(mode === 'signup' ? inviteToken : null);
+  const loading = login.isPending || signup.isPending || signupInvite.isPending;
+  const invite = inviteQuery.data ?? null;
 
   useEffect(() => {
     setPassword('');
@@ -39,32 +44,48 @@ export const AuthForm: React.FC<AuthFormProps> = ({
     setError(null);
   }, [mode]);
 
+  useEffect(() => {
+    if (invite?.email) setEmail(invite.email);
+  }, [invite?.email]);
+
   const mismatch = mode === 'signup' && confirmPassword.length > 0 && password !== confirmPassword;
-  const totalPcs = pendingInvoice ? pendingInvoice.items.reduce((sum, item) => sum + item.qty, 0) : 0;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
 
     if (mode === 'signup' && password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('auth.passwordMismatch'));
       return;
     }
 
     try {
       if (mode === 'signup') {
-        await signup.mutateAsync({
-          email: email.trim(),
-          password,
-          name: storeName.trim(),
-          companyName: storeName.trim(),
-        });
+        if (inviteToken) {
+          if (!invite) {
+            setError(t('auth.inviteNotValid'));
+            return;
+          }
+          await signupInvite.mutateAsync({
+            token: inviteToken,
+            email: invite.email,
+            password,
+            name: storeName.trim(),
+          });
+        } else {
+          await signup.mutateAsync({
+            email: email.trim(),
+            password,
+            name: storeName.trim(),
+            companyName: storeName.trim(),
+          });
+        }
       } else {
         await login.mutateAsync({ email: email.trim(), password });
       }
       onSuccess();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Something went wrong.');
+      setError(submitError instanceof Error ? submitError.message : t('auth.genericError'));
     }
   };
 
@@ -72,60 +93,43 @@ export const AuthForm: React.FC<AuthFormProps> = ({
     <div>
       <div className="mb-6">
         {mode === 'signup' ? (
-          pendingInvoice ? (
+          inviteToken ? (
             <>
               <h2 className="mb-1.5 font-display text-[1.35rem] leading-tight font-semibold tracking-tight text-ops-ink md:text-[1.5rem]">
-                Save this inventory to your store
+                {t('auth.joinTitle', { name: invite?.companyName ?? '…' })}
               </h2>
-              <p className="font-sans text-[0.9rem] text-slate-500">Create your free account to continue.</p>
+              <p className="font-sans text-[0.9rem] text-slate-500">
+                {invite
+                  ? t('auth.joinBody', { company: invite.companyName, role: t(`labels.role.${invite.role}`) })
+                  : inviteQuery.isPending
+                    ? t('auth.checkingInvite')
+                    : t('auth.invalidInvite')}
+              </p>
             </>
           ) : (
             <>
               <h2 className="mb-1.5 font-display text-[1.35rem] leading-tight font-semibold tracking-tight text-ops-ink md:text-[1.5rem]">
-                Create your store account
+                {t('auth.createTitle')}
               </h2>
               <p className="font-sans text-[0.9rem] text-slate-500">
-                Digitize paper invoices and keep live stock in one place.
+                {t('auth.createBody')}
               </p>
             </>
           )
         ) : (
           <>
             <h2 className="mb-1.5 font-display text-[1.35rem] leading-tight font-semibold tracking-tight text-ops-ink md:text-[1.5rem]">
-              Log in to your store
+              {t('auth.loginHeading')}
             </h2>
-            <p className="font-sans text-[0.9rem] text-slate-500">Access inventory, FEFO alerts, and Annex 38 audits.</p>
+            <p className="font-sans text-[0.9rem] text-slate-500">{t('auth.loginBody')}</p>
           </>
         )}
       </div>
 
-      {mode === 'signup' && pendingInvoice && (
-        <div className="mb-6 rounded-[0.65rem] border border-ops-teal/20 bg-teal-50 px-4 py-[0.85rem]">
-          <div className="mb-[0.35rem] flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <FileSpreadsheet size={15} color="#0D9488" />
-              <span className="font-display text-[0.78rem] font-medium text-ops-teal">Scanned demo preserved</span>
-            </div>
-            <span className="rounded bg-white px-1.5 py-0.5 font-mono text-[0.7rem] font-medium text-ops-teal">
-              {pendingInvoice.total}
-            </span>
-          </div>
-          <div className="font-sans text-[0.78rem] font-medium text-ops-ink">
-            {pendingInvoice.supplier} &bull; Inv: {pendingInvoice.invNumber}
-          </div>
-          <div className="mt-[0.35rem] flex items-center gap-1.5 font-sans text-[0.72rem] text-slate-500">
-            <CheckCircle2 size={13} color="#0D9488" />
-            <span>
-              {pendingInvoice.items.length} lines ({totalPcs} units) will import into your dashboard.
-            </span>
-          </div>
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {mode === 'signup' && (
           <div>
-            <FieldLabel htmlFor={`${idPrefix}-storeName`}>Store or business name</FieldLabel>
+            <FieldLabel htmlFor={`${idPrefix}-storeName`}>{inviteToken ? t('auth.yourName') : t('auth.storeName')}</FieldLabel>
             <div className="relative">
               <div className="pointer-events-none absolute top-1/2 left-[0.85rem] -translate-y-1/2 text-slate-400">
                 <Store size={16} />
@@ -136,7 +140,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                 required
                 value={storeName}
                 autoComplete="organization"
-                placeholder="e.g. Metro Corner Grocery"
+                placeholder={inviteToken ? t('auth.namePlaceholder') : t('auth.storePlaceholder')}
                 onChange={(event) => setStoreName(event.target.value)}
                 className={textFieldClass}
               />
@@ -145,7 +149,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         )}
 
         <div>
-          <FieldLabel htmlFor={`${idPrefix}-email`}>Email address</FieldLabel>
+          <FieldLabel htmlFor={`${idPrefix}-email`}>{t('auth.email')}</FieldLabel>
           <div className="relative">
             <div className="pointer-events-none absolute top-1/2 left-[0.85rem] -translate-y-1/2 text-slate-400">
               <Mail size={16} />
@@ -155,8 +159,9 @@ export const AuthForm: React.FC<AuthFormProps> = ({
               type="email"
               required
               value={email}
+              readOnly={Boolean(inviteToken && invite)}
               autoComplete="email"
-              placeholder="manager@store.com"
+              placeholder={t('auth.emailPlaceholder')}
               onChange={(event) => setEmail(event.target.value)}
               className={textFieldClass}
             />
@@ -165,7 +170,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
 
         <PasswordField
           id={`${idPrefix}-password`}
-          label="Password"
+          label={t('auth.password')}
           value={password}
           autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
           onChange={setPassword}
@@ -175,13 +180,13 @@ export const AuthForm: React.FC<AuthFormProps> = ({
           <div>
             <PasswordField
               id={`${idPrefix}-confirm`}
-              label="Confirm password"
+              label={t('auth.confirmPassword')}
               value={confirmPassword}
               autoComplete="new-password"
-              placeholder="Re-enter your password"
+              placeholder={t('auth.reenterPassword')}
               onChange={setConfirmPassword}
             />
-            {mismatch && <FieldError>Passwords do not match.</FieldError>}
+            {mismatch && <FieldError>{t('auth.passwordMismatch')}</FieldError>}
           </div>
         )}
 
@@ -189,27 +194,27 @@ export const AuthForm: React.FC<AuthFormProps> = ({
 
         <button
           type="submit"
-          disabled={loading || mismatch}
+          disabled={loading || mismatch || Boolean(inviteToken && (inviteQuery.isPending || inviteQuery.isError))}
           className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ops-teal px-5 py-3 font-display text-[0.95rem] font-medium text-white shadow-[0_10px_24px_rgba(13,148,136,0.22)] transition-all hover:bg-ops-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? (
-            <span>{mode === 'signup' ? 'Creating your store…' : 'Signing in…'}</span>
+            <span>{mode === 'signup' ? (inviteToken ? t('auth.joining') : t('auth.creating')) : t('auth.signingIn')}</span>
           ) : mode === 'signup' ? (
-            pendingInvoice ? (
+            inviteToken ? (
               <>
-                <FileSpreadsheet size={16} />
-                Save inventory and open store
+                <ArrowRight size={16} />
+                {t('auth.joinCompany', { name: invite?.companyName ?? '…' })}
               </>
             ) : (
               <>
                 <ArrowRight size={16} />
-                Create free store account
+                {t('auth.createFree')}
               </>
             )
           ) : (
             <>
               <ShieldCheck size={16} />
-              Log in to dashboard
+              {t('auth.loginDashboard')}
             </>
           )}
         </button>
@@ -218,27 +223,27 @@ export const AuthForm: React.FC<AuthFormProps> = ({
       <div className="mt-5 border-t border-slate-100 pt-4 text-center font-sans text-[0.82rem] text-slate-500">
         {mode === 'signup' ? (
           <p>
-            Already have an account?{' '}
+            {t('auth.haveAccount')}{' '}
             {onModeChange ? (
               <button type="button" onClick={() => onModeChange('login')} className="p-0 font-display font-medium text-ops-teal hover:underline">
-                Log in
+                {t('auth.loginTab')}
               </button>
             ) : (
               <Link to="/login" className="font-display font-medium text-ops-teal hover:underline">
-                Log in
+                {t('auth.loginTab')}
               </Link>
             )}
           </p>
         ) : (
           <p>
-            Don&apos;t have an account yet?{' '}
+            {t('auth.noAccount')}{' '}
             {onModeChange ? (
               <button type="button" onClick={() => onModeChange('signup')} className="p-0 font-display font-medium text-ops-teal hover:underline">
-                Sign up free
+                {t('auth.signupFree')}
               </button>
             ) : (
               <Link to="/signup" className="font-display font-medium text-ops-teal hover:underline">
-                Sign up free
+                {t('auth.signupFree')}
               </Link>
             )}
           </p>
@@ -246,9 +251,9 @@ export const AuthForm: React.FC<AuthFormProps> = ({
 
         {variant === 'modal' && (
           <p className="mt-2.5">
-            Prefer a full page?{' '}
+            {t('auth.preferFullPage')}{' '}
             <Link to={mode === 'login' ? '/login' : '/signup'} className="font-display font-medium text-ops-accent hover:underline">
-              Open {mode === 'login' ? 'login' : 'sign up'}
+              {mode === 'login' ? t('auth.openLogin') : t('auth.openSignup')}
             </Link>
           </p>
         )}

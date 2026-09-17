@@ -9,15 +9,27 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import { SignupWithInviteDto } from './dto/signup-with-invite.dto';
+import { InvitesService } from '../invites/invites.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly invites: InvitesService,
+  ) {}
 
   @Public()
   @Post('signup')
   signup(@Body() dto: SignupDto, @Res({ passthrough: true }) res: Response) {
     return this.auth.signup(dto, res);
+  }
+
+  @Public()
+  @Post('signup-with-invite')
+  async signupWithInvite(@Body() dto: SignupWithInviteDto, @Res({ passthrough: true }) res: Response) {
+    const user = await this.invites.accept(dto);
+    return this.auth.issueSession(user, res, 'SIGNUP');
   }
 
   @Public()

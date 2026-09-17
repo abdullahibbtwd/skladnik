@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Boxes, Camera, Menu, X, ShieldCheck } from 'lucide-react';
+import { Boxes, Menu, X, ShieldCheck } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { useTranslation } from 'react-i18next';
 import { useLogout } from '../lib/auth-session';
 import { useAuthUser } from '../lib/auth-store';
-
-interface NavbarProps {
-  onOpenDemo: () => void;
-}
+import { LanguageSwitch } from './LanguageSwitch';
 
 const navLinkClass =
   'font-display text-[0.925rem] font-medium text-slate-500 transition-colors hover:text-ops-ink';
@@ -15,13 +13,11 @@ const navLinkClass =
 const ghostBtnClass =
   'rounded-lg px-[1.1rem] py-[0.6rem] font-display text-[0.925rem] font-medium text-ops-ink transition-all hover:bg-ops-canvas';
 
-const signupBtnClass =
-  'cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-4 py-[0.55rem] font-display text-[0.88rem] font-medium text-ops-ink transition-all hover:border-ops-accent/30 hover:bg-indigo-50 hover:text-ops-accent';
-
 const primaryBtnClass =
   'items-center gap-2 rounded-lg bg-ops-teal px-5 py-[0.65rem] font-display text-[0.925rem] font-medium text-white shadow-[0_4px_14px_rgba(13,148,136,0.25)] transition-all hover:bg-ops-teal-hover';
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
+export const Navbar: React.FC = () => {
+  const { t } = useTranslation();
   const user = useAuthUser();
   const logout = useLogout();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -56,28 +52,29 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
               <ul className="flex list-none items-center gap-8">
                 <li>
                   <a href="#features" className={navLinkClass}>
-                    Features
+                    {t('nav.features')}
                   </a>
                 </li>
                 <li>
                   <a href="#how-it-works" className={navLinkClass}>
-                    How It Works
+                    {t('nav.howItWorks')}
                   </a>
                 </li>
                 <li>
                   <a href="#compliance" className={navLinkClass}>
-                    Annex 38 Ready
+                    {t('nav.compliance')}
                   </a>
                 </li>
                 <li>
                   <a href="#pricing" className={navLinkClass}>
-                    Pricing
+                    {t('nav.pricing')}
                   </a>
                 </li>
               </ul>
             </nav>
 
             <div className="flex items-center gap-2 md:gap-4">
+              <LanguageSwitch compact />
               {user ? (
                 <>
                   <Link
@@ -88,28 +85,24 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
                     <span className="max-w-[10rem] truncate">{user.companyName}</span>
                   </Link>
                   <button onClick={() => logout.mutate()} className={cn(ghostBtnClass, 'hidden px-3 py-2 text-[0.85rem] lg:inline-flex')}>
-                    Logout
+                    {t('nav.logout')}
                   </button>
                 </>
               ) : (
                 <>
                   <Link to="/login" className={cn(ghostBtnClass, 'hidden lg:inline-flex')}>
-                    Login
+                    {t('nav.login')}
                   </Link>
-                  <Link to="/signup" className={cn(signupBtnClass, 'hidden lg:inline-flex')}>
-                    Sign Up Free
+                  <Link to="/signup" className={cn(primaryBtnClass, 'hidden lg:inline-flex')}>
+                    <span>{t('nav.signup')}</span>
                   </Link>
-                  <button onClick={onOpenDemo} className={cn(primaryBtnClass, 'hidden lg:inline-flex')}>
-                    <Camera size={15} strokeWidth={2} />
-                    <span>Scan Demo</span>
-                  </button>
                 </>
               )}
 
               <button
                 className="flex size-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-ops-canvas hover:text-ops-ink lg:hidden"
                 onClick={() => setMobileMenuOpen((open) => !open)}
-                aria-label={mobileMenuOpen ? 'Close navigation' : 'Open navigation'}
+                aria-label={mobileMenuOpen ? t('nav.closeMenu') : t('nav.openMenu')}
                 aria-expanded={mobileMenuOpen}
                 aria-controls="mobile-nav-drawer"
               >
@@ -139,10 +132,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
       >
         <ul className="flex flex-1 list-none flex-col gap-[0.85rem]">
           {[
-            ['#features', 'Features'],
-            ['#how-it-works', 'How It Works'],
-            ['#compliance', 'Annex 38 Ready'],
-            ['#pricing', 'Pricing'],
+            ['#features', t('nav.features')],
+            ['#how-it-works', t('nav.howItWorks')],
+            ['#compliance', t('nav.compliance')],
+            ['#pricing', t('nav.pricing')],
           ].map(([href, label]) => (
             <li key={href}>
               <a
@@ -157,6 +150,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
         </ul>
 
         <div className="flex flex-col gap-[0.65rem] border-t border-slate-100 pt-3">
+          <LanguageSwitch className="self-start sm:hidden" />
           {user ? (
             <>
               <Link
@@ -165,7 +159,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
                 className="flex items-center justify-center gap-1.5 rounded-lg border border-ops-teal/25 bg-teal-50 px-4 py-[0.65rem] font-display text-[0.88rem] font-medium text-ops-teal"
               >
                 <ShieldCheck size={16} />
-                <span>{user.companyName} (Open Dashboard)</span>
+                <span>
+                  {user.companyName} ({t('nav.openDashboard')})
+                </span>
               </Link>
               <button
                 onClick={() => {
@@ -174,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
                 }}
                 className={cn(ghostBtnClass, 'inline-flex justify-center text-center')}
               >
-                Logout
+                {t('nav.logout')}
               </button>
             </>
           ) : (
@@ -185,26 +181,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenDemo }) => {
                   onClick={closeMobileMenu}
                   className={cn(ghostBtnClass, 'inline-flex flex-1 justify-center border border-slate-200 py-[0.65rem] text-[0.9rem]')}
                 >
-                  Login
+                  {t('nav.login')}
                 </Link>
                 <Link
                   to="/signup"
                   onClick={closeMobileMenu}
-                  className={cn(signupBtnClass, 'inline-flex flex-1 justify-center')}
+                  className={cn(primaryBtnClass, 'inline-flex flex-1 justify-center py-[0.65rem] text-[0.9rem]')}
                 >
-                  Sign Up Free
+                  <span>{t('nav.signup')}</span>
                 </Link>
               </div>
-              <button
-                onClick={() => {
-                  closeMobileMenu();
-                  onOpenDemo();
-                }}
-                className={cn(primaryBtnClass, 'inline-flex w-full justify-center py-[0.65rem] text-[0.9rem]')}
-              >
-                <Camera size={16} strokeWidth={2.2} />
-                <span>Try Scan Demo</span>
-              </button>
             </>
           )}
         </div>

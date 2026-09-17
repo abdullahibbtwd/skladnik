@@ -1,6 +1,7 @@
 import { Eye, EyeOff, Lock } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
+import { useTranslation } from 'react-i18next';
 
 const fieldClass =
   'w-full rounded-lg border border-slate-200 bg-ops-canvas py-[0.7rem] pr-11 pl-10 font-sans text-[0.88rem] text-ops-ink outline-none transition-colors placeholder:text-slate-400 focus:border-ops-teal/50 focus:bg-white focus:ring-1 focus:ring-ops-teal/30';
@@ -24,12 +25,14 @@ export function PasswordField({
   value,
   onChange,
   autoComplete,
-  placeholder = 'At least 8 characters',
+  placeholder,
   required = true,
 }: PasswordFieldProps) {
+  const { t } = useTranslation();
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const [visible, setVisible] = useState(false);
+  const hint = placeholder ?? t('common.passwordHint');
 
   return (
     <div>
@@ -47,7 +50,7 @@ export function PasswordField({
           minLength={8}
           value={value}
           autoComplete={autoComplete}
-          placeholder={placeholder}
+          placeholder={hint}
           onChange={(event) => onChange(event.target.value)}
           className={fieldClass}
         />
@@ -55,7 +58,7 @@ export function PasswordField({
           type="button"
           onClick={() => setVisible((open) => !open)}
           className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-md p-1.5 text-slate-400 transition-colors hover:bg-white hover:text-ops-ink"
-          aria-label={visible ? 'Hide password' : 'Show password'}
+          aria-label={visible ? t('common.hidePassword') : t('common.showPassword')}
           aria-pressed={visible}
         >
           {visible ? <EyeOff size={16} /> : <Eye size={16} />}

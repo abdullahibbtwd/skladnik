@@ -1,51 +1,46 @@
 import React from 'react';
 import { Check, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
 
-interface PricingSectionProps {
-  onOpenDemo: () => void;
-}
-
-export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenDemo }) => {
+export const PricingSection: React.FC = () => {
+  const { t } = useTranslation();
   const plans = [
     {
-      name: 'Starter Shop',
-      subtitle: 'For independent corner stores and neighbourhood kiosks.',
+      name: t('pricing.starterName'),
+      subtitle: t('pricing.starterSubtitle'),
       price: '0',
       currency: '€',
-      period: '/ month',
+      period: t('pricing.perMonth'),
       featured: false,
-      placeholderSummary: 'Early access tier for local independent shops.',
-      features: ['Core OCR receipt scanning', 'Basic stock management', 'Feature details coming soon'],
-      ctaText: 'Start Free Trial',
+      placeholderSummary: t('pricing.starterSummary'),
+      features: [t('pricing.starterF1'), t('pricing.starterF2'), t('pricing.starterF3')],
+      ctaText: t('pricing.startTrial'),
       isPrimary: false,
     },
     {
-      name: 'Pro Store',
-      subtitle: 'For busy grocery stores, bakeries, and cafes.',
+      name: t('pricing.proName'),
+      subtitle: t('pricing.proSubtitle'),
       price: '0',
       currency: '€',
-      period: '/ month',
+      period: t('pricing.perMonth'),
       featured: true,
-      placeholderSummary: 'Full platform access during our launch preview.',
-      features: [
-        '20-second fast AI document engine',
-        'FEFO expiry tracking & waste alerts',
-        'Annex No. 38 XML compliance ready',
-      ],
-      ctaText: 'Start Free Trial',
+      placeholderSummary: t('pricing.proSummary'),
+      features: [t('pricing.proF1'), t('pricing.proF2'), t('pricing.proF3')],
+      ctaText: t('pricing.startTrial'),
       isPrimary: true,
     },
     {
-      name: 'Multi-Location',
-      subtitle: 'For expanding retail chains, franchises, and multi-branch outlets.',
+      name: t('pricing.multiName'),
+      subtitle: t('pricing.multiSubtitle'),
       price: '0',
       currency: '€',
-      period: '/ month',
+      period: t('pricing.perMonth'),
       featured: false,
-      placeholderSummary: 'Enterprise onboarding and centralized audit control.',
-      features: ['Multi-branch stock sync', 'Custom register & POS setup', 'Priority technical assistance'],
-      ctaText: 'Contact Sales',
+      placeholderSummary: t('pricing.multiSummary'),
+      features: [t('pricing.multiF1'), t('pricing.multiF2'), t('pricing.multiF3')],
+      ctaText: t('pricing.contactSales'),
       isPrimary: false,
     },
   ];
@@ -56,13 +51,13 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenDemo }) =>
         <div className="mx-auto mb-10 max-w-[720px] text-center md:mb-16">
           <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-ops-teal/10 px-3 py-[0.28rem] font-display text-[0.75rem] font-medium text-ops-teal md:mb-[0.85rem] md:text-[0.8rem]">
             <ShieldCheck size={14} />
-            <span>Store plans</span>
+            <span>{t('pricing.badge')}</span>
           </div>
           <h2 className="mb-3 font-display text-[1.6rem] font-semibold tracking-tight text-ops-ink md:mb-4 md:text-[2.4rem]">
-            Accessible for Every Retailer
+            {t('pricing.title')}
           </h2>
           <p className="font-sans text-[0.95rem] leading-relaxed text-slate-600 md:text-[1.05rem]">
-            Get started immediately with full access during our preview release.
+            {t('pricing.subtitle')}
           </p>
         </div>
 
@@ -77,7 +72,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenDemo }) =>
             >
               {plan.featured && (
                 <div className="absolute top-[-0.75rem] left-1/2 -translate-x-1/2 rounded-full bg-ops-teal px-[0.85rem] py-1 font-display text-xs font-medium tracking-wide text-white">
-                  Recommended
+                  {t('pricing.recommended')}
                 </div>
               )}
 
@@ -109,8 +104,8 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenDemo }) =>
                 </ul>
               </div>
 
-              <button
-                onClick={onOpenDemo}
+              <Link
+                to="/signup"
                 className={cn(
                   'inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-[0.72rem] font-display text-[0.9rem] font-medium transition-all',
                   plan.isPrimary
@@ -120,7 +115,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onOpenDemo }) =>
               >
                 <span>{plan.ctaText}</span>
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-[3px]" />
-              </button>
+              </Link>
             </div>
           ))}
         </div>

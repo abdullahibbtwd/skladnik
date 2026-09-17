@@ -105,6 +105,16 @@ export async function signupRequest(input: {
   return mapUser(data.user);
 }
 
+export async function signupWithInviteRequest(input: {
+  token: string;
+  email: string;
+  password: string;
+  name: string;
+}): Promise<SessionUser> {
+  const data = await postJson<{ user: ApiUser }>('/auth/signup-with-invite', input);
+  return mapUser(data.user);
+}
+
 export async function logoutRequest(): Promise<void> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 4000);

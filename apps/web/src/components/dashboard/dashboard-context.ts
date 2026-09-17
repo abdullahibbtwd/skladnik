@@ -5,9 +5,8 @@ export type DashboardContextValue = {
   siteId: string;
   setSiteId: (id: string) => void;
   data: DashboardState;
-  toast: string | null;
   onScan: () => void;
-  writeOff: (sku: string, batch: string) => void;
+  writeOff: (sku: string, batch: string) => void | Promise<void>;
   markReviewed: (id: string) => void;
 };
 

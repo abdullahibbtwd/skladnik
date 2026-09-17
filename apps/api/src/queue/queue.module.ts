@@ -1,10 +1,11 @@
 import { BullModule } from '@nestjs/bullmq';
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { QueueController } from './queue.controller';
 import { TEST_QUEUE } from './queue.constants';
 import { TestProcessor } from './test.processor';
 
+@Global()
 @Module({
   imports: [
     BullModule.forRootAsync({
@@ -19,5 +20,6 @@ import { TestProcessor } from './test.processor';
   ],
   controllers: [QueueController],
   providers: [TestProcessor],
+  exports: [BullModule],
 })
 export class QueueModule {}

@@ -1,28 +1,27 @@
 import React from 'react';
 import { Camera, Cpu, CheckCircle2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export const HowItWorks: React.FC = () => {
+  const { t } = useTranslation();
   const steps = [
     {
       number: '01',
       icon: <Camera size={22} strokeWidth={1.8} />,
-      title: 'Snap or Upload Invoice',
-      description:
-        'Point any smartphone camera at delivery paperwork, vendor bills, or upload PDF files directly from your suppliers.',
+      title: t('how.step1Title'),
+      description: t('how.step1Body'),
     },
     {
       number: '02',
       icon: <Cpu size={22} strokeWidth={1.8} />,
-      title: '20-Second AI Extraction',
-      description:
-        'Our computer vision model isolates SKU codes, line quantities, unit tax, and dates into structured digital data with 99%+ accuracy.',
+      title: t('how.step2Title'),
+      description: t('how.step2Body'),
     },
     {
       number: '03',
       icon: <CheckCircle2 size={22} strokeWidth={1.8} />,
-      title: 'Live Stock & Annex 38 Ready',
-      description:
-        'Inventory updates automatically across all store counters. Expiry alarms turn on and tax-compliant XML audit logs are created instantly.',
+      title: t('how.step3Title'),
+      description: t('how.step3Body'),
     },
   ];
 
@@ -31,13 +30,13 @@ export const HowItWorks: React.FC = () => {
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-6">
         <div className="mx-auto mb-8 max-w-[720px] text-center md:mb-10">
           <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-ops-ai/10 px-3 py-[0.28rem] font-display text-[0.75rem] font-medium text-ops-ai md:mb-[0.85rem] md:text-[0.8rem]">
-            Workflow simplicity
+            {t('how.badge')}
           </div>
           <h2 className="mb-3 font-display text-[1.6rem] leading-tight font-semibold tracking-tight text-ops-ink md:mb-4 md:text-[2.4rem]">
-            From Paper Bill to Live Inventory in 3 Steps
+            {t('how.title')}
           </h2>
           <p className="font-sans text-[0.95rem] leading-relaxed text-slate-500 md:text-[1.05rem]">
-            Built specifically to save retail store owners and café managers hours of manual inventory ledger entry every morning.
+            {t('how.subtitle')}
           </p>
         </div>
 

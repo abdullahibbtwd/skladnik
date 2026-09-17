@@ -12,11 +12,15 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:ready": "prisma generate && prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "auth:prove": "node scripts/prove-isolation.mjs"
+    "auth:prove": "node scripts/prove-isolation.mjs",
+    "documents:prove": "node scripts/prove-document-post.mjs",
+    "test": "node scripts/run-posting-unit.cjs",
+    "extract:image": "node scripts/extract-image.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.893.0",
     "@aws-sdk/s3-request-presigner": "^3.893.0",
+    "@napi-rs/canvas": "^1.0.9",
     "@nestjs/bullmq": "^11.0.3",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
@@ -35,9 +39,12 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
+    "pdfjs-dist": "^6.3.289",
     "prisma": "^6.16.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "resend": "^6.28.1",
+    "rxjs": "^7.8.2",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.10",
@@ -51,7 +58,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

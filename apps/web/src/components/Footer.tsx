@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Boxes, ShieldCheck, FileCheck2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export const Footer: React.FC = () => {
+  const { t } = useTranslation();
   return (
     <footer className="border-t border-slate-200 bg-ops-canvas pt-12 pb-8 text-slate-500 md:pt-[4.5rem] md:pb-10">
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-6">
@@ -14,121 +16,112 @@ export const Footer: React.FC = () => {
               </div>
               <span>Skladnik</span>
             </div>
-            <p className="mb-5 max-w-80 text-[0.9rem] leading-relaxed">
-              AI-driven retail inventory management. Transforming paper vendor invoices into
-              accurate live stock, FEFO expiry schedules, and compliant Annex 38 tax audits.
-            </p>
+            <p className="mb-5 max-w-80 text-[0.9rem] leading-relaxed">{t('footer.blurb')}</p>
             <div className="inline-flex items-center gap-2 rounded-full border border-ops-teal/20 bg-teal-50 px-[0.7rem] py-[0.3rem] text-[0.78rem] font-medium text-ops-teal">
               <span className="size-2 animate-pulse-dot rounded-full bg-ops-teal shadow-[0_0_8px_#0d9488]" />
-              <span>All Systems Operational &bull; Annex 38 Ready</span>
+              <span>{t('footer.status')}</span>
             </div>
           </div>
 
           <div>
-            <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">
-              Platform
-            </h4>
+            <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">{t('footer.platform')}</h4>
             <ul className="flex list-none flex-col gap-3">
               <li>
                 <a href="#features" className="text-sm transition-colors hover:text-ops-ink">
-                  Snap & Stock OCR
+                  {t('footer.snapStock')}
                 </a>
               </li>
               <li>
                 <a href="#features" className="text-sm transition-colors hover:text-ops-ink">
-                  FEFO Expiry Board
+                  {t('footer.fefoBoard')}
                 </a>
               </li>
               <li>
                 <a href="#compliance" className="text-sm transition-colors hover:text-ops-ink">
-                  Annex No. 38 Ready
+                  {t('footer.annexReady')}
                 </a>
               </li>
               <li>
                 <a href="#features" className="text-sm transition-colors hover:text-ops-ink">
-                  Mobile Quick Scan
+                  {t('footer.mobileScan')}
                 </a>
               </li>
               <li>
                 <a href="#pricing" className="text-sm transition-colors hover:text-ops-ink">
-                  Store Pricing Plans
+                  {t('footer.storePlans')}
                 </a>
               </li>
               <li>
                 <Link to="/login" className="text-sm transition-colors hover:text-ops-ink">
-                  Log in
+                  {t('footer.login')}
                 </Link>
               </li>
               <li>
                 <Link to="/signup" className="text-sm transition-colors hover:text-ops-ink">
-                  Create a store account
+                  {t('footer.createAccount')}
                 </Link>
               </li>
             </ul>
           </div>
 
           <div>
-            <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">
-              Compliance
-            </h4>
+            <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">{t('footer.compliance')}</h4>
             <ul className="flex list-none flex-col gap-3">
               <li>
                 <a href="#compliance" className="flex items-center gap-[0.3rem] text-sm transition-colors hover:text-ops-ink">
-                  <span>Annex No. 38 XML</span>
+                  <span>{t('footer.annexXml')}</span>
                   <FileCheck2 size={13} className="text-ops-teal" />
                 </a>
               </li>
               <li>
                 <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  Tax Audit Specifications
+                  {t('footer.taxSpecs')}
                 </a>
               </li>
               <li>
                 <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  Food Expiry Safety (HACCP)
+                  {t('footer.haccp')}
                 </a>
               </li>
               <li>
                 <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  Data Encryption Standard
+                  {t('footer.encryption')}
                 </a>
               </li>
               <li>
                 <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  Privacy Policy
+                  {t('footer.privacy')}
                 </a>
               </li>
             </ul>
           </div>
 
           <div>
-            <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">
-              Compatibility
-            </h4>
-            <p className="mb-[0.85rem] text-[0.85rem] leading-normal text-slate-500">
-              Compatible with iOS, Android, macOS, Windows, and standard receipt printers.
-            </p>
+            <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">{t('footer.compatibility')}</h4>
+            <p className="mb-[0.85rem] text-[0.85rem] leading-normal text-slate-500">{t('footer.compatibleWith')}</p>
             <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-ops-canvas px-[0.65rem] py-1.5 text-[0.78rem] text-ops-ink">
               <ShieldCheck size={14} className="text-ops-teal" />
-              <span>EU Retail Compliance Verified</span>
+              <span>{t('footer.euVerified')}</span>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-8 text-[0.825rem] text-slate-500">
-          <div>&copy; {new Date().getFullYear()} Skladnik Technologies. All rights reserved.</div>
+          <div>
+            &copy; {new Date().getFullYear()} {t('footer.rights')}
+          </div>
           <div className="flex gap-6">
             <a href="#" className="hover:text-ops-ink">
-              Terms of Service
+              {t('footer.terms')}
             </a>
             <a href="#" className="hover:text-ops-ink">
-              Security Overview
+              {t('footer.security')}
             </a>
             <a href="#" className="hover:text-ops-ink">
-              System Status
+              {t('footer.systemStatus')}
             </a>
             <a href="#" className="hover:text-ops-ink">
-              Support Portal
+              {t('footer.support')}
             </a>
           </div>
         </div>

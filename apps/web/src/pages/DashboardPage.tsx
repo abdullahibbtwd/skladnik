@@ -1,71 +1,79 @@
-import React, { useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import type { SampleInvoice } from '../components/HeroSection';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { DashboardShell } from '../components/dashboard/DashboardShell';
 import { DashboardContext } from '../components/dashboard/dashboard-context';
 import { useMeQuery } from '../lib/auth-session';
 import { useAuthUser } from '../lib/auth-store';
+import { useTranslation } from 'react-i18next';
 import { buildDashboardState } from '../lib/dashboard-data';
+import { useCreateDocument, useDocumentsQuery, useSitesQuery } from '../lib/workspace-session';
+import { toast } from '../components/ui/Toaster';
 
-interface DashboardPageProps {
-  committedInvoices: SampleInvoice[];
-  onScan: () => void;
-}
+export const DashboardPage: React.FC = () => {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const storeUser = useAuthUser();
+  const meQuery = useMeQuery();
+  const user = meQuery.data ?? storeUser;
+  const sitesQuery = useSitesQuery();
+  const documentsQuery = useDocumentsQuery();
+  const createDocument = useCreateDocument();
+  const sites = useMemo(
+    () => (sitesQuery.data?.sites ?? []).filter((site) => site.isActive),
+    [sitesQuery.data],
+  );
+  const [siteId, setSiteId] = useState('');
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ committedInvoices, onScan }) => {
-  const user = useAuthUser();
-  const { isPending, isFetched } = useMeQuery();
-  const [siteId, setSiteId] = useState('central');
-  const [writtenOff, setWrittenOff] = useState<string[]>([]);
-  const [reviewed, setReviewed] = useState<string[]>([]);
-  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (sites.length === 0) return;
+    if (sites.some((site) => site.id === siteId)) return;
+    setSiteId(sites[0].id);
+  }, [sites, siteId]);
 
   const data = useMemo(() => {
-    const next = buildDashboardState(committedInvoices, siteId);
+    const documents = (documentsQuery.data?.documents ?? []).filter((doc) => !siteId || doc.site.id === siteId);
+    const next = buildDashboardState(documents);
     return {
       ...next,
-      lines: next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`)),
-      fefoBoard: next.fefoBoard.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`)),
-      lowStock: next.lowStock.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`)),
-      pending: next.pending.filter((row) => !reviewed.includes(row.id)),
-      expiring: {
-        3: next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`) && line.daysLeft <= 3).length,
-        7: next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`) && line.daysLeft <= 7).length,
-        14: next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`) && line.daysLeft <= 14).length,
-        30: next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`) && line.daysLeft <= 30).length,
-      },
-      catalogCount: next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`)).length,
-      stockValue: next.lines
-        .filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`))
-        .reduce((sum, line) => sum + line.qty * line.unitPrice, 0),
       notifications: [
-        next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`) && line.daysLeft <= 3).length > 0
-          ? `${next.lines.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`) && line.daysLeft <= 3).length} batches hit the 3-day FEFO threshold`
-          : null,
-        next.pending.filter((row) => !reviewed.includes(row.id)).length > 0
-          ? `${next.pending.filter((row) => !reviewed.includes(row.id)).length} invoices waiting for review`
-          : null,
-        next.lowStock.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`)).length > 0
-          ? `${next.lowStock.filter((line) => !writtenOff.includes(`${line.sku}-${line.batch}`)).length} items at or below min stock`
-          : null,
+        next.pending.length > 0 ? t('notices.invoicesWaiting', { count: next.pending.length }) : null,
       ].filter((note): note is string => Boolean(note)),
     };
-  }, [committedInvoices, siteId, writtenOff, reviewed]);
+  }, [documentsQuery.data, siteId, t]);
 
   if (!user) {
-    if (isPending || !isFetched) {
+    if (meQuery.isPending || !meQuery.isFetched) {
       return (
         <div className="flex min-h-dvh items-center justify-center bg-ops-canvas font-display text-sm text-slate-500">
-          Restoring session…
+          {t('session.restoring')}
         </div>
       );
     }
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
-  const flash = (message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(null), 2800);
+  const onScan = async () => {
+    if (user.role !== 'OWNER' && user.role !== 'ACCOUNTANT' && user.role !== 'SITE_MANAGER') {
+      toast.error(t('app.scanStaffBlocked'));
+      return;
+    }
+    if (!siteId) {
+      toast.error(t('app.scanNeedSite'));
+      return;
+    }
+    if (createDocument.isPending) return;
+    try {
+      const result = await createDocument.mutateAsync({
+        type: 'INVOICE',
+        siteId,
+        documentNumber: `SCAN-${Date.now()}`,
+        issuedOn: new Date().toISOString().slice(0, 10),
+      });
+      navigate(`/app/invoices/${result.document.id}?camera=1`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('app.scanCreateFailed'));
+    }
   };
 
   return (
@@ -74,17 +82,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ committedInvoices,
         siteId,
         setSiteId,
         data,
-        toast,
         onScan,
-        writeOff: (sku, batch) => {
-          const key = `${sku}-${batch}`;
-          setWrittenOff((prev) => (prev.includes(key) ? prev : [...prev, key]));
-          flash('Write-off posted. Batch removed from the live board.');
-        },
-        markReviewed: (id) => {
-          setReviewed((prev) => (prev.includes(id) ? prev : [...prev, id]));
-          flash('Invoice marked reviewed.');
-        },
+        writeOff: () => navigate('/app/expiry'),
+        markReviewed: () => navigate('/app/invoices'),
       }}
     >
       <DashboardShell siteId={siteId} onSiteChange={setSiteId} notifications={data.notifications} onScan={onScan} />
