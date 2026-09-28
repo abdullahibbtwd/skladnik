@@ -61,6 +61,13 @@ export class CreateProductDto {
   @Min(0)
   minStock?: number;
 
+  /** "Order up to" level used for purchase suggestions. */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value === undefined ? undefined : value === null ? null : Number(value)))
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  maxStock?: number | null;
+
   @IsOptional()
   @IsBoolean()
   batchTracking?: boolean;

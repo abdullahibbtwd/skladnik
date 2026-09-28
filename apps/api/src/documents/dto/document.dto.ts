@@ -1,21 +1,31 @@
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import {
   DOCUMENT_TYPES,
+  PAPER_DOCUMENT_TYPES,
   STOCK_DIRECTIONS,
+  WRITE_OFF_REASONS,
   type DocumentType,
+  type PaperDocumentType,
   type StockDirection,
+  type WriteOffReason,
 } from '@skladnik/shared';
 
 export function lineQuantity(dto: { quantity?: number; qty?: number }) {
@@ -60,6 +70,37 @@ export class CreateDocumentDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  @IsOptional()
+  @IsIn(WRITE_OFF_REASONS)
+  writeOffReason?: WriteOffReason;
+
+  /** TRANSFER only: the receiving site. */
+  @IsOptional()
+  @IsUUID()
+  targetSiteId?: string;
+}
+
+/** Multipart fields sent with a scanned photo, from the camera or the offline queue. */
+export class ScanDocumentDto {
+  /** Generated on the device when the photo is taken; a retry with the same key returns the same document. */
+  @IsUUID()
+  clientRequestId!: string;
+
+  @IsUUID()
+  siteId!: string;
+
+  @IsIn(PAPER_DOCUMENT_TYPES)
+  type!: PaperDocumentType;
+
+  /** Business day on the device when the photo was taken. */
+  @IsDateString({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  issuedOn!: string;
+
+  @IsOptional()
+  @IsDateString()
+  capturedAt?: string;
 }
 
 export class UpdateDocumentDto {
@@ -101,6 +142,45 @@ export class UpdateDocumentDto {
   @IsString()
   @MaxLength(1000)
   notes?: string | null;
+
+  /** null turns a write-off back into a plain handover. */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsIn([...WRITE_OFF_REASONS, null])
+  writeOffReason?: WriteOffReason | null;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsUUID()
+  targetSiteId?: string | null;
+}
+
+export class PostDocumentDto {
+  /** Required when the document hands over or moves an expired batch. */
+  @IsOptional()
+  @IsBoolean()
+  confirmExpired?: boolean;
+}
+
+export class StocktakeCountDto {
+  @IsUUID()
+  lineId!: string;
+
+  /** null clears the count (the line is then left unchanged on posting). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  countedQuantity!: number | null;
+}
+
+export class StocktakeCountsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(5000)
+  @ValidateNested({ each: true })
+  @Type(() => StocktakeCountDto)
+  counts!: StocktakeCountDto[];
 }
 
 export class ListDocumentsQueryDto {
@@ -160,6 +240,13 @@ export class CreateDocumentLineDto {
   @IsOptional()
   @IsDateString()
   expiryDate?: string;
+
+  /** STOCKTAKE only; quantity is not used there. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  countedQuantity?: number;
 }
 
 export class UpdateDocumentLineDto {
@@ -201,4 +288,11 @@ export class UpdateDocumentLineDto {
   @Transform(({ value }) => (value === '' ? null : value))
   @IsDateString()
   expiryDate?: string | null;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  countedQuantity?: number | null;
 }

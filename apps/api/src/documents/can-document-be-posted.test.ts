@@ -1,4 +1,4 @@
-import { canDocumentBePosted } from './can-document-be-posted';
+import { canDocumentBePosted, expiredBatchWarnings } from './can-document-be-posted';
 
 function line(overrides: Partial<Parameters<typeof canDocumentBePosted>[0]['lines'][number]> = {}) {
   return {
@@ -47,5 +47,50 @@ const ok = canDocumentBePosted({
 if (!ok.ok) {
   throw new Error(`expected valid document, got ${JSON.stringify(ok)}`);
 }
+
+const sameSite = canDocumentBePosted({ type: 'TRANSFER', siteId: 's1', targetSiteId: 's1', lines: [line()] });
+if (sameSite.ok || !sameSite.errors[0]?.includes('two different sites')) {
+  throw new Error(`expected same-site transfer error, got ${JSON.stringify(sameSite)}`);
+}
+const noTarget = canDocumentBePosted({ type: 'TRANSFER', siteId: 's1', targetSiteId: null, lines: [line()] });
+if (noTarget.ok || !noTarget.errors[0]?.includes('site to transfer to')) {
+  throw new Error(`expected missing target error, got ${JSON.stringify(noTarget)}`);
+}
+const incoming = canDocumentBePosted({ type: 'TRANSFER', direction: 'IN', siteId: 's1', targetSiteId: 's2', lines: [line()] });
+if (incoming.ok || !incoming.errors[0]?.includes('must be outgoing')) {
+  throw new Error(`expected outgoing-only transfer error, got ${JSON.stringify(incoming)}`);
+}
+
+const uncounted = canDocumentBePosted({ type: 'STOCKTAKE', lines: [line({ quantity: 0, countedQuantity: null })] });
+if (uncounted.ok || !uncounted.errors[0]?.includes('Count at least one')) {
+  throw new Error(`expected uncounted stocktake error, got ${JSON.stringify(uncounted)}`);
+}
+const countedZero = canDocumentBePosted({
+  type: 'STOCKTAKE',
+  lines: [line({ quantity: 0, countedQuantity: 0 }), line({ id: 'line-2', position: 1, quantity: 0, countedQuantity: null, productId: null, product: null })],
+});
+if (!countedZero.ok) {
+  throw new Error(`a zero count is valid and uncounted lines are ignored, got ${JSON.stringify(countedZero)}`);
+}
+const twice = canDocumentBePosted({
+  type: 'STOCKTAKE',
+  lines: [line({ countedQuantity: 1 }), line({ id: 'line-2', position: 1, countedQuantity: 2 })],
+});
+if (twice.ok || !twice.errors[0]?.includes('twice')) {
+  throw new Error(`expected duplicate count error, got ${JSON.stringify(twice)}`);
+}
+
+const header = { type: 'TRANSFER', direction: 'OUT', writeOffReason: null, issuedOn: '2026-09-28' };
+const expired = expiredBatchWarnings(header, [
+  { productName: 'Milk', batchNumber: 'L1', expiryDate: '2026-09-27' },
+  { productName: 'Milk', batchNumber: 'L2', expiryDate: '2026-09-28' },
+]);
+if (expired.length !== 1 || !expired[0].includes('L1')) {
+  throw new Error(`expected one expired warning (expiring today is still fine), got ${JSON.stringify(expired)}`);
+}
+const writeOff = expiredBatchWarnings({ ...header, type: 'PROTOCOL', writeOffReason: 'EXPIRED' }, [
+  { productName: 'Milk', batchNumber: 'L1', expiryDate: '2026-01-01' },
+]);
+if (writeOff.length !== 0) throw new Error('write-offs never need the expiry confirmation');
 
 console.log('canDocumentBePosted unit checks passed.');

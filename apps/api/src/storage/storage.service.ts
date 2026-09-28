@@ -104,6 +104,10 @@ export class StorageService implements OnModuleInit {
     };
   }
 
+  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+    await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }));
+  }
+
   async signedUrl(key: string): Promise<string> {
     return getSignedUrl(
       this.signingClient,

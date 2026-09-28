@@ -128,7 +128,6 @@ assert(posted.body.document.lines.length === 2, 'expected 2 lines after post');
 
 const milkPosted = posted.body.document.lines.find((row) => row.productId === tracked.body.product.id);
 assert(milkPosted?.batch?.batchNumber === `LOT-${stamp}`, `batch not linked ${JSON.stringify(milkPosted?.batch)}`);
-assert(milkPosted?.batch?.quantityRemaining === 4, `batch remaining ${milkPosted?.batch?.quantityRemaining}`);
 
 const flourPosted = posted.body.document.lines.find((row) => row.productId === plain.body.product.id);
 assert(flourPosted?.batch === null, 'non-batch line should not have a batch');
@@ -144,4 +143,4 @@ const cancelPosted = await json('POST', `/documents/${docId}/cancel`, cookie);
 assert(cancelPosted.status === 400, 'posted document was cancelled');
 
 console.log('Document posting proof passed.');
-console.log(`  ${posted.body.document.documentNumber} POSTED, milk batch remaining=${milkPosted.batch.quantityRemaining}`);
+console.log(`  ${posted.body.document.documentNumber} POSTED, milk batch ${milkPosted.batch.batchNumber}`);

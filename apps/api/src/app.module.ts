@@ -13,7 +13,12 @@ import { RedisModule } from './redis/redis.module';
 import { PartnersModule } from './partners/partners.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
 import { ProductsModule } from './products/products.module';
+import { RecipesModule } from './recipes/recipes.module';
+import { ReportsModule } from './reports/reports.module';
+import { VatModule } from './vat/vat.module';
+import { SalesModule } from './sales/sales.module';
 import { SitesModule } from './sites/sites.module';
+import { StockModule } from './stock/stock.module';
 import { StorageModule } from './storage/storage.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { UnitAliasesModule } from './unit-aliases/unit-aliases.module';
@@ -45,6 +50,11 @@ import { UsersModule } from './users/users.module';
     ProductsModule,
     UnitAliasesModule,
     DocumentsModule,
+    StockModule,
+    SalesModule,
+    RecipesModule,
+    ReportsModule,
+    VatModule,
     ExtractionModule,
     StorageModule,
     HealthModule,

@@ -15,6 +15,11 @@ export class SitesController {
     return this.sites.list(user);
   }
 
+  @Get('transfer-targets')
+  transferTargets(@CurrentUser() user: AuthUser) {
+    return this.sites.transferTargets(user);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.sites.get(user, id);

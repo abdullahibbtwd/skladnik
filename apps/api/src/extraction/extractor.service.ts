@@ -19,7 +19,7 @@ export class ExtractorService {
   }
 
   model() {
-    return this.config.get<string>('GLM_MODEL') ?? this.config.get<string>('ZAI_VISION_MODEL') ?? 'glm-5v-turbo';
+    return this.config.get<string>('GLM_MODEL') ?? this.config.get<string>('ZAI_VISION_MODEL') ?? 'glm-5.3-flash';
   }
 
   extractFromImage(image: Buffer, mimeType?: string): Promise<ExtractDocumentResult> {

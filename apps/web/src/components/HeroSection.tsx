@@ -168,7 +168,7 @@ export const HeroSection: React.FC = () => {
                       </span>
                       <span className="inline-flex items-center gap-1 rounded-full border border-ops-teal/20 bg-teal-50 px-2 py-0.5 font-display text-[0.65rem] font-medium text-ops-teal">
                         <FileCheck2 size={12} />
-                        {t('hero.annex38')}
+                        {t('hero.auditTrail')}
                       </span>
                     </div>
                   </div>

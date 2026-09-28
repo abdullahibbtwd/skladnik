@@ -60,7 +60,8 @@
   }
 
   body {
-    @apply min-h-screen overflow-x-hidden font-sans;
+    /* clip, not hidden: hidden makes body a scroll container and breaks position: sticky */
+    @apply min-h-screen overflow-x-clip font-sans;
     max-width: 100%;
   }
 
@@ -70,5 +71,107 @@
 
   button {
     @apply cursor-pointer font-display;
+  }
+}
+
+/* Reports print on their own: the report page renders .report-print at the end of <body>, and while it
+   exists the rest of the app is left out of the printout (Print button and Ctrl+P alike). */
+.report-print {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  body:has(> .report-print) > :not(.report-print) {
+    display: none !important;
+  }
+
+  body:has(> .report-print) {
+    background: #fff;
+  }
+
+  .report-print {
+    display: block;
+    color: #0f172a;
+    font: 8.5pt/1.35 'Inter', system-ui, sans-serif;
+  }
+
+  .report-print header {
+    margin-bottom: 8pt;
+    border-bottom: 1pt solid #0f172a;
+    padding-bottom: 5pt;
+  }
+
+  .report-print h1 {
+    margin: 1pt 0 2pt;
+    font-size: 14pt;
+    font-weight: 600;
+  }
+
+  .report-print-company {
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #475569;
+  }
+
+  .report-print-meta {
+    font-size: 8pt;
+    color: #475569;
+  }
+
+  .report-print table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .report-print thead {
+    display: table-header-group;
+  }
+
+  .report-print tfoot {
+    display: table-row-group;
+  }
+
+  .report-print th {
+    border-bottom: 0.75pt solid #0f172a;
+    padding: 3pt 4pt;
+    text-align: left;
+    font-size: 7.5pt;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  .report-print td {
+    border-bottom: 0.5pt solid #e2e8f0;
+    padding: 2.5pt 4pt;
+    vertical-align: top;
+  }
+
+  .report-print .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .report-print tr {
+    break-inside: avoid;
+  }
+
+  .report-print tr.total td,
+  .report-print tfoot td {
+    border-top: 0.75pt solid #0f172a;
+    font-weight: 600;
+  }
+
+  .report-print-notes {
+    margin-top: 6pt;
+    font-size: 7.5pt;
+    color: #475569;
   }
 }

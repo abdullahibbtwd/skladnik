@@ -1,221 +1,171 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  AlertTriangle,
-  ArrowRight,
-  Camera,
-  ClipboardList,
-  Package,
-  PackageMinus,
-  Timer,
-  TrendingUp,
-  Truck,
-} from 'lucide-react';
+import { AlertTriangle, ArrowRight, Camera, ClipboardList, Package, PackageMinus, ShoppingCart, Timer, Truck, Wallet } from 'lucide-react';
+import { businessToday } from '../../lib/business-date';
 import { formatEuro } from '../../lib/dashboard-data';
+import { documentPath } from '../../lib/workspace-api';
+import { useSalesReportQuery } from '../../lib/workspace-session';
 import { useTranslation } from 'react-i18next';
+import { cn } from '../../lib/cn';
 import { useDashboard } from './dashboard-context';
-import {
-  ActionButton,
-  DaysPill,
-  ExpiryChip,
-  GhostButton,
-  GlassPanel,
-  LiveBadge,
-  MetricCard,
-  SpecularRim,
-  StatusPill,
-  glassClass,
-  tableHeadRowClass,
-  tableRowClass,
-} from './dashboard-ui';
+import { ExpiringBatches } from './ExpiringBatches';
+import { ActionButton, GlassPanel, MetricCard, StatusPill, tableHeadRowClass, tableRowClass } from './dashboard-ui';
+
+const USE_FIRST_LIMIT = 6;
+const RUNNING_LOW_LIMIT = 5;
 
 export const OverviewPanel: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { data, onScan, writeOff } = useDashboard();
-  const firstWriteOff = data.fefoBoard[0];
+  const { data, siteId, onScan, startDocument } = useDashboard();
+  const today = businessToday();
+  const todaySales = useSalesReportQuery(siteId, today, today).data?.summary;
+  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
+
+  const ready = data.stockReady;
+  const dash = '—';
+
+  const openLink = (to: string, label: string) => (
+    <button
+      type="button"
+      onClick={() => navigate(to)}
+      className="inline-flex items-center gap-1 font-display text-[0.75rem] font-medium text-ops-accent transition-colors hover:text-ops-ink"
+    >
+      {label}
+      <ArrowRight size={13} />
+    </button>
+  );
 
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
-      <section className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
+      <section className="hidden flex-wrap gap-2.5 lg:flex">
+        <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
+        <ActionButton icon={Truck} label={t('overview.receiveGoods')} onClick={() => startDocument('RECEIPT')} />
+        <ActionButton icon={PackageMinus} label={t('overview.writeOff')} onClick={() => startDocument('PROTOCOL')} />
+        <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} />
+      </section>
+
+      <section className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-5 [&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1">
         <MetricCard
-          label={t('overview.todaysSales')}
-          value={formatEuro(0)}
-          hint={t('overview.todaysSalesHint')}
-          icon={TrendingUp}
-          iconColor="text-ops-teal"
+          label={t('overview.useSoon')}
+          value={ready ? String(data.expiring[7]) : dash}
+          hint={data.expired > 0 ? t('overview.expiredHint', { count: data.expired }) : t('overview.useSoonHint')}
+          icon={Timer}
+          iconColor="text-ops-warn"
+          onClick={() => navigate('/app/expiry')}
         />
         <MetricCard
-          label={t('overview.stockValue')}
-          value={formatEuro(data.stockValue)}
-          hint={t('overview.stockValueHint', { count: data.catalogCount })}
-          icon={Package}
-          iconColor="text-ops-accent"
+          label={t('overview.lowOrOut')}
+          value={ready ? String(data.lowStock.length) : dash}
+          hint={t('overview.lowOrOutHint')}
+          icon={AlertTriangle}
+          iconColor="text-ops-danger"
+          onClick={() => navigate('/app/stock')}
         />
         <MetricCard
           label={t('overview.pendingInvoices')}
           value={String(data.pending.length)}
-          hint={data.pending.length === 1 ? t('overview.pendingOne') : t('overview.pendingMany', { count: data.pending.length })}
+          hint={t('overview.pendingHint', { count: data.pending.length })}
           icon={ClipboardList}
           iconColor="text-ops-accent"
+          onClick={() => navigate('/app/invoices')}
         />
         <MetricCard
-          label={t('overview.expiring7')}
-          value={String(data.expiring[7])}
-          hint={t('overview.expiringHint')}
-          icon={Timer}
-          iconColor="text-ops-warn"
+          label={t('overview.stockValue')}
+          value={ready ? formatEuro(data.stockValue) : dash}
+          hint={t('overview.stockValueHint', { count: data.inStockCount })}
+          icon={Package}
+          iconColor="text-ops-teal"
+          onClick={() => navigate('/app/stock')}
         />
-      </section>
-
-      <section className={cnPanel()}>
-        <SpecularRim />
-        <div className="mb-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={15} className="text-ops-warn" />
-            <h2 className="font-display text-[0.92rem] font-semibold text-ops-ink">{t('overview.fefoBoard')}</h2>
-          </div>
-          <LiveBadge>{t('overview.liveRotation')}</LiveBadge>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2.5">
-          <ExpiryChip days={30} count={data.expiring[30]} active={data.expiring[30] > 0} subLabel={t('overview.safe')} />
-          <ExpiryChip days={14} count={data.expiring[14]} active={data.expiring[14] > 0} subLabel={t('overview.notice')} />
-          <ExpiryChip days={7} count={data.expiring[7]} active={data.expiring[7] > 0} subLabel={t('overview.urgent')} />
-          <ExpiryChip days={3} count={data.expiring[3]} active={data.expiring[3] > 0} subLabel={t('overview.critical')} />
-        </div>
-        {data.lowStock.length > 0 && (
-          <div className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-            <span className="text-[0.7rem] font-medium tracking-wider text-slate-500 uppercase">{t('overview.minStockAlerts')}</span>
-            {data.lowStock.slice(0, 4).map((line) => (
-              <span
-                key={`${line.sku}-${line.batch}`}
-                className="flex items-center gap-1.5 rounded-full border border-ops-danger/15 bg-rose-50 px-2.5 py-0.5 font-sans text-[0.72rem] text-ops-ink"
-              >
-                <span className="size-1 rounded-full bg-ops-danger" />
-                <span>{line.name}</span>
-                <span className="font-mono text-slate-500">
-                  ({line.qty}/{line.minStock})
-                </span>
-              </span>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="flex flex-wrap gap-2 sm:gap-2.5">
-        <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
-        <ActionButton icon={Truck} label={t('overview.receiveGoods')} onClick={() => navigate('/app/invoices/new')} />
-        <ActionButton
-          icon={PackageMinus}
-          label={t('overview.writeOff')}
-          onClick={() => (firstWriteOff ? writeOff(firstWriteOff.sku, firstWriteOff.batch) : navigate('/app/expiry'))}
+        <MetricCard
+          label={t('overview.salesToday')}
+          value={todaySales ? formatEuro(todaySales.turnover) : dash}
+          hint={todaySales ? t('sales.receiptCount', { count: todaySales.tickets }) : t('overview.salesTodayHint')}
+          icon={Wallet}
+          iconColor="text-ops-teal"
+          onClick={() => navigate('/app/sales')}
         />
       </section>
 
       <section className="grid gap-4 sm:gap-5 xl:grid-cols-[1.18fr_0.82fr]">
-        <GlassPanel
-          padded={false}
-          title={t('overview.expiringSoon')}
-          action={
-            <button
-              type="button"
-              onClick={() => navigate('/app/expiry')}
-              className="inline-flex items-center gap-1 font-display text-[0.75rem] font-medium text-ops-accent transition-colors hover:text-ops-ink"
-            >
-              {t('overview.openExpiry')}
-              <ArrowRight size={13} />
-            </button>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[28rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-4 py-2.5 font-display font-medium">{t('overview.itemSku')}</th>
-                  <th className="px-3 py-2.5 font-display font-medium">{t('overview.batch')}</th>
-                  <th className="px-3 py-2.5 font-display font-medium">{t('overview.expires')}</th>
-                  <th className="px-4 py-2.5 text-right font-display font-medium">{t('overview.action')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.fefoBoard.slice(0, 6).map((line) => (
-                  <tr key={`${line.sku}-${line.batch}`} className={tableRowClass()}>
-                    <td className="px-4 py-3">
-                      <p className="font-display text-[0.82rem] font-medium text-ops-ink">{line.name}</p>
-                      <p className="font-mono text-[0.66rem] text-slate-500">{line.sku}</p>
-                    </td>
-                    <td className="px-3 py-3 font-mono text-[0.75rem] text-slate-600">{line.batch}</td>
-                    <td className="px-3 py-3">
-                      <DaysPill days={line.daysLeft} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <GhostButton onClick={() => writeOff(line.sku, line.batch)}>{t('overview.writeOff')}</GhostButton>
-                    </td>
-                  </tr>
-                ))}
-                {data.fefoBoard.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center font-sans text-[0.8rem] text-slate-500">
-                      {t('empty.noExpiry')}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        <GlassPanel padded={false} title={t('overview.useFirst')} action={openLink('/app/expiry', t('overview.openExpiry'))}>
+          <ExpiringBatches
+            lines={data.fefoBoard.slice(0, USE_FIRST_LIMIT)}
+            empty={ready ? t('empty.noExpiry') : t('stock.loading')}
+          />
         </GlassPanel>
 
-        <GlassPanel
-          padded={false}
-          title={t('overview.recentOps')}
-          action={
-            <button
-              type="button"
-              onClick={() => navigate('/app/invoices')}
-              className="inline-flex items-center gap-1 font-display text-[0.75rem] font-medium text-ops-accent transition-colors hover:text-ops-ink"
-            >
-              <ClipboardList size={13} />
-              {t('overview.invoices')}
-            </button>
-          }
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[20rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-4 py-2.5 font-display font-medium">{t('common.type')}</th>
-                  <th className="px-3 py-2.5 font-display font-medium">{t('overview.docRef')}</th>
-                  <th className="px-3 py-2.5 font-display font-medium">{t('overview.time')}</th>
-                  <th className="px-4 py-2.5 text-right font-display font-medium">{t('common.status')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.operations.map((op) => (
-                  <tr key={op.id} className={tableRowClass()}>
-                    <td className="px-4 py-3 font-sans text-[0.8rem] text-ops-ink">{t(`labels.documentType.${op.type}`)}</td>
-                    <td className="px-3 py-3 font-mono text-[0.74rem] text-slate-500">{op.document}</td>
-                    <td className="px-3 py-3 font-mono text-[0.72rem] text-slate-400">{op.time}</td>
-                    <td className="px-4 py-3 text-right">
-                      <StatusPill status={op.status} />
-                    </td>
-                  </tr>
+        <div className="flex flex-col gap-4 sm:gap-5">
+          <GlassPanel padded={false} title={t('overview.runningLow')} action={openLink('/app/stock', t('overview.openStock'))}>
+            {data.lowStock.length === 0 ? (
+              <p className="px-4 py-6 text-center font-sans text-[0.8rem] text-slate-500 sm:px-5">
+                {ready ? t('overview.nothingLow') : t('stock.loading')}
+              </p>
+            ) : (
+              <ul>
+                {data.lowStock.slice(0, RUNNING_LOW_LIMIT).map((line) => (
+                  <li
+                    key={line.productId}
+                    className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 last:border-0 sm:px-5"
+                  >
+                    <span className="min-w-0 truncate font-display text-[0.82rem] text-ops-ink">{line.name}</span>
+                    <span
+                      className={cn(
+                        'shrink-0 font-mono text-[0.76rem] tabular-nums',
+                        line.qty <= 0 ? 'text-ops-danger' : 'text-ops-warn',
+                      )}
+                    >
+                      {qtyFormat.format(line.qty)}
+                      {line.minStock > 0 && <span className="text-slate-400"> / {qtyFormat.format(line.minStock)}</span>}
+                    </span>
+                  </li>
                 ))}
-                {data.operations.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center font-sans text-[0.8rem] text-slate-500">
-                      {t('empty.noOps')}
-                    </td>
+              </ul>
+            )}
+          </GlassPanel>
+
+          <GlassPanel padded={false} title={t('overview.recentOps')} action={openLink('/app/invoices', t('overview.invoices'))}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[20rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-4 py-2.5 font-display font-medium">{t('common.type')}</th>
+                    <th className="px-3 py-2.5 font-display font-medium">{t('overview.docRef')}</th>
+                    <th className="px-3 py-2.5 font-display font-medium">{t('overview.time')}</th>
+                    <th className="px-4 py-2.5 text-right font-display font-medium">{t('common.status')}</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </GlassPanel>
+                </thead>
+                <tbody>
+                  {data.operations.map((op) => (
+                    <tr
+                      key={op.id}
+                      className={cn(tableRowClass(), 'cursor-pointer')}
+                      onClick={() => navigate(documentPath(op))}
+                    >
+                      <td className="px-4 py-3 font-sans text-[0.8rem] text-ops-ink">
+                        {op.writeOffReason ? t(`labels.writeOffReason.${op.writeOffReason}`) : t(`labels.documentType.${op.type}`)}
+                      </td>
+                      <td className="px-3 py-3 font-mono text-[0.74rem] text-slate-500">{op.document}</td>
+                      <td className="px-3 py-3 font-mono text-[0.72rem] text-slate-400">{op.date.today ? t('expiry.today') : op.date.label}</td>
+                      <td className="px-4 py-3 text-right">
+                        <StatusPill status={op.status} />
+                      </td>
+                    </tr>
+                  ))}
+                  {data.operations.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center font-sans text-[0.8rem] text-slate-500">
+                        {t('empty.noOps')}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </GlassPanel>
+        </div>
       </section>
     </div>
   );
 };
-
-function cnPanel() {
-  return `${glassClass} p-4 sm:p-5`;
-}

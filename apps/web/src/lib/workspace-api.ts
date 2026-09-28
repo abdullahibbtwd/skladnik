@@ -2,13 +2,32 @@ import type {
   CaptureExtractionStatus,
   DocumentStatus,
   DocumentType,
+  ExportDateFormat,
+  ExportDecimalSeparator,
+  ExportDelimiter,
+  ExportEncoding,
+  ExportProfileColumn,
+  PaperDocumentType,
   PartnerKind,
+  PaymentMethod,
   ProductStatus,
+  ReportKind,
+  ReportResult,
   SiteType,
   StockDirection,
   UnitOfMeasure,
   UserRole,
+  VatCredit,
+  VatEntryInput,
+  VatEntryRecord,
+  VatPeriodView,
+  VatReturnInputs,
+  VatSettingsInput,
+  VatSettingsRecord,
+  ComplianceFilingRecord,
+  WriteOffReason,
 } from '@skladnik/shared';
+import { refreshSession } from './auth-api';
 
 export type SiteRecord = {
   id: string;
@@ -89,6 +108,7 @@ export type ProductRecord = {
   purchasePrice: number;
   sellingPrice: number;
   minStock: number;
+  maxStock: number | null;
   batchTracking: boolean;
   status: ProductStatus;
   group: { id: string; name: string } | null;
@@ -120,6 +140,7 @@ export type ProductWriteInput = {
   purchasePrice: number;
   sellingPrice: number;
   minStock?: number;
+  maxStock?: number | null;
   batchTracking?: boolean;
   status?: ProductStatus;
   barcodes?: string[];
@@ -127,6 +148,7 @@ export type ProductWriteInput = {
 
 export const workspaceKeys = {
   sites: ['workspace', 'sites'] as const,
+  transferTargets: ['workspace', 'sites', 'transfer-targets'] as const,
   users: ['workspace', 'users'] as const,
   invites: ['workspace', 'invites'] as const,
   invite: (token: string) => ['workspace', 'invite', token] as const,
@@ -138,7 +160,38 @@ export const workspaceKeys = {
   documents: (filters?: { status?: string; siteId?: string; type?: string }) =>
     ['workspace', 'documents', filters ?? {}] as const,
   document: (id: string) => ['workspace', 'document', id] as const,
+  stock: (siteId: string) => ['workspace', 'stock', siteId] as const,
+  movements: (siteId: string, productId: string, batchId?: string) =>
+    ['workspace', 'stock', siteId, 'movements', productId, batchId ?? null] as const,
+  reorder: (siteId: string) => ['workspace', 'stock', siteId, 'reorder'] as const,
+  sales: (siteId: string, date: string) => ['workspace', 'sales', siteId, 'list', date] as const,
+  sale: (id: string) => ['workspace', 'sale', id] as const,
+  salesReport: (siteId: string, from: string, to: string) => ['workspace', 'sales', siteId, 'report', from, to] as const,
+  margins: (siteId: string, from: string, to: string, by: string) => ['workspace', 'sales', siteId, 'margins', from, to, by] as const,
+  recipes: (siteId: string) => ['workspace', 'recipes', siteId, 'list'] as const,
+  recipe: (siteId: string, productId: string) => ['workspace', 'recipes', siteId, 'card', productId] as const,
+  menu: (siteId: string) => ['workspace', 'recipes', siteId, 'menu'] as const,
+  report: (kind: string, params: Record<string, unknown>) => ['workspace', 'reports', kind, params] as const,
+  archivePreview: (params: Record<string, unknown>) => ['workspace', 'reports', 'archive', params] as const,
+  exportProfiles: ['workspace', 'export-profiles'] as const,
+  vatSettings: ['workspace', 'vat', 'settings'] as const,
+  vatPeriod: (period: string) => ['workspace', 'vat', 'period', period] as const,
 };
+
+/** Keeps the API's machine-readable `code` (e.g. EXPIRED_CONFIRM) and `warnings` next to the message. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly warnings: string[];
+
+  constructor(message: string, status: number, code: string | null, warnings: string[]) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.warnings = warnings;
+  }
+}
 
 function errorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === 'object' && 'message' in payload) {
@@ -150,26 +203,50 @@ function errorMessage(payload: unknown, fallback: string) {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await requestWithResponse<T>(path, init)).payload;
+}
+
+/**
+ * `fresh` asks the service worker to go to the network even on routes it answers from its offline
+ * copy first (sites, products); used when refetching data that is already on screen.
+ */
+const freshInit = (fresh?: boolean): RequestInit | undefined => (fresh ? { cache: 'no-cache' } : undefined);
+
+/** When the server produced the response; for an offline copy this is when it was saved. */
+const servedAt = (response: Response) => {
+  const date = response.headers.get('date');
+  return date && !Number.isNaN(Date.parse(date)) ? new Date(date).toISOString() : null;
+};
+
+async function requestWithResponse<T>(path: string, init?: RequestInit): Promise<{ payload: T; response: Response }> {
   const { headers: initHeaders, ...rest } = init ?? {};
   const isFormData = typeof FormData !== 'undefined' && rest.body instanceof FormData;
   const headers = new Headers(initHeaders);
   if (!isFormData && rest.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const response = await fetch(path, {
-    credentials: 'include',
-    ...rest,
-    headers,
-  });
+  const send = () => fetch(path, { credentials: 'include', ...rest, headers });
+  let response = await send();
+  if (response.status === 401 && (await refreshSession())) response = await send();
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(errorMessage(payload, 'Something went wrong. Please try again.'));
+    const body = payload as { code?: unknown; warnings?: unknown };
+    throw new ApiError(
+      errorMessage(payload, 'Something went wrong. Please try again.'),
+      response.status,
+      typeof body.code === 'string' ? body.code : null,
+      Array.isArray(body.warnings) ? body.warnings.filter((item): item is string => typeof item === 'string') : [],
+    );
   }
-  return payload as T;
+  return { payload: payload as T, response };
 }
 
-export function fetchSites() {
-  return requestJson<{ sites: SiteRecord[] }>('/sites');
+export function fetchSites(options?: { fresh?: boolean }) {
+  return requestJson<{ sites: SiteRecord[] }>('/sites', freshInit(options?.fresh));
+}
+
+export function fetchTransferTargets() {
+  return requestJson<{ sites: { id: string; name: string; type: SiteType }[] }>('/sites/transfer-targets');
 }
 
 export function createSite(input: { name: string; type: SiteType; address?: string; managerUserId?: string }) {
@@ -294,13 +371,13 @@ export function deletePartner(id: string) {
   return requestJson<{ ok: true }>(`/partners/${id}`, { method: 'DELETE' });
 }
 
-export function fetchProducts(filters?: { groupId?: string; status?: ProductStatus; q?: string }) {
+export function fetchProducts(filters?: { groupId?: string; status?: ProductStatus; q?: string }, options?: { fresh?: boolean }) {
   const params = new URLSearchParams();
   if (filters?.groupId) params.set('groupId', filters.groupId);
   if (filters?.status) params.set('status', filters.status);
   if (filters?.q) params.set('q', filters.q);
   const query = params.toString();
-  return requestJson<{ products: ProductRecord[] }>(`/products${query ? `?${query}` : ''}`);
+  return requestJson<{ products: ProductRecord[] }>(`/products${query ? `?${query}` : ''}`, freshInit(options?.fresh));
 }
 
 export function createProduct(input: ProductWriteInput) {
@@ -349,8 +426,11 @@ export type DocumentListItem = {
   direction: StockDirection;
   documentNumber: string;
   issuedOn: string;
+  writeOffReason: WriteOffReason | null;
   partner: { id: string; name: string; kind: PartnerKind; taxId: string | null } | null;
   site: { id: string; name: string; type: SiteType; isActive: boolean };
+  /** Receiving site of a transfer. */
+  targetSite: { id: string; name: string; type: SiteType; isActive: boolean } | null;
   lineCount: number;
   captureCount: number;
   createdAt: string;
@@ -360,6 +440,8 @@ export type DocumentListItem = {
 export type DocumentLineRecord = {
   id: string;
   position: number;
+  sourceCaptureId: string | null;
+  printed: { description: string | null; supplierCode: string | null; unit: string | null };
   productId: string | null;
   product: {
     id: string;
@@ -379,8 +461,25 @@ export type DocumentLineRecord = {
   unit: UnitOfMeasure | null;
   batchNumber: string | null;
   expiryDate: string | null;
-  batch: { id: string; batchNumber: string; expiryDate: string | null; quantityRemaining: number } | null;
+  batch: { id: string; batchNumber: string; expiryDate: string | null } | null;
   verified: boolean;
+  /** Only on stocktake documents. Expected is live until posting, then frozen. */
+  stocktake?: {
+    countedQuantity: number | null;
+    expectedQuantity: number | null;
+    varianceQuantity: number | null;
+    varianceValue: number | null;
+    unitCost: number;
+  };
+};
+
+export type StocktakeSummary = {
+  lines: number;
+  counted: number;
+  linesWithVariance: number;
+  shortageValue: number;
+  surplusValue: number;
+  netValue: number;
 };
 
 export type DocumentCaptureRecord = {
@@ -403,37 +502,53 @@ export type DocumentDetail = Omit<DocumentListItem, 'lineCount' | 'captureCount'
   };
   lines: DocumentLineRecord[];
   captures: DocumentCaptureRecord[];
+  stocktake: StocktakeSummary | null;
 };
 
 export type DocumentDetailResponse = {
   document: DocumentDetail;
-  posting: { ok: boolean; errors: string[] };
+  /** `confirmExpired` means posting needs `{ confirmExpired: true }` because of the warnings. */
+  posting: { ok: boolean; errors: string[]; warnings: string[]; confirmExpired: boolean };
 };
 
 export type DocumentWriteInput = {
   type: DocumentType;
   siteId: string;
+  targetSiteId?: string;
   partnerId?: string;
   documentNumber: string;
   issuedOn: string;
   direction?: StockDirection;
   deliveryAddress?: string;
   notes?: string;
+  writeOffReason?: WriteOffReason;
 };
 
-export type DocumentUpdateInput = Partial<Omit<DocumentWriteInput, 'partnerId'>> & {
+export type DocumentUpdateInput = Partial<Omit<DocumentWriteInput, 'partnerId' | 'writeOffReason' | 'targetSiteId'>> & {
   partnerId?: string | null;
+  targetSiteId?: string | null;
+  writeOffReason?: WriteOffReason | null;
 };
 
 export type DocumentLineWriteInput = {
   productId: string;
-  quantity: number;
+  /** Required on every document type except stocktakes. */
+  quantity?: number;
   unitPrice: number;
   discountPercent?: number;
   vatRate?: number;
   batchNumber?: string;
   expiryDate?: string;
+  /** Stocktake only; null means not counted yet. */
+  countedQuantity?: number | null;
 };
+
+/** Stocktakes open on their count sheet, sales on their receipt; every other document in the document editor. */
+export function documentPath(document: { id: string; type: DocumentType }) {
+  if (document.type === 'STOCKTAKE') return `/app/stocktake/${document.id}`;
+  if (document.type === 'SALE') return `/app/sales/${document.id}`;
+  return `/app/invoices/${document.id}`;
+}
 
 export function fetchDocuments(filters?: { status?: DocumentStatus; siteId?: string; type?: DocumentType }) {
   const params = new URLSearchParams();
@@ -475,12 +590,45 @@ export function submitDocument(id: string) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/submit-for-review`, { method: 'POST' });
 }
 
-export function postDocument(id: string) {
-  return requestJson<DocumentDetailResponse>(`/documents/${id}/post`, { method: 'POST' });
+export function postDocument(id: string, options: { confirmExpired?: boolean } = {}) {
+  return requestJson<DocumentDetailResponse>(`/documents/${id}/post`, {
+    method: 'POST',
+    body: JSON.stringify(options),
+  });
+}
+
+export function fillStocktake(id: string) {
+  return requestJson<DocumentDetailResponse>(`/documents/${id}/stocktake/fill`, { method: 'POST' });
+}
+
+export function setStocktakeCounts(id: string, counts: { lineId: string; countedQuantity: number | null }[]) {
+  return requestJson<DocumentDetailResponse>(`/documents/${id}/stocktake/counts`, {
+    method: 'PATCH',
+    body: JSON.stringify({ counts }),
+  });
 }
 
 export function cancelDocument(id: string) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/cancel`, { method: 'POST' });
+}
+
+/** Creates the draft and stores the photo in one request; repeating it with the same clientRequestId returns the same document. */
+export function scanDocument(input: {
+  clientRequestId: string;
+  siteId: string;
+  type: PaperDocumentType;
+  issuedOn: string;
+  capturedAt: string;
+  file: File;
+}) {
+  const body = new FormData();
+  body.append('clientRequestId', input.clientRequestId);
+  body.append('siteId', input.siteId);
+  body.append('type', input.type);
+  body.append('issuedOn', input.issuedOn);
+  body.append('capturedAt', input.capturedAt);
+  body.append('file', input.file);
+  return requestJson<DocumentDetailResponse>('/documents/scan', { method: 'POST', body });
 }
 
 export function uploadDocumentCapture(id: string, file: File) {
@@ -495,6 +643,470 @@ export function fetchCaptureUrl(id: string, captureId: string) {
 
 export function captureFileUrl(documentId: string, captureId: string) {
   return `/documents/${documentId}/captures/${captureId}/file`;
+}
+
+export type StockLevelStatus = 'OUT' | 'LOW' | 'OK';
+
+export type StockLevel = {
+  productId: string;
+  name: string;
+  code: string;
+  unit: UnitOfMeasure;
+  productStatus: ProductStatus;
+  group: { id: string; name: string } | null;
+  barcodes: string[];
+  minStock: number;
+  maxStock: number | null;
+  batchTracking: boolean;
+  purchasePrice: number;
+  /** Shelf price per unit, VAT included. */
+  sellingPrice: number;
+  vatRate: number;
+  /** Weighted-average cost per unit at this site. */
+  avgCost: number | null;
+  /** On-hand value at cost (batches at their own cost). */
+  value: number;
+  onHand: number;
+  status: StockLevelStatus;
+  /** Quantity to order to get back to max (or 2× min); null when not below min. */
+  suggestedOrder: number | null;
+  lastMovementAt: string | null;
+  /** Batches with stock left at this site, earliest expiry first. */
+  batches: StockBatch[];
+};
+
+export type StockBatch = {
+  batchId: string;
+  batchNumber: string;
+  expiryDate: string | null;
+  onHand: number;
+  unitCost: number;
+  value: number;
+};
+
+export async function fetchStock(siteId: string) {
+  const { payload, response } = await requestWithResponse<{ siteId: string; items: StockLevel[] }>(`/stock?siteId=${encodeURIComponent(siteId)}`);
+  return { ...payload, servedAt: servedAt(response) };
+}
+
+export type StockMovementRecord = {
+  id: string;
+  occurredAt: string;
+  direction: StockDirection;
+  quantity: number;
+  unitCost: number | null;
+  value: number | null;
+  /** Running on-hand after this movement (of the filtered batch, when filtering). */
+  balance: number;
+  batch: { id: string; batchNumber: string; expiryDate: string | null } | null;
+  document: {
+    id: string;
+    type: DocumentType;
+    number: string;
+    writeOffReason: WriteOffReason | null;
+    /** A void of a sale (stock coming back). */
+    reversal: boolean;
+    partner: { id: string; name: string } | null;
+    counterpartSite: { id: string; name: string } | null;
+  } | null;
+};
+
+export type StockMovementsResponse = {
+  siteId: string;
+  product: { id: string; name: string; code: string; unit: UnitOfMeasure; batchTracking: boolean; status: ProductStatus };
+  onHand: number;
+  batches: { batchId: string; batchNumber: string; expiryDate: string | null; onHand: number }[];
+  movements: StockMovementRecord[];
+  truncated: boolean;
+};
+
+export function fetchMovements(siteId: string, productId: string, batchId?: string) {
+  const params = new URLSearchParams({ siteId, productId });
+  if (batchId) params.set('batchId', batchId);
+  return requestJson<StockMovementsResponse>(`/stock/movements?${params}`);
+}
+
+export type ReorderLine = {
+  productId: string;
+  name: string;
+  code: string;
+  unit: UnitOfMeasure;
+  supplierCode: string | null;
+  onHand: number;
+  minStock: number;
+  maxStock: number | null;
+  suggestedQty: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+export type ReorderSupplier = {
+  partner: { id: string; name: string; phone: string | null; email: string | null; taxId: string | null } | null;
+  lines: ReorderLine[];
+  total: number;
+};
+
+export function fetchReorder(siteId: string) {
+  return requestJson<{ siteId: string; suppliers: ReorderSupplier[] }>(
+    `/stock/reorder?siteId=${encodeURIComponent(siteId)}`,
+  );
+}
+
+export type SaleItemInput = {
+  productId: string;
+  quantity: number;
+  /** Manual batch override; omit for FEFO. */
+  batchId?: string;
+  /** Omit to sell at the catalog price (only managers may change it). */
+  unitPrice?: number;
+};
+
+export type SaleInput = {
+  siteId: string;
+  paymentMethod: PaymentMethod;
+  items: SaleItemInput[];
+  clientRequestId: string;
+  confirmExpired?: boolean;
+};
+
+export type SaleLineRecord = {
+  id: string;
+  product: { id: string; name: string; code: string; unit: UnitOfMeasure } | null;
+  batch: { id: string; batchNumber: string; expiryDate: string | null } | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  vatRate: number;
+  /** Managers only. */
+  cost?: number;
+  /** Managers only: what a dish line took from stock through its recipe. */
+  issued?: { productId: string; name: string; unit: UnitOfMeasure; batchNumber: string | null; quantity: number }[];
+};
+
+export type SaleRecord = {
+  id: string;
+  number: string;
+  kind: 'SALE' | 'VOID';
+  postedAt: string | null;
+  businessDate: string;
+  paymentMethod: PaymentMethod | null;
+  site: { id: string; name: string };
+  cashier: { id: string; name: string } | null;
+  note: string | null;
+  reversalOf: { id: string; number: string; postedAt: string | null } | null;
+  voidedBy: { id: string; number: string; postedAt: string | null; reason: string | null; by: { id: string; name: string } | null } | null;
+  total: number;
+  vat: { rate: number; gross: number; net: number; vat: number }[];
+  cost?: number;
+  profit?: number;
+  canVoid: boolean;
+  lines: SaleLineRecord[];
+};
+
+export type SaleListItem = {
+  id: string;
+  number: string;
+  kind: 'SALE' | 'VOID';
+  postedAt: string;
+  paymentMethod: PaymentMethod | null;
+  total: number;
+  lineCount: number;
+  cashier: { id: string; name: string } | null;
+  note: string | null;
+  reversalOf: { id: string; number: string } | null;
+  voidedBy: { id: string; number: string; postedAt: string | null } | null;
+};
+
+type CostFields = { cost?: number; profit?: number; marginPercent?: number | null; linesWithoutCost?: number };
+
+export type SalesSummary = CostFields & {
+  sales: { count: number; amount: number };
+  voids: { count: number; amount: number };
+  tickets: number;
+  turnover: number;
+  net: number;
+  vat: number;
+  averageTicket: number;
+  payments: Record<PaymentMethod, { count: number; amount: number }>;
+  hours: { hour: number; count: number; amount: number }[];
+};
+
+export type MarginRow = CostFields & {
+  id: string | null;
+  name: string;
+  code: string | null;
+  quantity: number;
+  gross: number;
+  net: number;
+};
+
+export type SalesReport = {
+  siteId: string;
+  from: string;
+  to: string;
+  showsCost: boolean;
+  summary: SalesSummary;
+  topProducts: MarginRow[];
+};
+
+export type MarginsReport = {
+  siteId: string;
+  from: string;
+  to: string;
+  by: 'product' | 'group';
+  totals: Required<CostFields> & { gross: number; net: number };
+  rows: MarginRow[];
+};
+
+export function createSale(input: SaleInput) {
+  return requestJson<{ sale: SaleRecord }>('/sales', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function fetchSales(siteId: string, date: string) {
+  return requestJson<{ siteId: string; date: string; sales: SaleListItem[] }>(
+    `/sales?${new URLSearchParams({ siteId, date })}`,
+  );
+}
+
+export function fetchSale(id: string) {
+  return requestJson<{ sale: SaleRecord }>(`/sales/${id}`);
+}
+
+export function voidSale(id: string, reason?: string) {
+  return requestJson<{ sale: SaleRecord }>(`/sales/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) });
+}
+
+export function fetchSalesReport(siteId: string, from: string, to: string) {
+  return requestJson<SalesReport>(`/sales/report?${new URLSearchParams({ siteId, from, to })}`);
+}
+
+export function fetchMargins(siteId: string, from: string, to: string, by: 'product' | 'group') {
+  return requestJson<MarginsReport>(`/sales/margins?${new URLSearchParams({ siteId, from, to, by })}`);
+}
+
+export type RecipeDish = {
+  id: string;
+  name: string;
+  code: string;
+  unit: UnitOfMeasure;
+  status: ProductStatus;
+  sellingPrice: number;
+  vatRate: number;
+  group: { id: string; name: string } | null;
+};
+
+export type RecipeCostingRecord = {
+  lines: { gross: number; perPortion: number; costed: boolean; cost: number }[];
+  costPerPortion: number;
+  missingCosts: number;
+  netPrice: number;
+  profit: number;
+  marginPercent: number | null;
+  foodCostPercent: number | null;
+  suggestedPrice: number;
+};
+
+export type RecipeListItem = {
+  dish: RecipeDish;
+  yieldPortions: number;
+  markupPercent: number;
+  ingredientCount: number;
+  costPerPortion: number;
+  missingCosts: number;
+  profit: number;
+  marginPercent: number | null;
+  foodCostPercent: number | null;
+  suggestedPrice: number;
+  updatedAt: string;
+};
+
+export type RecipeIngredientRecord = {
+  productId: string;
+  name: string;
+  code: string;
+  unit: UnitOfMeasure;
+  status: ProductStatus;
+  /** Net quantity for the whole yield, in the ingredient's unit. */
+  quantity: number;
+  wastagePercent: number;
+  gross: number;
+  unitCost: number;
+  onHand: number;
+};
+
+export type RecipeCard = {
+  dish: RecipeDish;
+  usedAsIngredient: boolean;
+  recipe: { yieldPortions: number; markupPercent: number; notes: string | null; updatedAt: string } | null;
+  ingredients: RecipeIngredientRecord[];
+  costing: RecipeCostingRecord | null;
+};
+
+export type RecipeWriteInput = {
+  yieldPortions: number;
+  markupPercent: number;
+  notes?: string | null;
+  ingredients: { productId: string; quantity: number; wastagePercent: number }[];
+};
+
+export type MenuDish = RecipeDish & {
+  barcodes: string[];
+  /** Gross quantity of each ingredient one portion takes. */
+  ingredients: { productId: string; perPortion: number }[];
+  portionsAvailable: number;
+};
+
+export function fetchRecipes(siteId: string) {
+  return requestJson<{ siteId: string; recipes: RecipeListItem[] }>(`/recipes?${new URLSearchParams({ siteId })}`);
+}
+
+export function fetchRecipe(siteId: string, productId: string) {
+  return requestJson<RecipeCard>(`/recipes/${productId}?${new URLSearchParams({ siteId })}`);
+}
+
+export function saveRecipe(productId: string, input: RecipeWriteInput) {
+  return requestJson<{ productId: string }>(`/recipes/${productId}`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function deleteRecipe(productId: string) {
+  return requestJson<{ productId: string }>(`/recipes/${productId}`, { method: 'DELETE' });
+}
+
+export function fetchMenu(siteId: string) {
+  return requestJson<{ siteId: string; dishes: MenuDish[] }>(`/recipes/menu?${new URLSearchParams({ siteId })}`);
+}
+
+export type ReportParams = Record<string, string | number | boolean | undefined>;
+
+export type ExportProfileRecord = {
+  id: string;
+  reportKind: ReportKind;
+  name: string;
+  columns: ExportProfileColumn[];
+  delimiter: ExportDelimiter;
+  decimalSeparator: ExportDecimalSeparator;
+  dateFormat: ExportDateFormat;
+  encoding: ExportEncoding;
+  includeHeader: boolean;
+  updatedAt: string;
+};
+
+export type ExportProfileInput = Omit<ExportProfileRecord, 'id' | 'updatedAt'>;
+
+export type ArchivePreview = {
+  from: string;
+  to: string;
+  documents: number;
+  files: number;
+  /** Paper documents in the period entered by hand, with nothing to archive. */
+  withoutScans: number;
+  sample: string[];
+};
+
+function queryString(params: ReportParams) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '' || value === false) continue;
+    search.set(key, String(value));
+  }
+  return search.toString();
+}
+
+export function fetchReport(kind: ReportKind, params: ReportParams) {
+  return requestJson<ReportResult>(`/reports/${kind}?${queryString(params)}`);
+}
+
+export function reportExportPath(kind: ReportKind, params: ReportParams & { format: 'csv' | 'xlsx'; profileId?: string }) {
+  return `/reports/${kind}/export?${queryString(params)}`;
+}
+
+export function fetchArchivePreview(params: ReportParams) {
+  return requestJson<ArchivePreview>(`/reports/archive/preview?${queryString(params)}`);
+}
+
+export function archivePath(params: ReportParams) {
+  return `/reports/archive?${queryString(params)}`;
+}
+
+export function fetchExportProfiles(reportKind?: ReportKind) {
+  return requestJson<ExportProfileRecord[]>(`/export-profiles?${queryString({ reportKind })}`);
+}
+
+export function createExportProfile(input: ExportProfileInput) {
+  return requestJson<ExportProfileRecord>('/export-profiles', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function updateExportProfile(id: string, input: ExportProfileInput) {
+  return requestJson<ExportProfileRecord>(`/export-profiles/${id}`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function deleteExportProfile(id: string) {
+  return requestJson<{ ok: true }>(`/export-profiles/${id}`, { method: 'DELETE' });
+}
+
+export function fetchVatSettings() {
+  return requestJson<VatSettingsRecord>('/vat/settings');
+}
+
+export function saveVatSettings(input: VatSettingsInput) {
+  return requestJson<VatSettingsRecord>('/vat/settings', { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function fetchVatPeriod(period: string) {
+  return requestJson<VatPeriodView>(`/vat/periods/${period}`);
+}
+
+export function saveVatReturnInputs(period: string, input: VatReturnInputs) {
+  return requestJson<VatPeriodView>(`/vat/periods/${period}/inputs`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function setVatDocumentTreatment(id: string, input: { vatCredit?: VatCredit | null; vatPeriod?: string | null }) {
+  return requestJson<{ ok: true }>(`/vat/documents/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export function saveVatEntry(id: string | null, input: VatEntryInput) {
+  return requestJson<VatEntryRecord>(id ? `/vat/entries/${id}` : '/vat/entries', { method: id ? 'PUT' : 'POST', body: JSON.stringify(input) });
+}
+
+export function deleteVatEntry(id: string) {
+  return requestJson<{ ok: true }>(`/vat/entries/${id}`, { method: 'DELETE' });
+}
+
+export function generateVatFiling(period: string) {
+  return requestJson<ComplianceFilingRecord>(`/vat/periods/${period}/filings`, { method: 'POST' });
+}
+
+export function markVatFilingSubmitted(id: string, input: { submissionRef: string; submittedAt?: string }) {
+  return requestJson<ComplianceFilingRecord>(`/vat/filings/${id}/submitted`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function vatFilingDownloadPath(id: string) {
+  return `/vat/filings/${id}/download`;
+}
+
+export function vatExportPath(period: string, ledger: 'purchases' | 'sales' | 'return', lang: string) {
+  return `/vat/periods/${period}/export?${queryString({ ledger, lang })}`;
+}
+
+/** Fetches a file with the session (refreshing it once on 401) and hands it to the browser as a download. */
+export async function downloadFile(path: string, fallbackName: string) {
+  const send = () => fetch(path, { credentials: 'include' });
+  let response = await send();
+  if (response.status === 401 && (await refreshSession())) response = await send();
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new ApiError(errorMessage(payload, 'The download failed. Please try again.'), response.status, null, []);
+  }
+  const blob = await response.blob();
+  const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function retryDocumentExtraction(id: string, captureId: string) {

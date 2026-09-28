@@ -70,6 +70,13 @@ export class UpdateProductDto {
   @Min(0)
   minStock?: number;
 
+  /** null clears it (suggestions then order up to twice the minimum). */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value === undefined || value === null ? value : Number(value)))
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  maxStock?: number | null;
+
   @IsOptional()
   @IsBoolean()
   batchTracking?: boolean;

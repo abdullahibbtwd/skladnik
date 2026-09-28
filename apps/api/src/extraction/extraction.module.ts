@@ -4,10 +4,16 @@ import { StorageModule } from '../storage/storage.module';
 import { ExtractionApplyService } from './extraction-apply.service';
 import { ExtractionProcessor } from './extraction.processor';
 import { ExtractorService } from './extractor.service';
-import { OCR_QUEUE } from './ocr.constants';
+import { OCR_JOB_OPTIONS, OCR_QUEUE } from './ocr.constants';
 
 @Module({
-  imports: [StorageModule, BullModule.registerQueue({ name: OCR_QUEUE })],
+  imports: [
+    StorageModule,
+    BullModule.registerQueue({
+      name: OCR_QUEUE,
+      defaultJobOptions: OCR_JOB_OPTIONS,
+    }),
+  ],
   providers: [ExtractorService, ExtractionApplyService, ExtractionProcessor],
   exports: [BullModule, ExtractorService],
 })

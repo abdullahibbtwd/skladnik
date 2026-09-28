@@ -16,8 +16,11 @@ import {
   useProductGroupsQuery,
   useProductsQuery,
   useRemoveSupplierCode,
+  useStockQuery,
   useUpdateProduct,
 } from '../../lib/workspace-session';
+import { cn } from '../../lib/cn';
+import { useDashboard } from './dashboard-context';
 import { flattenProductGroups, type ProductRecord } from '../../lib/workspace-api';
 import { FieldError, FieldLabel, textFieldClass } from '../PasswordField';
 import { Select } from '../ui/Select';
@@ -47,6 +50,7 @@ type ProductForm = {
   purchasePrice: string;
   sellingPrice: string;
   minStock: string;
+  maxStock: string;
   batchTracking: 'yes' | 'no';
   status: ProductStatus;
   barcodes: string;
@@ -62,6 +66,7 @@ const emptyForm: ProductForm = {
   purchasePrice: '0',
   sellingPrice: '0',
   minStock: '0',
+  maxStock: '',
   batchTracking: 'no',
   status: 'ACTIVE',
   barcodes: '',
@@ -75,8 +80,15 @@ function parseBarcodes(value: string) {
 }
 
 export const InventoryPanel: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const role = useAuthRole();
+  const { siteId } = useDashboard();
+  const stockQuery = useStockQuery(siteId);
+  const onHandById = useMemo(
+    () => new Map((stockQuery.data?.items ?? []).map((item) => [item.productId, item])),
+    [stockQuery.data],
+  );
+  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
   const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
   const groupsQuery = useProductGroupsQuery();
   const partnersQuery = usePartnersQuery();
@@ -134,6 +146,7 @@ export const InventoryPanel: React.FC = () => {
       purchasePrice: String(product.purchasePrice),
       sellingPrice: String(product.sellingPrice),
       minStock: String(product.minStock),
+      maxStock: product.maxStock === null ? '' : String(product.maxStock),
       batchTracking: product.batchTracking ? 'yes' : 'no',
       status: product.status,
       barcodes: product.barcodes.map((row) => row.barcode).join(', '),
@@ -155,6 +168,7 @@ export const InventoryPanel: React.FC = () => {
     purchasePrice: Number(form.purchasePrice),
     sellingPrice: Number(form.sellingPrice),
     minStock: Number(form.minStock),
+    maxStock: form.maxStock.trim() === '' ? null : Number(form.maxStock),
     batchTracking: form.batchTracking === 'yes',
     status: form.status,
     barcodes: parseBarcodes(form.barcodes),
@@ -270,10 +284,11 @@ export const InventoryPanel: React.FC = () => {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[44rem] text-left">
+            <table className="w-full min-w-[50rem] text-left">
               <thead>
                 <tr className={tableHeadRowClass()}>
                   <th className="px-5 py-3 font-display font-medium">{t('inventory.product')}</th>
+                  <th className="px-4 py-3 text-right font-display font-medium whitespace-nowrap">{t('stock.onHand')}</th>
                   <th className="px-4 py-3 font-display font-medium">{t('inventory.group')}</th>
                   <th className="px-4 py-3 font-display font-medium">{t('inventory.unit')}</th>
                   <th className="px-4 py-3 font-display font-medium">{t('inventory.vat')}</th>
@@ -291,6 +306,21 @@ export const InventoryPanel: React.FC = () => {
                         {product.code}
                         {product.barcodes[0] ? ` · ${product.barcodes[0].barcode}` : ''}
                       </p>
+                    </td>
+                    <td className="px-4 py-3.5 text-right font-mono text-[0.82rem] tabular-nums">
+                      {(() => {
+                        const level = onHandById.get(product.id);
+                        if (!level) return <span className="text-slate-400">{!stockQuery.data ? (stockQuery.isLoading ? '…' : '—') : '0'}</span>;
+                        return (
+                          <span
+                            className={cn(
+                              level.status === 'OUT' ? 'text-ops-danger' : level.status === 'LOW' ? 'text-ops-warn' : 'text-ops-ink',
+                            )}
+                          >
+                            {qtyFormat.format(level.onHand)}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{product.group?.name ?? '—'}</td>
                     <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">
@@ -458,6 +488,19 @@ export const InventoryPanel: React.FC = () => {
                 step="0.001"
                 value={form.minStock}
                 onChange={(event) => setForm((prev) => ({ ...prev, minStock: event.target.value }))}
+                className={`${textFieldClass} pl-3`}
+              />
+            </div>
+            <div>
+              <FieldLabel htmlFor="product-max">{t('inventory.maxStock')}</FieldLabel>
+              <input
+                id="product-max"
+                type="number"
+                min="0"
+                step="0.001"
+                value={form.maxStock}
+                placeholder={t('inventory.maxStockPlaceholder')}
+                onChange={(event) => setForm((prev) => ({ ...prev, maxStock: event.target.value }))}
                 className={`${textFieldClass} pl-3`}
               />
             </div>

@@ -68,15 +68,25 @@ export function MetricCard({
   hint,
   icon: Icon,
   iconColor = 'text-ops-accent',
+  onClick,
 }: {
   label: string;
   value: string;
   hint: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   iconColor?: string;
+  onClick?: () => void;
 }) {
+  const Tag = onClick ? 'button' : 'article';
   return (
-    <article className={cn(glassClass, 'group p-4 transition-all duration-200 hover:border-ops-accent/25 hover:shadow-[0_12px_28px_-12px_rgba(79,70,229,0.2)] sm:p-5')}>
+    <Tag
+      {...(onClick ? { type: 'button' as const, onClick } : {})}
+      className={cn(
+        glassClass,
+        'group p-4 text-left transition-all duration-200 hover:border-ops-accent/25 hover:shadow-[0_12px_28px_-12px_rgba(79,70,229,0.2)] sm:p-5',
+        onClick && 'cursor-pointer active:scale-[0.98]',
+      )}
+    >
       <SpecularRim />
       <div className="flex items-center justify-between">
         <p className="font-display text-[0.72rem] font-medium tracking-wider text-slate-500 uppercase">{label}</p>
@@ -86,7 +96,7 @@ export function MetricCard({
       </div>
       <p className="mt-3 font-display text-[1.65rem] font-semibold tracking-tight text-ops-ink tabular-nums sm:text-[1.85rem]">{value}</p>
       <p className="mt-1.5 font-sans text-[0.74rem] text-slate-500">{hint}</p>
-    </article>
+    </Tag>
   );
 }
 
@@ -126,17 +136,20 @@ export function GhostButton({
   children,
   onClick,
   danger = false,
+  disabled = false,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={cn(
-        'rounded-lg border px-2.5 py-1 font-display text-[0.72rem] font-medium transition-all active:scale-95',
+        'shrink-0 rounded-lg border px-2.5 py-1 font-display text-[0.72rem] font-medium transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-50',
         danger
           ? 'border-ops-danger/20 bg-ops-danger/5 text-ops-danger hover:bg-ops-danger/10'
           : 'border-slate-200 bg-white text-ops-ink hover:border-ops-accent/30 hover:bg-indigo-50 hover:text-ops-accent',
@@ -195,9 +208,10 @@ export function StatusPill({ status }: { status: string }) {
 }
 
 export function DaysPill({ days }: { days: number }) {
+  const { t } = useTranslation();
   return (
-    <span className={cn('inline-flex rounded-md border px-2 py-0.5 font-mono text-[0.7rem] font-medium', TONE_CLASS[expiryTone(days)])}>
-      {days}d
+    <span className={cn('inline-flex rounded-md border px-2 py-0.5 font-mono text-[0.7rem] font-medium whitespace-nowrap', TONE_CLASS[expiryTone(days)])}>
+      {days < 0 ? t('expiry.expired') : days === 0 ? t('expiry.today') : `${days}d`}
     </span>
   );
 }

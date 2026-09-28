@@ -10,6 +10,8 @@ import {
   type SessionUser,
 } from './auth-api';
 import { applySession, clearSession, useAuthStore } from './auth-store';
+import { clearOfflineSession, saveOfflineUser } from './offline-session';
+import { clearApiCache } from './pwa';
 
 export function appReturnPath(state: unknown): string {
   if (!state || typeof state !== 'object' || !('from' in state)) return '/app';
@@ -22,9 +24,11 @@ const ACCESS_STALE_MS = 5 * 60 * 1000;
 const REFRESH_AHEAD_MS = 12 * 60 * 1000;
 
 function cacheSession(queryClient: QueryClient, user: SessionUser) {
+  clearApiCache();
   void queryClient.cancelQueries({ queryKey: authKeys.me });
   queryClient.setQueryData(authKeys.me, user);
   applySession(user);
+  saveOfflineUser(user);
 }
 
 export function useMeQuery() {
@@ -39,8 +43,13 @@ export function useMeQuery() {
   if (query.isSuccess) {
     const current = useAuthStore.getState().user;
     if (query.data !== current) {
-      if (query.data) applySession(query.data);
-      else clearSession();
+      if (query.data) {
+        applySession(query.data);
+        saveOfflineUser(query.data);
+      } else {
+        clearSession();
+        clearOfflineSession();
+      }
     }
   }
 
@@ -81,7 +90,9 @@ export function useLogout() {
     mutationFn: logoutRequest,
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: authKeys.me });
+      clearApiCache();
       clearSession();
+      clearOfflineSession();
       queryClient.setQueryData(authKeys.me, null);
       navigate('/');
     },

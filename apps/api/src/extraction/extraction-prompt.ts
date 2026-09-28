@@ -7,7 +7,8 @@ RULES:
 4. Preserve unit strings exactly as printed (e.g. "бр.", "пак", "кг", "стек", "кашон") — do not translate or normalize them.
 5. If a document spans multiple pages, only extract what is visible in THIS photo — do not reference other pages.
 6. Numbers: extract numeric values only, no currency symbols, using "." as the decimal separator regardless of how it's printed.
-7. Return ONLY valid JSON matching the schema below. No explanation, no markdown code fences, no extra text before or after the JSON.
+7. Dates (issuedOn, ocrExpiryDate) must be YYYY-MM-DD. Convert printed Bulgarian dates like 15.09.2026г. to 2026-09-15. documentNumber is only the printed № — do not append the date.
+8. Return ONLY valid JSON matching the schema below. No explanation, no markdown code fences, no extra text before or after the JSON.
 
 SCHEMA:
 {

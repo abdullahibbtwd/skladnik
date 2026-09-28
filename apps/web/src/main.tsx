@@ -5,9 +5,13 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './i18n';
 import { queryClient } from './lib/query-client';
+import { registerServiceWorker } from './lib/pwa';
 import { Toaster } from './components/ui/Toaster';
 import { DialogHost } from './components/ui/Dialog';
+import { InstallPrompt } from './components/InstallPrompt';
 import './index.css';
+
+registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -16,6 +20,7 @@ createRoot(document.getElementById('root')!).render(
         <App />
         <Toaster />
         <DialogHost />
+        <InstallPrompt />
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

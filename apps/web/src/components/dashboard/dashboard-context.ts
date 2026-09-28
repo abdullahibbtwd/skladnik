@@ -1,12 +1,14 @@
 import { createContext, useContext } from 'react';
-import type { DashboardState } from '../../lib/dashboard-data';
+import type { DashboardState, StockLine } from '../../lib/dashboard-data';
 
 export type DashboardContextValue = {
   siteId: string;
   setSiteId: (id: string) => void;
   data: DashboardState;
   onScan: () => void;
-  writeOff: (sku: string, batch: string) => void | Promise<void>;
+  startDocument: (type: 'RECEIPT' | 'PROTOCOL') => void;
+  /** Opens a write-off draft prefilled with the whole remaining batch. */
+  writeOff: (line: StockLine) => void;
   markReviewed: (id: string) => void;
 };
 

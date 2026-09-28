@@ -1,25 +1,38 @@
-import type { DocumentStatus, DocumentType } from '@skladnik/shared';
-import type { DocumentListItem } from './workspace-api';
+import type { DocumentStatus, DocumentType, UnitOfMeasure, WriteOffReason } from '@skladnik/shared';
+import i18n from '../i18n';
+import type { DocumentListItem, StockLevel } from './workspace-api';
 
+/** One batch with stock left at the active site. */
 export type StockLine = {
+  productId: string;
   sku: string;
   name: string;
+  unit: UnitOfMeasure;
+  batchId: string;
   batch: string;
+  expiryDate: string;
   qty: number;
-  minStock: number;
   unitPrice: number;
   daysLeft: number;
-  invoice: string;
-  siteId: string;
+};
+
+export type LowStockLine = {
+  productId: string;
+  name: string;
+  qty: number;
+  minStock: number;
 };
 
 export type StockOperation = {
   id: string;
   type: DocumentType;
+  writeOffReason: WriteOffReason | null;
   document: string;
-  time: string;
+  date: { today: boolean; label: string };
   status: DocumentStatus;
 };
+
+export type Notice = { text: string; to?: string };
 
 export type PendingInvoice = {
   id: string;
@@ -29,8 +42,10 @@ export type PendingInvoice = {
   reason: string;
 };
 
+/** Bulgaria has used the euro since 1 Jan 2026; "12,50 €" in Bulgarian, "€12.50" in English. */
 export function formatEuro(value: number) {
-  return new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' }).format(value);
+  const locale = i18n.language?.startsWith('bg') ? 'bg-BG' : 'en-IE';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(value);
 }
 
 export function expiryTone(days: number) {
@@ -41,18 +56,28 @@ export function expiryTone(days: number) {
   return 'safe' as const;
 }
 
-function formatOpTime(iso: string) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  const sameDay = date.toDateString() === new Date().toDateString();
-  return sameDay
-    ? date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+/** Whole days from `today` (local) to a YYYY-MM-DD date; negative once expired. */
+export function daysUntil(isoDate: string, today = new Date()) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const start = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((Date.UTC(year, month - 1, day) - start) / 86_400_000);
 }
 
-const EMPTY_EXPIRING = { 3: 0, 7: 0, 14: 0, 30: 0 };
+/** `issuedOn` is a calendar date with no time of day, so this never shows a clock time. */
+function formatOpDate(isoDate: string, today: Date) {
+  const day = isoDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { today: false, label: '' };
+  if (daysUntil(day, today) === 0) return { today: true, label: '' };
+  return {
+    today: false,
+    label: new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+  };
+}
 
-export function buildDashboardState(documents: DocumentListItem[] = []) {
+export const EXPIRY_WINDOWS = [30, 14, 7, 3] as const;
+
+/** `stock` is undefined until the site's stock has loaded, so screens can show "—" instead of zeros. */
+export function buildDashboardState(documents: DocumentListItem[] = [], stock?: StockLevel[], today = new Date()) {
   const pendingDocs = documents.filter((doc) => doc.status === 'DRAFT' || doc.status === 'REVIEW');
   const operations: StockOperation[] = [...documents]
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
@@ -60,13 +85,44 @@ export function buildDashboardState(documents: DocumentListItem[] = []) {
     .map((doc) => ({
       id: doc.id,
       type: doc.type,
+      writeOffReason: doc.writeOffReason,
       document: doc.documentNumber,
-      time: formatOpTime(doc.issuedOn || doc.createdAt),
+      date: formatOpDate(doc.issuedOn || doc.createdAt, today),
       status: doc.status,
     }));
 
+  const items = stock ?? [];
+  const fefoBoard: StockLine[] = items
+    .flatMap((item) =>
+      item.batches
+        .filter((batch) => batch.expiryDate)
+        .map((batch) => ({
+          productId: item.productId,
+          sku: item.code,
+          name: item.name,
+          unit: item.unit,
+          batchId: batch.batchId,
+          batch: batch.batchNumber,
+          expiryDate: batch.expiryDate!,
+          qty: batch.onHand,
+          unitPrice: batch.unitCost,
+          daysLeft: daysUntil(batch.expiryDate!, today),
+        })),
+    )
+    .sort((a, b) => a.daysLeft - b.daysLeft || a.name.localeCompare(b.name));
+
+  const expiring = Object.fromEntries(
+    EXPIRY_WINDOWS.map((days) => [days, fefoBoard.filter((line) => line.daysLeft <= days).length]),
+  ) as Record<(typeof EXPIRY_WINDOWS)[number], number>;
+
+  const lowStock: LowStockLine[] = items
+    .filter((item) => item.status !== 'OK')
+    .map((item) => ({ productId: item.productId, name: item.name, qty: item.onHand, minStock: item.minStock }));
+
+  const inStock = items.filter((item) => item.onHand > 0);
+
   return {
-    lines: [] as StockLine[],
+    stockReady: stock !== undefined,
     operations,
     pending: pendingDocs.map((doc) => ({
       id: doc.id,
@@ -75,12 +131,14 @@ export function buildDashboardState(documents: DocumentListItem[] = []) {
       total: '',
       reason: doc.status,
     })),
-    stockValue: 0,
-    expiring: EMPTY_EXPIRING,
-    lowStock: [] as StockLine[],
-    fefoBoard: [] as StockLine[],
-    catalogCount: 0,
-    notifications: [] as string[],
+    stockValue: inStock.reduce((sum, item) => sum + item.value, 0),
+    reorderCount: items.filter((item) => item.suggestedOrder !== null).length,
+    inStockCount: inStock.length,
+    expiring,
+    expired: fefoBoard.filter((line) => line.daysLeft < 0).length,
+    lowStock,
+    fefoBoard,
+    notifications: [] as Notice[],
   };
 }
 

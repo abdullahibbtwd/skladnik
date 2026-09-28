@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ExtractionApplyService } from './extraction-apply.service';
 import { ExtractorService } from './extractor.service';
-import { isUnrecoverableVisionError } from './ocr-errors';
+import { isUnrecoverableVisionError, isVisionTransientError } from './ocr-errors';
 import { OCR_QUEUE, type OcrJobData } from './ocr.constants';
 
 async function streamToBuffer(body: Readable) {
@@ -18,7 +18,14 @@ async function streamToBuffer(body: Readable) {
   return Buffer.concat(chunks);
 }
 
-@Processor(OCR_QUEUE)
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+// The free GLM vision tier rate-limits parallel requests (1302), so extra
+// workers only turn waiting into failures. The lock is renewed while a job
+// runs; its duration only bounds how long a job orphaned by a restart waits.
+@Processor(OCR_QUEUE, { concurrency: 1, lockDuration: 60_000, maxStalledCount: 2 })
 export class ExtractionProcessor extends WorkerHost {
   private readonly logger = new Logger(ExtractionProcessor.name);
 
@@ -32,6 +39,7 @@ export class ExtractionProcessor extends WorkerHost {
   }
 
   async process(job: Job<OcrJobData>) {
+    const startedAt = Date.now();
     const capture = await this.prisma.documentCapture.findUnique({ where: { id: job.data.captureId } });
     if (!capture) {
       throw new UnrecoverableError('Capture not found');
@@ -48,24 +56,47 @@ export class ExtractionProcessor extends WorkerHost {
       }
       const object = await this.storage.getObject(capture.imageKey);
       const image = await streamToBuffer(object.body);
+      const fetchedAt = Date.now();
       const extracted = await this.extractor.extractFromImage(image, object.contentType);
+      const extractedAt = Date.now();
       if (!extracted.ok) {
         throw new Error(extracted.error);
       }
-      await this.apply.apply(capture.id, extracted.data);
+      try {
+        await this.apply.apply(capture.id, extracted.data);
+      } catch (error) {
+        throw new UnrecoverableError(errorMessage(error, 'Saving OCR result failed'));
+      }
+      this.logger.log(
+        `OCR timings for capture ${capture.id} (${extracted.model}, ${extracted.data.lines.length} lines): ` +
+          `since upload ${startedAt - job.timestamp}ms, fetch ${fetchedAt - startedAt}ms, ` +
+          `vision ${extractedAt - fetchedAt}ms, apply ${Date.now() - extractedAt}ms`,
+      );
       return { ok: true, lines: extracted.data.lines.length, confidence: extracted.data.confidence };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Extraction failed';
+      const message = errorMessage(error, 'Extraction failed');
+      const attempts = job.opts.attempts ?? 1;
+      const lastAttempt = job.attemptsMade + 1 >= attempts;
+      const retryable =
+        !(error instanceof UnrecoverableError) && !isUnrecoverableVisionError(message) && isVisionTransientError(message);
+      const waiting = retryable && !lastAttempt;
+
       await this.prisma.documentCapture.update({
         where: { id: capture.id },
-        data: {
-          extractionStatus: 'FAILED',
-          extractionError: message,
-          ocrRaw: { extractionFailed: true, error: message },
-        },
+        data: waiting
+          ? { extractionStatus: 'QUEUED', extractionError: null }
+          : {
+              extractionStatus: 'FAILED',
+              extractionError: message,
+              ocrRaw: { extractionFailed: true, error: message },
+            },
       });
-      this.logger.warn(`OCR failed for capture ${capture.id}: ${message}`);
-      if (isUnrecoverableVisionError(message) || error instanceof UnrecoverableError) {
+      this.logger.warn(
+        waiting
+          ? `OCR waiting to retry capture ${capture.id} (attempt ${job.attemptsMade + 1}/${attempts}): ${message}`
+          : `OCR failed for capture ${capture.id}: ${message}`,
+      );
+      if (!retryable) {
         throw new UnrecoverableError(message);
       }
       throw error;

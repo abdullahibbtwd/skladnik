@@ -15,7 +15,8 @@
     "auth:prove": "node scripts/prove-isolation.mjs",
     "documents:prove": "node scripts/prove-document-post.mjs",
     "test": "node scripts/run-posting-unit.cjs",
-    "extract:image": "node scripts/extract-image.cjs"
+    "extract:image": "node scripts/extract-image.cjs",
+    "scans:cleanup": "node scripts/cleanup-empty-scans.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.893.0",

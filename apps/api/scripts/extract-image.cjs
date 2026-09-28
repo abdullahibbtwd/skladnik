@@ -23,7 +23,7 @@ const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'im
 extractDocumentFromImage({
   apiKey,
   baseUrl: process.env.GLM_BASE_URL ?? process.env.ZAI_BASE_URL ?? 'https://api.z.ai/api/paas/v4',
-  model: process.env.GLM_MODEL ?? process.env.ZAI_VISION_MODEL ?? 'glm-5v-turbo',
+  model: process.env.GLM_MODEL ?? process.env.ZAI_VISION_MODEL ?? 'glm-5.3-flash',
   image: readFileSync(file),
   mimeType: mime,
 })

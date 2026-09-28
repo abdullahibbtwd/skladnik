@@ -74,9 +74,19 @@ async function requestMe(): Promise<SessionUser | 'unauthorized'> {
   return mapUser(payload.user);
 }
 
-export async function refreshSession(): Promise<boolean> {
-  const response = await fetch('/auth/refresh', { method: 'POST', credentials: 'include' });
-  return response.ok;
+let refreshing: Promise<boolean> | null = null;
+
+/** Refresh tokens are single-use, so concurrent callers must share one request. */
+export function refreshSession(): Promise<boolean> {
+  refreshing ??= fetch('/auth/refresh', { method: 'POST', credentials: 'include' })
+    .then(
+      (response) => response.ok,
+      () => false,
+    )
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
 }
 
 export async function fetchCurrentUser(): Promise<SessionUser | null> {

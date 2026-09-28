@@ -82,7 +82,7 @@ services:
       GLM_API_KEY: ${GLM_API_KEY:-}
       ZAI_API_KEY: ${ZAI_API_KEY:-}
       GLM_BASE_URL: ${GLM_BASE_URL:-https://api.z.ai/api/paas/v4}
-      GLM_MODEL: ${GLM_MODEL:-glm-5v-turbo}
+      GLM_MODEL: ${GLM_MODEL:-glm-5.3-flash}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-Skladnik <beth.t@example.com>}
     depends_on:

@@ -1,9 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { QueueController } from './queue.controller';
-import { TEST_QUEUE } from './queue.constants';
-import { TestProcessor } from './test.processor';
 
 @Global()
 @Module({
@@ -16,10 +13,7 @@ import { TestProcessor } from './test.processor';
         },
       }),
     }),
-    BullModule.registerQueue({ name: TEST_QUEUE }),
   ],
-  controllers: [QueueController],
-  providers: [TestProcessor],
   exports: [BullModule],
 })
 export class QueueModule {}

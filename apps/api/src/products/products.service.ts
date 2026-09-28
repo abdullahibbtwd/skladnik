@@ -71,6 +71,7 @@ export class ProductsService {
           purchasePrice: dto.purchasePrice,
           sellingPrice: dto.sellingPrice,
           minStock: dto.minStock ?? 0,
+          maxStock: dto.maxStock ?? null,
           batchTracking: dto.batchTracking ?? false,
           status: dto.status === 'ARCHIVED' ? 'ACTIVE' : (dto.status ?? 'ACTIVE'),
           barcodes: {
@@ -102,6 +103,7 @@ export class ProductsService {
     if (dto.purchasePrice !== undefined) data.purchasePrice = dto.purchasePrice;
     if (dto.sellingPrice !== undefined) data.sellingPrice = dto.sellingPrice;
     if (dto.minStock !== undefined) data.minStock = dto.minStock;
+    if (dto.maxStock !== undefined) data.maxStock = dto.maxStock;
     if (dto.batchTracking !== undefined) data.batchTracking = dto.batchTracking;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.groupId !== undefined) {
@@ -269,6 +271,7 @@ export class ProductsService {
       purchasePrice: toNumber(product.purchasePrice),
       sellingPrice: toNumber(product.sellingPrice),
       minStock: toNumber(product.minStock),
+      maxStock: product.maxStock === null ? null : toNumber(product.maxStock),
       batchTracking: product.batchTracking,
       status: product.status as ProductStatus,
       group: product.group,

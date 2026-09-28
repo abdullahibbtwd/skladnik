@@ -11,9 +11,27 @@ import { AuthPage } from './pages/AuthPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { OverviewPanel } from './components/dashboard/OverviewPanel';
 import { InventoryPanel } from './components/dashboard/InventoryPanel';
+import { StockPanel } from './components/dashboard/StockPanel';
+import { WriteOffPanel } from './components/dashboard/WriteOffPanel';
+import { TransferPanel } from './components/dashboard/TransferPanel';
+import { StocktakeListPanel, StocktakeSheetPanel } from './components/dashboard/StocktakePanel';
+import { OpeningStockPanel } from './components/dashboard/OpeningStockPanel';
+import { MovementHistoryPanel } from './components/dashboard/MovementHistoryPanel';
+import { ReorderPanel } from './components/dashboard/ReorderPanel';
 import { InvoicesPanel } from './components/dashboard/InvoicesPanel';
-import { DocumentCreatePanel, DocumentDetailPanel } from './components/dashboard/DocumentEditor';
-import { AuditPanel, ExpiryPanel, PosPanel, SettingsAccountPanel } from './components/dashboard/WorkspacePanels';
+import { DocumentCreatePanel } from './components/dashboard/DocumentEditor';
+import { DocumentDetailPanel } from './components/dashboard/DocumentDetailPanel';
+import { PosPanel } from './components/dashboard/PosPanel';
+import { SalesPanel } from './components/dashboard/SalesPanel';
+import { SaleReceiptPanel } from './components/dashboard/SaleReceiptPanel';
+import { MarginsPanel } from './components/dashboard/MarginsPanel';
+import { RecipeEditorPanel, RecipeNewPanel, RecipesPanel } from './components/dashboard/RecipesPanel';
+import { ReportPanel, ReportsHubPanel } from './components/dashboard/ReportsPanel';
+import { ArchivePanel } from './components/dashboard/ArchivePanel';
+import { VatPanel } from './components/dashboard/VatPanel';
+import { PhotoQueuePanel } from './components/dashboard/PhotoQueuePanel';
+import { ExportLayoutEditorPanel, ExportLayoutsPanel } from './components/dashboard/ExportLayoutsPanel';
+import { AuditPanel, ExpiryPanel, SettingsAccountPanel } from './components/dashboard/WorkspacePanels';
 import { SettingsLayout } from './components/dashboard/SettingsLayout';
 import { SitesSettings } from './components/dashboard/SitesSettings';
 import { UsersSettings } from './components/dashboard/UsersSettings';
@@ -113,9 +131,39 @@ export default function App() {
           <Route path="new" element={<DocumentCreatePanel />} />
           <Route path=":id" element={<DocumentDetailPanel />} />
         </Route>
+        <Route path="stock" element={<StockPanel />} />
+        <Route path="stock/:productId" element={<MovementHistoryPanel />} />
+        <Route path="write-off" element={<WriteOffPanel />} />
+        <Route path="transfer" element={<TransferPanel />} />
+        <Route path="stocktake">
+          <Route index element={<StocktakeListPanel />} />
+          <Route path=":id" element={<StocktakeSheetPanel />} />
+        </Route>
+        <Route path="opening-stock" element={<OpeningStockPanel />} />
+        <Route path="reorder" element={<ReorderPanel />} />
         <Route path="inventory" element={<InventoryPanel />} />
         <Route path="expiry" element={<ExpiryPanel />} />
         <Route path="pos" element={<PosPanel />} />
+        <Route path="sales">
+          <Route index element={<SalesPanel />} />
+          <Route path="margins" element={<MarginsPanel />} />
+          <Route path=":id" element={<SaleReceiptPanel />} />
+        </Route>
+        <Route path="recipes">
+          <Route index element={<RecipesPanel />} />
+          <Route path="new" element={<RecipeNewPanel />} />
+          <Route path=":productId" element={<RecipeEditorPanel />} />
+        </Route>
+        <Route path="reports">
+          <Route index element={<ReportsHubPanel />} />
+          <Route path="archive" element={<ArchivePanel />} />
+          <Route path="layouts" element={<ExportLayoutsPanel />} />
+          <Route path="layouts/new" element={<ExportLayoutEditorPanel />} />
+          <Route path="layouts/:id" element={<ExportLayoutEditorPanel />} />
+          <Route path=":kind" element={<ReportPanel />} />
+        </Route>
+        <Route path="vat" element={<VatPanel />} />
+        <Route path="photo-queue" element={<PhotoQueuePanel />} />
         <Route path="audit" element={<AuditPanel />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<SettingsAccountPanel />} />

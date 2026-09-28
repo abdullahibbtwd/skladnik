@@ -43,6 +43,19 @@ enum DocumentType {
   RECEIPT
   /// Кредитно/дебитно известие
   CREDIT_NOTE
+  /// Вътрешно преместване: OUT at siteId and IN at targetSiteId, posted together
+  TRANSFER
+  /// Инвентаризация: per-line counted vs book quantity; posting writes the variance
+  STOCKTAKE
+  /// Начални наличности
+  OPENING_BALANCE
+  /// Продажба от касата: OUT, posted on creation. A void is a SALE with direction IN and reversalOfId set.
+  SALE
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
 }
 
 enum DocumentStatus {
@@ -55,6 +68,15 @@ enum DocumentStatus {
 enum StockDirection {
   IN
   OUT
+}
+
+/// Set only on PROTOCOL documents that are write-offs (протокол за брак).
+enum WriteOffReason {
+  EXPIRED
+  DAMAGED
+  SPOILED
+  LOST
+  OTHER
 }
 
 enum ProductStatus {
@@ -71,6 +93,7 @@ enum UnitOfMeasure {
   CARTON
   JAR
   OTHER
+  L
 }
 
 enum CaptureExtractionStatus {
@@ -79,6 +102,19 @@ enum CaptureExtractionStatus {
   RUNNING
   SUCCEEDED
   FAILED
+}
+
+/// How a purchase document enters the VAT purchase ledger (§4.7b).
+enum VatCredit {
+  FULL
+  PARTIAL
+  NONE
+  EXCLUDED
+}
+
+enum VatLedger {
+  PURCHASES
+  SALES
 }
 
 /// Top-level tenant. Created in the same transaction as the first Owner user.
@@ -101,8 +137,16 @@ model Company {
   supplierCodes   SupplierProductCode[]
   unitAliases     UnitAlias[]
   stockMovements  StockMovement[]
+  stockCosts      StockCost[]
+  recipes         Recipe[]
+  recipeIngredients RecipeIngredient[]
+  exportProfiles  ExportProfile[]
   activityLogs    ActivityLog[]
   invitations     Invitation[]
+  vatSettings     VatSettings?
+  vatReturnInputs VatReturnInput[]
+  vatLedgerEntries VatLedgerEntry[]
+  complianceFilings ComplianceFiling[]
 }
 
 /// Physical location: store / kitchen / bar / warehouse (§4.1).
@@ -122,7 +166,9 @@ model Site {
   manager         User?            @relation("SiteManager", fields: [managerUserId], references: [id], onDelete: SetNull)
   userSites       UserSite[]
   documents       Document[]
+  transfersIn     Document[]       @relation("TransferTarget")
   stockMovements  StockMovement[]
+  stockCosts      StockCost[]
   invitationSites InvitationSite[]
 
   @@unique([companyId, name])
@@ -145,6 +191,7 @@ model User {
   sites       UserSite[]
   managedSites Site[]      @relation("SiteManager")
   activityLogs ActivityLog[]
+  documentsCreated Document[] @relation("DocumentCreatedBy")
   invitations Invitation[] @relation("InvitedBy")
 
   @@index([companyId])
@@ -231,6 +278,8 @@ model Product {
   purchasePrice  Decimal       @db.Decimal(12, 4)
   sellingPrice   Decimal       @db.Decimal(12, 4)
   minStock       Decimal       @default(0) @db.Decimal(12, 3)
+  /// "Order up to" level for purchase suggestions; null means twice minStock.
+  maxStock       Decimal?      @db.Decimal(12, 3)
   batchTracking  Boolean       @default(false)
   /// PENDING_REVIEW = auto-created from an invoice; bulk-review before treating as master data.
   status         ProductStatus @default(ACTIVE)
@@ -246,6 +295,10 @@ model Product {
   batches        Batch[]
   documentLines  DocumentLine[]
   stockMovements StockMovement[]
+  stockCosts     StockCost[]
+  /// Set when this product is a dish / drink made to order: selling it issues the recipe's ingredients instead.
+  recipe         Recipe?            @relation("RecipeDish")
+  usedInRecipes  RecipeIngredient[] @relation("RecipeIngredientProduct")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -329,15 +382,15 @@ model UnitAlias {
 
 /// Real invoices print batch number + expiry as separate columns per line.
 /// expiryDate is required in application code when Product.batchTracking = true.
+/// Identity only (number + expiry). Quantities live in StockMovement, per site.
 model Batch {
-  id                String    @id @default(uuid())
-  companyId         String
-  productId         String
-  batchNumber       String
-  expiryDate        DateTime? @db.Date
-  quantityRemaining Decimal   @default(0) @db.Decimal(12, 3)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id          String    @id @default(uuid())
+  companyId   String
+  productId   String
+  batchNumber String
+  expiryDate  DateTime? @db.Date
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -365,6 +418,8 @@ model Document {
   id               String         @id @default(uuid())
   companyId        String
   siteId           String
+  /// TRANSFER only: the receiving site. siteId is the sending site.
+  targetSiteId     String?
   partnerId        String?
   type             DocumentType
   status           DocumentStatus @default(DRAFT)
@@ -374,22 +429,44 @@ model Document {
   issuedOn         DateTime       @db.Date
   deliveryAddress  String?
   notes            String?
+  /// Photos on a write-off are evidence and are never sent to OCR.
+  writeOffReason   WriteOffReason?
+  /// SALE only. A void copies the method of the sale it reverses.
+  paymentMethod    PaymentMethod?
+  /// Who created it (the cashier for a sale).
+  createdById      String?
+  /// Set on the document that reverses another (a sale void). One reversal per document.
+  reversalOfId     String?        @unique
+  /// Idempotency key sent by the till, so a retried request can't record the same sale twice.
+  clientRequestId  String?
+  /// Purchase ledger treatment; null = FULL when the document charges VAT, else EXCLUDED.
+  vatCredit        VatCredit?
+  /// VAT period (YYYY-MM) the document is declared in; null = the month of issuedOn.
+  vatPeriod        String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   postedAt         DateTime?
 
   company          Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   site             Site            @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  targetSite       Site?           @relation("TransferTarget", fields: [targetSiteId], references: [id], onDelete: Restrict)
   partner          Partner?        @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  createdBy        User?           @relation("DocumentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  reversalOf       Document?       @relation("DocumentReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy       Document?       @relation("DocumentReversal")
   lines            DocumentLine[]
   captures         DocumentCapture[]
   productsCreated  Product[]       @relation("ProductsCreatedFromDocument")
   stockMovements   StockMovement[]
 
   @@unique([companyId, number])
+  @@unique([companyId, clientRequestId])
+  @@index([companyId, type, postedAt])
+  @@index([siteId, type, postedAt])
   @@index([companyId])
   @@index([companyId, status])
   @@index([siteId])
+  @@index([targetSiteId])
   @@index([partnerId])
 }
 
@@ -400,6 +477,8 @@ model DocumentCapture {
   documentId         String
   pageNumber         Int                      @default(1)
   imageKey           String
+  /// The uploaded file when it isn't the image itself (a PDF split into one capture per page). Shared by its pages.
+  sourceKey          String?
   /// Valid extracted JSON only when extractionStatus = SUCCEEDED.
   ocrRaw             Json?
   extractionStatus   CaptureExtractionStatus  @default(IDLE)
@@ -436,6 +515,10 @@ model DocumentLine {
   vatRate              Decimal        @db.Decimal(5, 2)
   ocrBatchNumber       String?
   ocrExpiryDate        DateTime?      @db.Date
+  /// STOCKTAKE only. null = not counted yet (left unchanged on posting).
+  countedQuantity      Decimal?       @db.Decimal(12, 3)
+  /// STOCKTAKE only: book quantity frozen at posting. quantity then holds |counted − expected|.
+  expectedQuantity     Decimal?       @db.Decimal(12, 3)
   /// Staff checkmark on paper / line-level confirm on the review screen.
   verified             Boolean        @default(false)
   sourceCaptureId      String?
@@ -447,6 +530,7 @@ model DocumentLine {
   product       Product?         @relation(fields: [productId], references: [id], onDelete: Restrict)
   batch         Batch?           @relation(fields: [batchId], references: [id], onDelete: SetNull)
   sourceCapture DocumentCapture? @relation(fields: [sourceCaptureId], references: [id], onDelete: SetNull)
+  movements     StockMovement[]
 
   @@index([documentId])
   @@index([companyId])
@@ -460,22 +544,198 @@ model StockMovement {
   id         String         @id @default(uuid())
   companyId  String
   siteId     String
-  documentId String?
-  productId  String
-  batchId    String?
-  direction  StockDirection
-  quantity   Decimal        @db.Decimal(12, 3)
-  occurredAt DateTime       @default(now())
+  documentId     String?
+  documentLineId String?
+  productId      String
+  batchId        String?
+  direction      StockDirection
+  quantity       Decimal        @db.Decimal(12, 3)
+  /// Cost per unit, excluding VAT. IN: price paid (or the sender's cost for a transfer). OUT: cost issued at.
+  unitCost       Decimal?       @db.Decimal(12, 4)
+  occurredAt     DateTime       @default(now())
+  createdAt      DateTime       @default(now())
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  site     Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  product  Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
-  batch    Batch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site         Site          @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  document     Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentLine DocumentLine? @relation(fields: [documentLineId], references: [id], onDelete: SetNull)
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch        Batch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([siteId, productId])
   @@index([documentId])
+  @@index([documentLineId])
+}
+
+/// Moving weighted-average cost per site and product, updated on every IN posting.
+/// Batch-tracked products are valued per batch instead (from IN movement costs).
+model StockCost {
+  companyId String
+  siteId    String
+  productId String
+  avgCost   Decimal  @db.Decimal(12, 4)
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([siteId, productId])
+  @@index([companyId])
+}
+
+/// Technological card (§4.5): one per dish product. Company-wide; cost is worked out per site.
+model Recipe {
+  id            String   @id @default(uuid())
+  companyId     String
+  productId     String   @unique
+  /// Portions the ingredient list makes (a pot of soup = 20, an espresso = 1).
+  yieldPortions Decimal  @default(1) @db.Decimal(10, 3)
+  /// Markup on the cost per portion used for the suggested price.
+  markupPercent Decimal  @default(200) @db.Decimal(7, 2)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company     Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product     Product            @relation("RecipeDish", fields: [productId], references: [id], onDelete: Cascade)
+  ingredients RecipeIngredient[]
+
+  @@index([companyId])
+}
+
+model RecipeIngredient {
+  id             String  @id @default(uuid())
+  companyId      String
+  recipeId       String
+  productId      String
+  position       Int     @default(0)
+  /// Net quantity in the ingredient's own unit (kg, l, pcs) that ends up in the whole yield.
+  quantity       Decimal @db.Decimal(12, 4)
+  /// Loss while cleaning / cooking, as a share of the gross quantity issued from stock.
+  wastagePercent Decimal @default(0) @db.Decimal(5, 2)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recipe  Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  product Product @relation("RecipeIngredientProduct", fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([recipeId, productId])
+  @@index([companyId])
+  @@index([productId])
+}
+
+/// Saved CSV layout for one report (§4.8): which columns, in what order, under which headers, in which format,
+/// so an export imports straight into the accountant's software.
+model ExportProfile {
+  id               String   @id @default(uuid())
+  companyId        String
+  reportKind       String
+  name             String
+  /// [{ key, header }] in output order.
+  columns          Json
+  delimiter        String   @default(";")
+  decimalSeparator String   @default(",")
+  dateFormat       String   @default("DD.MM.YYYY")
+  encoding         String   @default("UTF8_BOM")
+  includeHeader    Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, reportKind, name])
+  @@index([companyId])
+}
+
+/// Registration details printed into the NRA VAT files (§4.7b).
+model VatSettings {
+  companyId     String   @id
+  /// BG + 9 or 10 digits.
+  vatNumber     String?
+  /// Name in the files (at most 50 characters); defaults to the company name.
+  legalName     String?
+  /// Person submitting the return (EGN or name, field 00-04).
+  declarant     String?
+  /// Branch / separate unit number, 0 when the company has none.
+  branch        Int      @default(0)
+  /// Till sales enter the sales ledger as one report per site per MONTH or per DAY.
+  salesGrouping String   @default("MONTH")
+  /// Coefficient under Art. 73(5) VAT Act, the default for cell 33.
+  coefficient   Decimal  @default(0) @db.Decimal(3, 2)
+  updatedAt     DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+/// Cells of the VAT return the company fills in by hand, per period.
+model VatReturnInput {
+  id          String   @id @default(uuid())
+  companyId   String
+  period      String
+  coefficient Decimal? @db.Decimal(3, 2)
+  cell70      Decimal  @default(0) @db.Decimal(15, 2)
+  cell71      Decimal  @default(0) @db.Decimal(15, 2)
+  cell80      Decimal  @default(0) @db.Decimal(15, 2)
+  cell81      Decimal  @default(0) @db.Decimal(15, 2)
+  cell82      Decimal  @default(0) @db.Decimal(15, 2)
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, period])
+}
+
+/// A ledger row for a document that isn't in Skladnik (rent, utilities, invoices issued elsewhere).
+model VatLedgerEntry {
+  id           String    @id @default(uuid())
+  companyId    String
+  ledger       VatLedger
+  period       String
+  /// NRA document type code (01, 02, 03, 07, 09, 81, …).
+  documentType String
+  number       String
+  issuedOn     DateTime  @db.Date
+  partnerTaxId String?
+  partnerName  String?
+  description  String?
+  /// { "<field code>": amount }, e.g. { "31": 100, "41": 20 } or { "11": 100, "21": 20 }.
+  amounts      Json
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, period, ledger])
+}
+
+/// An archived regulatory submission (VAT return files now, Annex 38 later). Never edited after it is
+/// generated except to record that it was submitted; a correction is a new version.
+model ComplianceFiling {
+  id            String    @id @default(uuid())
+  companyId     String
+  kind          String
+  period        String
+  version       Int
+  /// Hash of the source data, to tell when the books changed after filing.
+  sourceHash    String
+  summary       Json
+  /// Warnings accepted when the files were generated.
+  issues        Json
+  /// [{ name, key, size, sha256 }]
+  files         Json
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime  @default(now())
+  submittedAt   DateTime?
+  submissionRef String?
+  submittedByName String?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, kind, period, version])
+  @@index([companyId, kind, period])
 }
 
 /// Generic mutation log (§4.9).

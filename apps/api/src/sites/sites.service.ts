@@ -32,6 +32,16 @@ export class SitesService {
     return { sites: sites.map((site) => this.serialize(site)) };
   }
 
+  /** Any active site of the company can receive a transfer, including ones the user isn't assigned to. */
+  async transferTargets(user: AuthUser) {
+    const sites = await this.prisma.site.findMany({
+      where: { companyId: user.companyId, isActive: true },
+      select: { id: true, name: true, type: true },
+      orderBy: { name: 'asc' },
+    });
+    return { sites };
+  }
+
   async get(user: AuthUser, id: string) {
     const site = await this.findInCompany(user.companyId, id);
     this.assertCanView(user, site);

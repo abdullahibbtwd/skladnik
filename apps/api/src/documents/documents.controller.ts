@@ -23,6 +23,9 @@ import {
   CreateDocumentDto,
   CreateDocumentLineDto,
   ListDocumentsQueryDto,
+  PostDocumentDto,
+  ScanDocumentDto,
+  StocktakeCountsDto,
   UpdateDocumentDto,
   UpdateDocumentLineDto,
 } from './dto/document.dto';
@@ -30,6 +33,19 @@ import { DocumentsService } from './documents.service';
 import { isImageUpload, isPdfUpload } from './pdf-to-images';
 
 const WRITE_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'] as const;
+
+const captureUpload = () =>
+  FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (_req, file, done) => {
+      if (isPdfUpload(file) || isImageUpload(file)) {
+        done(null, true);
+        return;
+      }
+      done(new BadRequestException('Only photos and PDF files can be attached.'), false);
+    },
+  });
 
 @Controller('documents')
 export class DocumentsController {
@@ -44,6 +60,16 @@ export class DocumentsController {
   @Roles(...WRITE_ROLES)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateDocumentDto) {
     return this.documents.create(user, dto);
+  }
+
+  @Post('scan')
+  @Roles(...WRITE_ROLES)
+  @UseInterceptors(captureUpload())
+  scan(@CurrentUser() user: AuthUser, @Body() dto: ScanDocumentDto, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('multipart field "file" is required');
+    }
+    return this.documents.createFromScan(user, dto, file);
   }
 
   @Get(':id')
@@ -100,8 +126,24 @@ export class DocumentsController {
 
   @Post(':id/post')
   @Roles(...WRITE_ROLES)
-  post(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.documents.post(user, id);
+  post(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PostDocumentDto) {
+    return this.documents.post(user, id, { confirmExpired: dto.confirmExpired });
+  }
+
+  @Post(':id/stocktake/fill')
+  @Roles(...WRITE_ROLES)
+  fillStocktake(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.fillStocktake(user, id);
+  }
+
+  @Patch(':id/stocktake/counts')
+  @Roles(...WRITE_ROLES)
+  setCounts(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: StocktakeCountsDto,
+  ) {
+    return this.documents.setCounts(user, id, dto.counts);
   }
 
   @Post(':id/cancel')
@@ -112,19 +154,7 @@ export class DocumentsController {
 
   @Post(':id/captures')
   @Roles(...WRITE_ROLES)
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 20 * 1024 * 1024 },
-      fileFilter: (_req, file, done) => {
-        if (isPdfUpload(file) || isImageUpload(file)) {
-          done(null, true);
-          return;
-        }
-        done(new BadRequestException('Only photos and PDF files can be attached.'), false);
-      },
-    }),
-  )
+  @UseInterceptors(captureUpload())
   addCapture(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

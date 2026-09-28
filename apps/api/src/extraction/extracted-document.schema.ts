@@ -73,19 +73,78 @@ export type ExtractedDocument = z.infer<typeof ExtractedDocumentSchema>;
 export type ExtractedLine = z.infer<typeof ExtractedLineSchema>;
 
 export function stripJsonFences(text: string) {
-  const trimmed = text.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return (fenced?.[1] ?? trimmed).trim();
+  const extracted = extractJsonValue(text);
+  return extracted === null ? text.trim() : JSON.stringify(extracted);
+}
+
+function looksLikeExtractedDocument(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return 'lines' in record || 'documentNumber' in record || 'supplier' in record || 'documentType' in record;
+}
+
+function tryJsonParse(text: string): unknown | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function jsonObjectSlices(text: string) {
+  const slices: string[] = [];
+  for (let start = 0; start < text.length; start += 1) {
+    if (text[start] !== '{') continue;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') inString = false;
+        continue;
+      }
+      if (char === '"') inString = true;
+      else if (char === '{') depth += 1;
+      else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          slices.push(text.slice(start, index + 1));
+          break;
+        }
+      }
+    }
+  }
+  return slices;
+}
+
+export function extractJsonValue(text: string): unknown | null {
+  const candidates = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1].trim());
+  candidates.push(text.trim());
+
+  const parsedObjects: unknown[] = [];
+  for (const candidate of candidates) {
+    const direct = tryJsonParse(candidate);
+    if (direct !== null) parsedObjects.push(direct);
+    for (const slice of jsonObjectSlices(candidate)) {
+      const parsed = tryJsonParse(slice);
+      if (parsed !== null) parsedObjects.push(parsed);
+    }
+  }
+
+  return parsedObjects.find(looksLikeExtractedDocument) ?? parsedObjects.find((value) => value && typeof value === 'object') ?? null;
 }
 
 export function parseExtractedDocument(payload: unknown): { ok: true; data: ExtractedDocument } | { ok: false; error: string } {
   let value = payload;
   if (typeof payload === 'string') {
-    try {
-      value = JSON.parse(stripJsonFences(payload));
-    } catch {
+    const extracted = extractJsonValue(payload);
+    if (extracted === null) {
       return { ok: false, error: 'Model did not return valid JSON' };
     }
+    value = extracted;
   }
   const parsed = ExtractedDocumentSchema.safeParse(value);
   if (!parsed.success) {

@@ -44,11 +44,7 @@ docker compose stop api web
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | API + Postgres + Redis + MinIO + Prisma |
-| `POST` | `/test-upload` | multipart field `file` → private MinIO object |
-| `GET` | `/test-download/:key` | stream object through the API |
-| `GET` | `/test-signed-url/:key` | time-limited signed URL (raw `publicUrl` should 403) |
-| `POST` | `/test-job` | enqueue a throwaway BullMQ job |
-| `GET` | `/test-job/:id` | job state |
+| `GET` | `/health/live` | Liveness |
 
 ## Layout
 

@@ -35,6 +35,13 @@ if (parsed.data.supplier.name !== 'Metro') throw new Error('supplier');
 const fenced = parseExtractedDocument('```json\n{"documentNumber":"1","issuedOn":null,"documentType":null,"supplier":{},"client":{},"deliveryAddress":null,"lines":[],"grossTotal":null,"confidence":"low"}\n```');
 if (!fenced.ok) throw new Error(fenced.error);
 
+const thinking = parseExtractedDocument(
+  'Let me inspect {the page}. Final answer:\n```json\n{"documentNumber":"0000310425","issuedOn":"2026-09-15","documentType":"INVOICE","supplier":{"name":"Metro"},"client":{},"lines":[],"confidence":"high"}\n```',
+);
+if (!thinking.ok || thinking.data.documentNumber !== '0000310425') {
+  throw new Error(`thinking json ${thinking.ok ? thinking.data.documentNumber : thinking.error}`);
+}
+
 const bad = parseExtractedDocument('not json');
 if (bad.ok) throw new Error('expected parse failure');
 

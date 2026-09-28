@@ -9,6 +9,7 @@ import {
   type DocumentType,
 } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
+import { documentPath } from '../../lib/workspace-api';
 import { useDocumentsQuery, useSitesQuery } from '../../lib/workspace-session';
 import { Select } from '../ui/Select';
 import { useDashboard } from './dashboard-context';
@@ -150,16 +151,28 @@ export const InvoicesPanel: React.FC = () => {
                   <tr
                     key={doc.id}
                     className={`${tableRowClass()} cursor-pointer`}
-                    onClick={() => navigate(`/app/invoices/${doc.id}`)}
+                    onClick={() => navigate(documentPath(doc))}
                   >
                     <td className="px-4 py-3 sm:px-5">
-                      <p className="font-display text-[0.82rem] font-medium text-ops-ink">{t(`labels.documentType.${doc.type}`)}</p>
+                      <p className="font-display text-[0.82rem] font-medium text-ops-ink">
+                        {doc.writeOffReason
+                          ? `${t('writeOff.eyebrow')} · ${t(`labels.writeOffReason.${doc.writeOffReason}`)}`
+                          : t(`labels.documentType.${doc.type}`)}
+                      </p>
                       <p className="font-mono text-[0.66rem] text-slate-400">
-                        {doc.documentNumber} · {doc.direction === 'IN' ? t('labels.stockIn') : t('labels.stockOut')} · {t('invoices.lines', { count: doc.lineCount })}
+                        {doc.documentNumber} ·{' '}
+                        {doc.type === 'STOCKTAKE'
+                          ? t('stocktake.adjustment')
+                          : doc.direction === 'IN'
+                            ? t('labels.stockIn')
+                            : t('labels.stockOut')}{' '}
+                        · {t('invoices.lines', { count: doc.lineCount })}
                       </p>
                     </td>
                     <td className="px-3 py-3 font-sans text-[0.8rem] text-slate-600">{doc.partner?.name ?? '—'}</td>
-                    <td className="px-3 py-3 font-sans text-[0.8rem] text-slate-600">{doc.site.name}</td>
+                    <td className="px-3 py-3 font-sans text-[0.8rem] text-slate-600">
+                      {doc.targetSite ? `${doc.site.name} → ${doc.targetSite.name}` : doc.site.name}
+                    </td>
                     <td className="px-3 py-3 font-mono text-[0.74rem] text-slate-500">{doc.issuedOn}</td>
                     <td className="px-4 py-3 text-right sm:px-5">
                       <StatusPill status={doc.status} />

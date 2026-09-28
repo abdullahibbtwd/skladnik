@@ -2,13 +2,16 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
+  // req.ip honours X-Forwarded-For only from private-network proxies (nginx, Vite), so rate limits can't be dodged by spoofing it.
+  app.set('trust proxy', config.get<string>('TRUST_PROXY') ?? 'loopback, linklocal, uniquelocal');
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type UnitOfMeasure } from '@prisma/client';
-import { defaultStockDirection } from '@skladnik/shared';
+import { defaultStockDirection, isPaperDocumentType } from '@skladnik/shared';
 import { toNumber } from '../common/decimal';
 import { computeLineAmounts } from '../documents/document-pricing';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +12,8 @@ import {
   resolveUnit,
   unitPriceFromLine,
 } from './match-extracted';
+import { NameIndex, partnerKey } from './name-matching';
+import { cleanDocumentNumber, parseOcrDate } from './parse-ocr-date';
 
 @Injectable()
 export class ExtractionApplyService {
@@ -28,40 +30,58 @@ export class ExtractionApplyService {
     if (capture.document.status !== 'DRAFT' && capture.document.status !== 'REVIEW') {
       throw new Error('Posted or cancelled documents cannot be filled from OCR');
     }
+    const currentType = capture.document.type;
+    if (!isPaperDocumentType(currentType)) {
+      throw new Error('Only supplier and customer paperwork is read by OCR');
+    }
 
     await this.prisma.$transaction(async (tx) => {
       const aliases = await tx.unitAlias.findMany({
         where: { companyId: capture.companyId },
         select: { raw: true, unit: true },
       });
-      const documentType = extracted.documentType ?? capture.document.type;
+      const documentType = extracted.documentType ?? currentType;
+      const outgoing = defaultStockDirection(documentType) === 'OUT';
       const party = counterpartyFromExtracted(documentType, extracted);
-      const partnerId = await this.matchOrCreatePartner(tx, capture.companyId, party);
+      const partnerId = await this.matchOrCreatePartner(
+        tx,
+        capture.companyId,
+        party,
+        outgoing ? 'CUSTOMER' : 'SUPPLIER',
+      );
+      const products = new NameIndex(
+        await tx.product.findMany({
+          where: { companyId: capture.companyId, status: { not: 'ARCHIVED' } },
+          select: { id: true, name: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+      );
 
       const header: Prisma.DocumentUpdateInput = {};
       if (extracted.documentType) {
         header.type = extracted.documentType;
         header.direction = defaultStockDirection(extracted.documentType);
       }
-      if (extracted.issuedOn) header.issuedOn = new Date(extracted.issuedOn);
+      const issuedOn = parseOcrDate(extracted.issuedOn) ?? parseOcrDate(extracted.documentNumber);
+      if (issuedOn) header.issuedOn = issuedOn;
       if (extracted.deliveryAddress && !capture.document.deliveryAddress) {
         header.deliveryAddress = extracted.deliveryAddress;
       }
-      if (extracted.documentNumber) header.number = extracted.documentNumber.trim();
+      // A failed statement aborts the whole Postgres transaction, so unique
+      // conflicts have to be avoided up front rather than caught and retried.
+      const documentNumber = cleanDocumentNumber(extracted.documentNumber);
+      if (documentNumber) {
+        const taken = await tx.document.findFirst({
+          where: { companyId: capture.companyId, number: documentNumber, id: { not: capture.documentId } },
+          select: { id: true },
+        });
+        if (!taken) header.number = documentNumber;
+      }
       if (partnerId && !capture.document.partnerId) {
         header.partner = { connect: { id: partnerId } };
       }
 
-      try {
-        await tx.document.update({ where: { id: capture.documentId }, data: header });
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          delete header.number;
-          await tx.document.update({ where: { id: capture.documentId }, data: header });
-        } else {
-          throw error;
-        }
-      }
+      await tx.document.update({ where: { id: capture.documentId }, data: header });
 
       await tx.documentLine.deleteMany({ where: { sourceCaptureId: capture.id } });
       const remaining = await tx.documentLine.findMany({
@@ -74,9 +94,10 @@ export class ExtractionApplyService {
         const matched = await this.matchOrCreateProduct(tx, {
           companyId: capture.companyId,
           documentId: capture.documentId,
-          partnerId: partnerId ?? capture.document.partnerId,
+          supplierId: outgoing ? null : (partnerId ?? capture.document.partnerId),
           line,
           aliases,
+          products,
           index,
         });
         const quantity = line.qty > 0 ? line.qty : 0;
@@ -100,7 +121,7 @@ export class ExtractionApplyService {
             lineTotal: line.lineTotal ?? amounts.lineTotal,
             vatRate: line.vatRate ?? toNumber(matched.vatRate),
             ocrBatchNumber: line.ocrBatchNumber,
-            ocrExpiryDate: line.ocrExpiryDate ? new Date(line.ocrExpiryDate) : null,
+            ocrExpiryDate: parseOcrDate(line.ocrExpiryDate),
             verified: false,
           },
         });
@@ -125,42 +146,49 @@ export class ExtractionApplyService {
     tx: Prisma.TransactionClient,
     companyId: string,
     party: { name: string | null; taxId: string | null; address: string | null; mol?: string | null; phone?: string | null },
+    kind: 'SUPPLIER' | 'CUSTOMER',
   ) {
     const taxId = party.taxId?.trim() || null;
     const name = party.name?.trim() || null;
     if (!taxId && !name) return null;
 
-    if (taxId) {
-      const byTax = await tx.partner.findFirst({ where: { companyId, taxId } });
-      if (byTax) return byTax.id;
-    }
-    if (name) {
-      const byName = await tx.partner.findFirst({
-        where: { companyId, name: { equals: name, mode: 'insensitive' } },
-      });
-      if (byName) return byName.id;
+    const matched =
+      (taxId ? await tx.partner.findFirst({ where: { companyId, taxId }, select: { id: true, name: true, kind: true } }) : null) ??
+      (name
+        ? new NameIndex(
+            await tx.partner.findMany({
+              where: { companyId },
+              select: { id: true, name: true, kind: true },
+              orderBy: { createdAt: 'asc' },
+            }),
+            partnerKey,
+          ).find(name)
+        : null);
+    if (matched) {
+      if (matched.kind !== kind && matched.kind !== 'BOTH') {
+        await tx.partner.update({ where: { id: matched.id }, data: { kind: 'BOTH' } });
+      }
+      return matched.id;
     }
 
-    try {
-      const created = await tx.partner.create({
-        data: {
-          companyId,
-          kind: 'SUPPLIER',
-          name: name ?? taxId ?? 'Unknown supplier',
-          taxId,
-          address: party.address?.trim() || null,
-          mol: party.mol?.trim() || null,
-          phone: party.phone?.trim() || null,
-        },
-      });
-      return created.id;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && taxId) {
-        const existing = await tx.partner.findFirst({ where: { companyId, taxId } });
-        return existing?.id ?? null;
-      }
-      throw error;
-    }
+    const data = {
+      companyId,
+      kind,
+      name: name ?? taxId ?? (kind === 'CUSTOMER' ? 'Unknown customer' : 'Unknown supplier'),
+      taxId,
+      address: party.address?.trim() || null,
+      mol: party.mol?.trim() || null,
+      phone: party.phone?.trim() || null,
+    };
+    const created = taxId
+      ? await tx.partner.upsert({
+          where: { companyId_taxId: { companyId, taxId } },
+          update: {},
+          create: data,
+          select: { id: true },
+        })
+      : await tx.partner.create({ data, select: { id: true } });
+    return created.id;
   }
 
   private async matchOrCreateProduct(
@@ -168,18 +196,20 @@ export class ExtractionApplyService {
     input: {
       companyId: string;
       documentId: string;
-      partnerId: string | null;
+      /** Only set for incoming documents; supplier codes belong to suppliers. */
+      supplierId: string | null;
       line: ExtractedLine;
       aliases: { raw: string; unit: UnitOfMeasure }[];
+      products: NameIndex<{ id: string; name: string }>;
       index: number;
     },
   ) {
     const supplierCode = input.line.supplierCode?.trim() || null;
     const description = input.line.ocrDescription.trim();
 
-    if (supplierCode && input.partnerId) {
+    if (supplierCode && input.supplierId) {
       const mapped = await tx.supplierProductCode.findFirst({
-        where: { companyId: input.companyId, partnerId: input.partnerId, supplierCode },
+        where: { companyId: input.companyId, partnerId: input.supplierId, supplierCode },
         include: { product: true },
       });
       if (mapped?.product && mapped.product.status !== 'ARCHIVED') {
@@ -193,7 +223,7 @@ export class ExtractionApplyService {
         include: { product: true },
       });
       if (barcode?.product && barcode.product.status !== 'ARCHIVED') {
-        await this.rememberSupplierCode(tx, input.companyId, input.partnerId, barcode.product.id, supplierCode);
+        await this.rememberSupplierCode(tx, input.companyId, input.supplierId, barcode.product.id, supplierCode);
         return barcode.product;
       }
     }
@@ -203,20 +233,16 @@ export class ExtractionApplyService {
         where: { companyId: input.companyId, code: supplierCode, status: { not: 'ARCHIVED' } },
       });
       if (byCode) {
-        await this.rememberSupplierCode(tx, input.companyId, input.partnerId, byCode.id, supplierCode);
+        await this.rememberSupplierCode(tx, input.companyId, input.supplierId, byCode.id, supplierCode);
         return byCode;
       }
     }
 
-    if (description) {
-      const byName = await tx.product.findFirst({
-        where: { companyId: input.companyId, name: { equals: description, mode: 'insensitive' }, status: { not: 'ARCHIVED' } },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (byName) {
-        await this.rememberSupplierCode(tx, input.companyId, input.partnerId, byName.id, supplierCode);
-        return byName;
-      }
+    const nameMatch = description ? input.products.find(description) : null;
+    if (nameMatch) {
+      const byName = await tx.product.findUniqueOrThrow({ where: { id: nameMatch.id } });
+      await this.rememberSupplierCode(tx, input.companyId, input.supplierId, byName.id, supplierCode);
+      return byName;
     }
 
     const unit = resolveUnit(input.line.ocrUnit, input.aliases);
@@ -235,7 +261,8 @@ export class ExtractionApplyService {
         createdFromDocumentId: input.documentId,
       },
     });
-    await this.rememberSupplierCode(tx, input.companyId, input.partnerId, created.id, supplierCode);
+    input.products.add({ id: created.id, name: created.name });
+    await this.rememberSupplierCode(tx, input.companyId, input.supplierId, created.id, supplierCode);
     return created;
   }
 
@@ -247,12 +274,9 @@ export class ExtractionApplyService {
     supplierCode: string | null,
   ) {
     if (!partnerId || !supplierCode) return;
-    try {
-      await tx.supplierProductCode.create({
-        data: { companyId, partnerId, productId, supplierCode },
-      });
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
-    }
+    await tx.supplierProductCode.createMany({
+      data: [{ companyId, partnerId, productId, supplierCode }],
+      skipDuplicates: true,
+    });
   }
 }

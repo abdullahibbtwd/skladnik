@@ -5,7 +5,13 @@ import { cn } from '../../lib/cn';
 
 export type ToastKind = 'success' | 'error' | 'info' | 'warning';
 
-type ToastItem = {
+export type ToastOptions = {
+  /** Stays until dismissed or its action is used. */
+  sticky?: boolean;
+  action?: { label: string; onClick: () => void };
+};
+
+type ToastItem = ToastOptions & {
   id: string;
   kind: ToastKind;
   message: string;
@@ -22,7 +28,10 @@ const useToastStore = create<ToastState>((set) => ({
   items: [],
   push: (item) => {
     const id = crypto.randomUUID();
-    set((state) => ({ items: [...state.items.slice(-2), { ...item, id }] }));
+    set((state) => ({
+      items: [...state.items.filter((entry) => entry.sticky), ...state.items.filter((entry) => !entry.sticky).slice(-2), { ...item, id }],
+    }));
+    if (item.sticky) return;
     window.setTimeout(() => {
       useToastStore.getState().dismiss(id);
     }, 3600);
@@ -30,15 +39,15 @@ const useToastStore = create<ToastState>((set) => ({
   dismiss: (id) => set((state) => ({ items: state.items.filter((item) => item.id !== id) })),
 }));
 
-function show(kind: ToastKind, message: string, description?: string) {
-  useToastStore.getState().push({ kind, message, description });
+function show(kind: ToastKind, message: string, description?: string, options?: ToastOptions) {
+  useToastStore.getState().push({ kind, message, description, ...options });
 }
 
 export const toast = {
-  success: (message: string, description?: string) => show('success', message, description),
-  error: (message: string, description?: string) => show('error', message, description),
-  info: (message: string, description?: string) => show('info', message, description),
-  warning: (message: string, description?: string) => show('warning', message, description),
+  success: (message: string, description?: string, options?: ToastOptions) => show('success', message, description, options),
+  error: (message: string, description?: string, options?: ToastOptions) => show('error', message, description, options),
+  info: (message: string, description?: string, options?: ToastOptions) => show('info', message, description, options),
+  warning: (message: string, description?: string, options?: ToastOptions) => show('warning', message, description, options),
 };
 
 const KIND = {
@@ -88,6 +97,18 @@ export function Toaster() {
                 <p className="font-display text-[0.86rem] font-semibold text-ops-ink">{item.message}</p>
                 {item.description && (
                   <p className="mt-0.5 font-sans text-[0.75rem] leading-snug text-slate-500">{item.description}</p>
+                )}
+                {item.action && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      dismiss(item.id);
+                      item.action?.onClick();
+                    }}
+                    className="mt-2 rounded-lg bg-ops-teal px-3 py-1.5 font-display text-[0.78rem] font-semibold text-white transition-colors hover:bg-teal-700"
+                  >
+                    {item.action.label}
+                  </button>
                 )}
               </div>
               <button

@@ -1,33 +1,59 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ArrowLeftRight,
+  BarChart3,
   Bell,
+  ChefHat,
   Boxes,
   Camera,
   CheckCircle2,
   ChevronDown,
+  ClipboardCheck,
   ClipboardList,
   FileCode2,
+  FileSpreadsheet,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Package,
+  PackageMinus,
+  PackageOpen,
+  PackagePlus,
   Settings,
+  ShoppingBasket,
   ShoppingCart,
+  Tags,
   Timer,
+  WifiOff,
 } from 'lucide-react';
+import { isSalesManager } from '@skladnik/shared';
 import { cn } from '../../lib/cn';
+import type { Notice } from '../../lib/dashboard-data';
 import { useTranslation } from 'react-i18next';
 import { useLogout } from '../../lib/auth-session';
 import { useRequiredUser } from '../../lib/auth-store';
-import { useSitesQuery } from '../../lib/workspace-session';
+import { useConnectivity } from '../../lib/connectivity';
+import { usePhotoQueueCounts } from '../../lib/photo-queue-runtime';
+import { useSiteChoices } from '../../lib/workspace-session';
 import { LanguageSwitch } from '../LanguageSwitch';
+import { confirm } from '../ui/Dialog';
+import { PhotoQueueBadge } from './PhotoQueueBadge';
 
 const PRIMARY_NAV = [
   { to: '/app', labelKey: 'app.overview', icon: LayoutDashboard, end: true },
   { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList, end: false },
-  { to: '/app/inventory', labelKey: 'app.inventory', icon: Package, end: false },
+  { to: '/app/stock', labelKey: 'app.stock', icon: Package, end: false },
+  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, end: false },
+  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, end: false },
+  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket, end: false },
+  { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags, end: false },
   { to: '/app/expiry', labelKey: 'app.expiry', icon: Timer, end: false },
   { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart, end: false },
+  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3, end: false },
+  { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, end: false, managersOnly: true },
+  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, end: false, managersOnly: true },
+  { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, end: false, vatOnly: true },
 ];
 
 const SYSTEM_NAV = [
@@ -35,19 +61,44 @@ const SYSTEM_NAV = [
   { to: '/app/settings', labelKey: 'app.settings', icon: Settings, end: false },
 ];
 
-const DOCK = [
-  { to: '/app', labelKey: 'app.overview', icon: LayoutDashboard, end: true },
-  { to: '/app/invoices', labelKey: 'app.docs', icon: ClipboardList, end: false },
-  { to: 'scan', labelKey: 'app.scan', icon: Camera, end: false },
-  { to: '/app/inventory', labelKey: 'app.stock', icon: Package, end: false },
-  { to: '/app/expiry', labelKey: 'app.expiry', icon: Timer, end: false },
+/** Mobile menu entries for screens that have no dock slot. */
+const MOBILE_MENU = [
+  { to: '/app', labelKey: 'app.overview', icon: LayoutDashboard },
+  { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList },
+  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight },
+  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck },
+  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
+  { to: '/app/opening-stock', labelKey: 'app.openingStock', icon: PackageOpen },
+  { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags },
+  { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart },
+  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
+  { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, managersOnly: true },
+  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, managersOnly: true },
+  { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, vatOnly: true },
+  { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2 },
+];
+
+type StartableDocument = 'RECEIPT' | 'PROTOCOL';
+
+type DockItem =
+  | { kind: 'link'; to: string; labelKey: string; icon: typeof Package }
+  | { kind: 'start'; type: StartableDocument; labelKey: string; icon: typeof Package }
+  | { kind: 'scan' };
+
+const DOCK: DockItem[] = [
+  { kind: 'link', to: '/app/stock', labelKey: 'app.stock', icon: Package },
+  { kind: 'start', type: 'RECEIPT', labelKey: 'app.receive', icon: PackagePlus },
+  { kind: 'scan' },
+  { kind: 'start', type: 'PROTOCOL', labelKey: 'app.writeOff', icon: PackageMinus },
+  { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
 ];
 
 interface DashboardShellProps {
   siteId: string;
   onSiteChange: (id: string) => void;
-  notifications: string[];
+  notifications: Notice[];
   onScan: () => void;
+  onStartDocument: (type: StartableDocument) => void;
 }
 
 export const DashboardShell: React.FC<DashboardShellProps> = ({
@@ -55,14 +106,18 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   onSiteChange,
   notifications,
   onScan,
+  onStartDocument,
 }) => {
   const user = useRequiredUser();
+  const manager = isSalesManager(user.role);
+  const vatAccess = user.role === 'OWNER' || user.role === 'ACCOUNTANT';
   const { t } = useTranslation();
   const logout = useLogout();
   const navigate = useNavigate();
   const location = useLocation();
-  const sitesQuery = useSitesQuery();
-  const sites = (sitesQuery.data?.sites ?? []).filter((row) => row.isActive);
+  const { sites, isPending: sitesPending } = useSiteChoices();
+  const queueCounts = usePhotoQueueCounts();
+  const reachable = useConnectivity((state) => state.reachable);
   const [siteOpen, setSiteOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -96,7 +151,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
       <div className="pointer-events-none fixed top-[-8rem] left-1/4 -z-10 size-[36rem] rounded-full bg-ops-accent/[0.06] blur-[120px]" />
       <div className="pointer-events-none fixed right-0 bottom-0 -z-10 size-[28rem] rounded-full bg-ops-teal/[0.06] blur-[110px]" />
 
-      <header className="fixed inset-x-0 top-0 z-40 h-16 border-b border-slate-200/80 bg-white/90 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-0 z-40 h-16 print:hidden border-b border-slate-200/80 bg-white/90 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-xl">
         <div className="flex h-full items-center gap-3 px-3.5 md:px-5" ref={menuRef}>
           <button
             type="button"
@@ -121,7 +176,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
               className="flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-ops-canvas px-3 py-1.5 font-display text-[0.78rem] font-medium text-ops-ink shadow-sm transition-all hover:border-ops-accent/30 hover:bg-white active:scale-[0.98]"
             >
               <span className="size-1.5 shrink-0 rounded-full bg-ops-teal" />
-              <span className="truncate">{site?.name ?? (sitesQuery.isPending ? t('app.loadingSites') : t('app.noSites'))}</span>
+              <span className="truncate">{site?.name ?? (sitesPending ? t('app.loadingSites') : t('app.noSites'))}</span>
               <ChevronDown size={13} className="shrink-0 text-slate-400" />
             </button>
 
@@ -161,6 +216,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <PhotoQueueBadge />
             <LanguageSwitch compact />
             <div className="relative">
               <button
@@ -193,9 +249,19 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                       <p className="px-3 py-3 text-center font-sans text-[0.78rem] text-slate-500">{t('app.allUpToDate')}</p>
                     ) : (
                       notifications.map((note) => (
-                        <div key={note} className="rounded-xl border border-slate-100 bg-ops-canvas px-3 py-2.5 font-sans text-[0.78rem] leading-relaxed text-ops-ink">
-                          {note}
-                        </div>
+                        <button
+                          key={note.text}
+                          type="button"
+                          disabled={!note.to}
+                          onClick={() => {
+                            if (!note.to) return;
+                            setBellOpen(false);
+                            navigate(note.to);
+                          }}
+                          className="rounded-xl border border-slate-100 bg-ops-canvas px-3 py-2.5 text-left font-sans text-[0.78rem] leading-relaxed text-ops-ink enabled:hover:border-ops-accent/30 enabled:hover:bg-indigo-50"
+                        >
+                          {note.text}
+                        </button>
                       ))
                     )}
                   </div>
@@ -227,28 +293,20 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                     <p className="truncate font-sans text-[0.72rem] text-slate-500">{user.email}</p>
                     <p className="mt-0.5 font-display text-[0.68rem] font-medium tracking-wide text-ops-accent uppercase">{t(`labels.role.${user.role}`)}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfileOpen(false);
-                      navigate('/app/pos');
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 font-display text-[0.82rem] text-slate-600 transition-colors hover:bg-ops-canvas hover:text-ops-ink lg:hidden"
-                  >
-                    <ShoppingCart size={15} />
-                    {t('app.pos')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfileOpen(false);
-                      navigate('/app/audit');
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 font-display text-[0.82rem] text-slate-600 transition-colors hover:bg-ops-canvas hover:text-ops-ink lg:hidden"
-                  >
-                    <FileCode2 size={15} />
-                    {t('app.audit')}
-                  </button>
+                  {MOBILE_MENU.filter((item) => (manager || !item.managersOnly) && (vatAccess || !item.vatOnly)).map((item) => (
+                    <button
+                      key={item.to}
+                      type="button"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        navigate(item.to);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 font-display text-[0.82rem] text-slate-600 transition-colors hover:bg-ops-canvas hover:text-ops-ink lg:hidden"
+                    >
+                      <item.icon size={15} />
+                      {t(item.labelKey)}
+                    </button>
+                  ))}
                   <button
                     type="button"
                     onClick={() => {
@@ -263,7 +321,18 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                   <div className="my-1 border-t border-slate-100" />
                   <button
                     type="button"
-                    onClick={() => logout.mutate()}
+                    onClick={async () => {
+                      setProfileOpen(false);
+                      if (queueCounts.total > 0) {
+                        const ok = await confirm({
+                          title: t('photoQueue.logoutTitle', { count: queueCounts.total }),
+                          description: t('photoQueue.logoutBody'),
+                          confirmLabel: t('app.logout'),
+                        });
+                        if (!ok) return;
+                      }
+                      logout.mutate();
+                    }}
                     className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 font-display text-[0.82rem] text-ops-danger transition-colors hover:bg-rose-50"
                   >
                     <LogOut size={15} />
@@ -276,10 +345,10 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
         </div>
       </header>
 
-      <aside className="fixed top-16 bottom-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200/80 bg-white px-3 py-5 lg:flex">
+      <aside className="fixed top-16 bottom-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200/80 bg-white px-3 py-5 lg:flex print:hidden">
         <p className="px-3 pb-2 font-display text-[0.68rem] font-medium tracking-wider text-slate-400 uppercase">{t('app.workspace')}</p>
         <nav className="flex flex-col gap-0.5">
-          {PRIMARY_NAV.map((item) => (
+          {PRIMARY_NAV.filter((item) => (manager || !item.managersOnly) && (vatAccess || !item.vatOnly)).map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
               <span className="flex size-7 items-center justify-center rounded-lg border border-slate-200 bg-ops-canvas text-current">
                 <item.icon size={14} strokeWidth={2} />
@@ -313,17 +382,26 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
         </div>
       </aside>
 
-      <main className="min-h-dvh pt-16 pb-32 lg:pb-8 lg:pl-60">
+      <main className="min-h-dvh pt-16 pb-32 lg:pb-8 lg:pl-60 print:p-0">
         <div className="mx-auto max-w-[1220px] px-3.5 py-5 sm:px-6 sm:py-7">
+          {!reachable && (
+            <div
+              className="mb-4 flex items-start gap-2.5 rounded-2xl border border-ops-warn/25 bg-orange-50 px-4 py-3 font-sans text-[0.8rem] text-ops-warn print:hidden"
+              data-testid="offline-banner"
+            >
+              <WifiOff size={16} className="mt-0.5 shrink-0" />
+              <p>{t('app.offlineBanner')}</p>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] lg:hidden">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] lg:hidden print:hidden">
         <nav className="pointer-events-auto relative mx-auto max-w-md rounded-[1.6rem] border border-slate-200/90 bg-white/90 px-2 py-1.5 shadow-[0_16px_40px_rgba(30,27,75,0.14)] backdrop-blur-xl">
           <div className="grid grid-cols-5 items-center">
             {DOCK.map((item) => {
-              if (item.to === 'scan') {
+              if (item.kind === 'scan') {
                 return (
                   <div key="scan" className="flex flex-col items-center justify-center">
                     <button
@@ -342,23 +420,32 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                   </div>
                 );
               }
-              const active = item.end ? location.pathname === item.to : location.pathname.startsWith(item.to);
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className={cn(
-                    'flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 transition-all duration-150 select-none active:scale-90',
-                    active ? 'text-ops-accent' : 'text-slate-400 hover:text-ops-ink',
-                  )}
-                >
+              const active =
+                item.kind === 'link'
+                  ? location.pathname.startsWith(item.to)
+                  : location.pathname === '/app/invoices/new' &&
+                    new URLSearchParams(location.search).get('type') === item.type;
+              const className = cn(
+                'flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 transition-all duration-150 select-none active:scale-90',
+                active ? 'text-ops-accent' : 'text-slate-400 hover:text-ops-ink',
+              );
+              const content = (
+                <>
                   <item.icon size={19} strokeWidth={active ? 2.3 : 1.8} />
                   <span className={cn('font-display text-[0.63rem] leading-none tracking-tight', active ? 'font-semibold text-ops-accent' : 'font-medium text-slate-400')}>
                     {t(item.labelKey)}
                   </span>
                   {active ? <span className="size-1 rounded-full bg-ops-accent" /> : <span className="size-1 opacity-0" />}
+                </>
+              );
+              return item.kind === 'link' ? (
+                <NavLink key={item.to} to={item.to} className={className}>
+                  {content}
                 </NavLink>
+              ) : (
+                <button key={item.type} type="button" onClick={() => onStartDocument(item.type)} className={className}>
+                  {content}
+                </button>
               );
             })}
           </div>

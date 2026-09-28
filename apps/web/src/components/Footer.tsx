@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Boxes, ShieldCheck, FileCheck2 } from 'lucide-react';
+import { Boxes } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export const Footer: React.FC = () => {
@@ -68,14 +68,8 @@ export const Footer: React.FC = () => {
             <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">{t('footer.compliance')}</h4>
             <ul className="flex list-none flex-col gap-3">
               <li>
-                <a href="#compliance" className="flex items-center gap-[0.3rem] text-sm transition-colors hover:text-ops-ink">
-                  <span>{t('footer.annexXml')}</span>
-                  <FileCheck2 size={13} className="text-ops-teal" />
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  {t('footer.taxSpecs')}
+                <a href="#compliance" className="text-sm transition-colors hover:text-ops-ink">
+                  {t('footer.annexXml')}
                 </a>
               </li>
               <li>
@@ -99,10 +93,6 @@ export const Footer: React.FC = () => {
           <div>
             <h4 className="mb-4 font-display text-[0.82rem] font-medium tracking-wide text-ops-ink md:mb-5">{t('footer.compatibility')}</h4>
             <p className="mb-[0.85rem] text-[0.85rem] leading-normal text-slate-500">{t('footer.compatibleWith')}</p>
-            <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-ops-canvas px-[0.65rem] py-1.5 text-[0.78rem] text-ops-ink">
-              <ShieldCheck size={14} className="text-ops-teal" />
-              <span>{t('footer.euVerified')}</span>
-            </div>
           </div>
         </div>
 
