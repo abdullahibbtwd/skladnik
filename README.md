@@ -84,10 +84,27 @@ Seed users (password `DevPassword123!`):
 - `manager-a@skladnik.dev` — Metro Corner Market (Main Store only)
 - `owner-b@skladnik.dev` — Riverside Cafe (all sites)
 
+Demo companies with a month of history (invoices, a transfer, write-offs, till sales, recipes, expiring batches, low stock):
+
+- `demo-owner@skladnik.dev` — Demo Mini Market (all sites)
+- `demo-manager@skladnik.dev` — Demo Mini Market (Main Store only)
+- `demo-cashier@skladnik.dev` — Demo Mini Market till (Main Store only)
+- `demo-storekeeper@skladnik.dev` — Demo Mini Market (Warehouse only)
+- `demo-accountant@skladnik.dev` — Demo Mini Market (accountant)
+- `cafe-owner@skladnik.dev` — Demo Café (all sites)
+- `cafe-barista@skladnik.dev` — Demo Café till (Café Bar only)
+
 ```bash
 npm run db:migrate
-npm run db:seed
+npm run db:seed                 # safe to re-run; history is written once
+SEED_RESET=1 npm run db:seed    # rebuild the demo companies with dates relative to today
 npm run auth:prove
+```
+
+On a Docker deployment the image has no TypeScript sources, so the seed runs the compiled copy in `dist/seed/`:
+
+```bash
+docker compose exec -e SEED_DEMO=1 -e SEED_PASSWORD='choose-one' api npm run db:seed
 ```
 
 `Ping` is gone; it was replaced by the core tenant schema.
