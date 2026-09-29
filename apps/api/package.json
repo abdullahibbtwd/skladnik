@@ -12,7 +12,6 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:ready": "prisma generate && prisma migrate deploy",
     "db:seed": "prisma db seed",
-    "db:seed:prod": "node dist/seed/run.js",
     "auth:prove": "node scripts/prove-isolation.mjs",
     "documents:prove": "node scripts/prove-document-post.mjs",
     "test": "node scripts/run-posting-unit.cjs",
@@ -63,6 +62,6 @@
     "typescript": "^6.0.3"
   },
   "prisma": {
-    "seed": "ts-node --transpile-only --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+    "seed": "node prisma/seed.cjs"
   }
 }
