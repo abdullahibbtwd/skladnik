@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, Camera, ClipboardList, Package, PackageMinus, ShoppingCart, Timer, Truck, Wallet } from 'lucide-react';
 import { businessToday } from '../../lib/business-date';
 import { formatEuro } from '../../lib/dashboard-data';
+import { usePermissions } from '../../lib/permissions';
 import { documentPath } from '../../lib/workspace-api';
 import { useSalesReportQuery } from '../../lib/workspace-session';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +19,7 @@ export const OverviewPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { data, siteId, onScan, startDocument } = useDashboard();
+  const { createDocuments } = usePermissions();
   const today = businessToday();
   const todaySales = useSalesReportQuery(siteId, today, today).data?.summary;
   const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
@@ -39,10 +41,14 @@ export const OverviewPanel: React.FC = () => {
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
       <section className="hidden flex-wrap gap-2.5 lg:flex">
-        <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
-        <ActionButton icon={Truck} label={t('overview.receiveGoods')} onClick={() => startDocument('RECEIPT')} />
-        <ActionButton icon={PackageMinus} label={t('overview.writeOff')} onClick={() => startDocument('PROTOCOL')} />
-        <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} />
+        {createDocuments && (
+          <>
+            <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
+            <ActionButton icon={Truck} label={t('overview.receiveGoods')} onClick={() => startDocument('RECEIPT')} />
+            <ActionButton icon={PackageMinus} label={t('overview.writeOff')} onClick={() => startDocument('PROTOCOL')} />
+          </>
+        )}
+        <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} primary={!createDocuments} />
       </section>
 
       <section className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-5 [&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1">

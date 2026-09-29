@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowLeftRight, PackageMinus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/cn';
 import { daysUntil, formatEuro } from '../../lib/dashboard-data';
+import { usePermissions } from '../../lib/permissions';
 import { documentPath, type StockMovementRecord } from '../../lib/workspace-api';
 import { useMovementsQuery, useSitesQuery, useStockQuery } from '../../lib/workspace-session';
 import { useDashboard } from './dashboard-context';
@@ -27,6 +28,7 @@ export const MovementHistoryPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const batchId = searchParams.get('batchId') ?? undefined;
   const { siteId } = useDashboard();
+  const { createDocuments } = usePermissions();
   const sitesQuery = useSitesQuery();
   const stockQuery = useStockQuery(siteId);
   const movementsQuery = useMovementsQuery(siteId, productId, batchId);
@@ -101,7 +103,7 @@ export const MovementHistoryPanel: React.FC = () => {
         />
       </MetricGrid>
 
-      {onHand > 0 && (
+      {onHand > 0 && createDocuments && (
         <div className="flex flex-wrap gap-2">
           <ActionButton icon={ArrowLeftRight} label={t('history.transfer')} onClick={() => navigate(`/app/transfer?${itemParams}`)} />
           <ActionButton icon={PackageMinus} label={t('history.writeOff')} onClick={() => navigate(`/app/write-off?${itemParams}`)} />

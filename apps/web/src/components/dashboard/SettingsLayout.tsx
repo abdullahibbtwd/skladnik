@@ -1,21 +1,24 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useAuthRole } from '../../lib/auth-store';
 import { cn } from '../../lib/cn';
+import { usePermissions } from '../../lib/permissions';
 
 export const SettingsLayout: React.FC = () => {
   const { t } = useTranslation();
-  const role = useAuthRole();
-  const isOwner = role === 'OWNER';
+  const permissions = usePermissions();
 
   const tabs = [
     { to: '/app/settings', label: t('settingsNav.account'), end: true },
     { to: '/app/settings/sites', label: t('settingsNav.sites'), end: false },
-    ...(isOwner ? [{ to: '/app/settings/users', label: t('settingsNav.users'), end: false }] : []),
-    { to: '/app/settings/groups', label: t('settingsNav.groups'), end: false },
-    { to: '/app/settings/partners', label: t('settingsNav.partners'), end: false },
-    { to: '/app/settings/units', label: t('settingsNav.units'), end: false },
+    ...(permissions.users ? [{ to: '/app/settings/users', label: t('settingsNav.users'), end: false }] : []),
+    ...(permissions.masterData
+      ? [
+          { to: '/app/settings/groups', label: t('settingsNav.groups'), end: false },
+          { to: '/app/settings/partners', label: t('settingsNav.partners'), end: false },
+          { to: '/app/settings/units', label: t('settingsNav.units'), end: false },
+        ]
+      : []),
   ];
 
   return (

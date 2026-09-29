@@ -26,70 +26,82 @@ import {
   Tags,
   Timer,
   WifiOff,
+  type LucideIcon,
 } from 'lucide-react';
-import { isSalesManager } from '@skladnik/shared';
 import { cn } from '../../lib/cn';
 import type { Notice } from '../../lib/dashboard-data';
 import { useTranslation } from 'react-i18next';
 import { useLogout } from '../../lib/auth-session';
 import { useRequiredUser } from '../../lib/auth-store';
 import { useConnectivity } from '../../lib/connectivity';
+import { permissionsFor, type Permission } from '../../lib/permissions';
 import { usePhotoQueueCounts } from '../../lib/photo-queue-runtime';
 import { useSiteChoices } from '../../lib/workspace-session';
 import { LanguageSwitch } from '../LanguageSwitch';
 import { confirm } from '../ui/Dialog';
 import { PhotoQueueBadge } from './PhotoQueueBadge';
 
-const PRIMARY_NAV = [
+type NavItem = { to: string; labelKey: string; icon: LucideIcon; end?: boolean; requires?: Permission };
+
+const PRIMARY_NAV: NavItem[] = [
   { to: '/app', labelKey: 'app.overview', icon: LayoutDashboard, end: true },
-  { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList, end: false },
-  { to: '/app/stock', labelKey: 'app.stock', icon: Package, end: false },
-  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, end: false },
-  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, end: false },
-  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket, end: false },
-  { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags, end: false },
-  { to: '/app/expiry', labelKey: 'app.expiry', icon: Timer, end: false },
-  { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart, end: false },
-  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3, end: false },
-  { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, end: false, managersOnly: true },
-  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, end: false, managersOnly: true },
-  { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, end: false, vatOnly: true },
+  { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList },
+  { to: '/app/stock', labelKey: 'app.stock', icon: Package },
+  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'createDocuments' },
+  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'createDocuments' },
+  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
+  { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags },
+  { to: '/app/expiry', labelKey: 'app.expiry', icon: Timer },
+  { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart },
+  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
+  { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, requires: 'manage' },
+  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, requires: 'manage' },
+  { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, requires: 'vat' },
 ];
 
-const SYSTEM_NAV = [
-  { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2, end: false },
-  { to: '/app/settings', labelKey: 'app.settings', icon: Settings, end: false },
+const SYSTEM_NAV: NavItem[] = [
+  { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2, requires: 'audit' },
+  { to: '/app/settings', labelKey: 'app.settings', icon: Settings },
 ];
 
 /** Mobile menu entries for screens that have no dock slot. */
-const MOBILE_MENU = [
+const MOBILE_MENU: NavItem[] = [
   { to: '/app', labelKey: 'app.overview', icon: LayoutDashboard },
   { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList },
-  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight },
-  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck },
+  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'createDocuments' },
+  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'createDocuments' },
   { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
-  { to: '/app/opening-stock', labelKey: 'app.openingStock', icon: PackageOpen },
+  { to: '/app/opening-stock', labelKey: 'app.openingStock', icon: PackageOpen, requires: 'createDocuments' },
   { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags },
   { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart },
   { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
-  { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, managersOnly: true },
-  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, managersOnly: true },
-  { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, vatOnly: true },
-  { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2 },
+  { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, requires: 'manage' },
+  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, requires: 'manage' },
+  { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, requires: 'vat' },
+  { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2, requires: 'audit' },
 ];
 
 type StartableDocument = 'RECEIPT' | 'PROTOCOL';
 
 type DockItem =
-  | { kind: 'link'; to: string; labelKey: string; icon: typeof Package }
-  | { kind: 'start'; type: StartableDocument; labelKey: string; icon: typeof Package }
-  | { kind: 'scan' };
+  | { kind: 'link'; to: string; labelKey: string; icon: LucideIcon }
+  | { kind: 'start'; type: StartableDocument; labelKey: string; icon: LucideIcon }
+  | { kind: 'center'; action: 'scan' | 'till' };
 
 const DOCK: DockItem[] = [
   { kind: 'link', to: '/app/stock', labelKey: 'app.stock', icon: Package },
   { kind: 'start', type: 'RECEIPT', labelKey: 'app.receive', icon: PackagePlus },
-  { kind: 'scan' },
+  { kind: 'center', action: 'scan' },
   { kind: 'start', type: 'PROTOCOL', labelKey: 'app.writeOff', icon: PackageMinus },
+  { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
+];
+
+/** Staff can't create documents, so their dock leads to the screens they work in instead. */
+const STAFF_DOCK: DockItem[] = [
+  { kind: 'link', to: '/app/stock', labelKey: 'app.stock', icon: Package },
+  { kind: 'link', to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
+  { kind: 'center', action: 'till' },
+  { kind: 'link', to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
   { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
 ];
 
@@ -109,8 +121,11 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   onStartDocument,
 }) => {
   const user = useRequiredUser();
-  const manager = isSalesManager(user.role);
-  const vatAccess = user.role === 'OWNER' || user.role === 'ACCOUNTANT';
+  const permissions = permissionsFor(user.role);
+  const allowed = (item: NavItem) => !item.requires || permissions[item.requires];
+  const dock = permissions.createDocuments ? DOCK : STAFF_DOCK;
+  const dockPaths = new Set(dock.flatMap((item) => (item.kind === 'link' ? [item.to] : item.kind === 'center' && item.action === 'till' ? ['/app/pos'] : [])));
+  const mobileMenu = MOBILE_MENU.filter((item) => allowed(item) && !dockPaths.has(item.to));
   const { t } = useTranslation();
   const logout = useLogout();
   const navigate = useNavigate();
@@ -216,7 +231,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <PhotoQueueBadge />
+            {permissions.createDocuments && <PhotoQueueBadge />}
             <LanguageSwitch compact />
             <div className="relative">
               <button
@@ -293,7 +308,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                     <p className="truncate font-sans text-[0.72rem] text-slate-500">{user.email}</p>
                     <p className="mt-0.5 font-display text-[0.68rem] font-medium tracking-wide text-ops-accent uppercase">{t(`labels.role.${user.role}`)}</p>
                   </div>
-                  {MOBILE_MENU.filter((item) => (manager || !item.managersOnly) && (vatAccess || !item.vatOnly)).map((item) => (
+                  {mobileMenu.map((item) => (
                     <button
                       key={item.to}
                       type="button"
@@ -348,7 +363,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
       <aside className="fixed top-16 bottom-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200/80 bg-white px-3 py-5 lg:flex print:hidden">
         <p className="px-3 pb-2 font-display text-[0.68rem] font-medium tracking-wider text-slate-400 uppercase">{t('app.workspace')}</p>
         <nav className="flex flex-col gap-0.5">
-          {PRIMARY_NAV.filter((item) => (manager || !item.managersOnly) && (vatAccess || !item.vatOnly)).map((item) => (
+          {PRIMARY_NAV.filter(allowed).map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
               <span className="flex size-7 items-center justify-center rounded-lg border border-slate-200 bg-ops-canvas text-current">
                 <item.icon size={14} strokeWidth={2} />
@@ -360,7 +375,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
         <p className="mt-6 px-3 pb-2 font-display text-[0.68rem] font-medium tracking-wider text-slate-400 uppercase">{t('app.system')}</p>
         <nav className="flex flex-col gap-0.5">
-          {SYSTEM_NAV.map((item) => (
+          {SYSTEM_NAV.filter(allowed).map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className={navClass}>
               <span className="flex size-7 items-center justify-center rounded-lg border border-slate-200 bg-ops-canvas text-current">
                 <item.icon size={14} strokeWidth={2} />
@@ -370,16 +385,18 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           ))}
         </nav>
 
-        <div className="mt-auto border-t border-slate-100 pt-4">
-          <button
-            type="button"
-            onClick={onScan}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-ops-teal px-3 py-2.5 font-display text-[0.84rem] font-medium text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)] transition-all hover:bg-ops-teal-hover active:scale-[0.98]"
-          >
-            <Camera size={16} strokeWidth={2.2} />
-            <span>{t('app.photographInvoice')}</span>
-          </button>
-        </div>
+        {permissions.createDocuments && (
+          <div className="mt-auto border-t border-slate-100 pt-4">
+            <button
+              type="button"
+              onClick={onScan}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-ops-teal px-3 py-2.5 font-display text-[0.84rem] font-medium text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)] transition-all hover:bg-ops-teal-hover active:scale-[0.98]"
+            >
+              <Camera size={16} strokeWidth={2.2} />
+              <span>{t('app.photographInvoice')}</span>
+            </button>
+          </div>
+        )}
       </aside>
 
       <main className="min-h-dvh pt-16 pb-32 lg:pb-8 lg:pl-60 print:p-0">
@@ -400,22 +417,24 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] lg:hidden print:hidden">
         <nav className="pointer-events-auto relative mx-auto max-w-md rounded-[1.6rem] border border-slate-200/90 bg-white/90 px-2 py-1.5 shadow-[0_16px_40px_rgba(30,27,75,0.14)] backdrop-blur-xl">
           <div className="grid grid-cols-5 items-center">
-            {DOCK.map((item) => {
-              if (item.kind === 'scan') {
+            {dock.map((item) => {
+              if (item.kind === 'center') {
+                const scan = item.action === 'scan';
+                const CenterIcon = scan ? Camera : ShoppingCart;
                 return (
-                  <div key="scan" className="flex flex-col items-center justify-center">
+                  <div key={item.action} className="flex flex-col items-center justify-center">
                     <button
                       type="button"
-                      onClick={onScan}
-                      aria-label={t('app.photographInvoice')}
+                      onClick={scan ? onScan : () => navigate('/app/pos')}
+                      aria-label={scan ? t('app.photographInvoice') : t('app.pos')}
                       className="group -mt-5 flex flex-col items-center gap-1 transition-transform duration-150 active:scale-90 focus:outline-none"
                     >
                       <span className="relative flex size-12.5 items-center justify-center rounded-full bg-ops-ai p-[2.5px] shadow-[0_8px_22px_rgba(147,51,234,0.35)]">
                         <span className="flex size-full items-center justify-center rounded-full bg-ops-ai text-white">
-                          <Camera size={19} strokeWidth={2.2} />
+                          <CenterIcon size={19} strokeWidth={2.2} />
                         </span>
                       </span>
-                      <span className="font-display text-[0.63rem] font-semibold tracking-tight text-ops-ai">{t('app.scan')}</span>
+                      <span className="font-display text-[0.63rem] font-semibold tracking-tight text-ops-ai">{scan ? t('app.scan') : t('app.pos')}</span>
                     </button>
                   </div>
                 );

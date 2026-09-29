@@ -218,8 +218,8 @@ export const StocktakeSheetPanel: React.FC = () => {
     return (
       <div className="py-16 text-center">
         <p className="font-display text-sm text-ops-danger">{t('doc.notFound')}</p>
-        <button type="button" className="mt-3 font-display text-[0.8rem] text-ops-accent" onClick={() => navigate('/app/stocktake')}>
-          {t('stocktake.backToList')}
+        <button type="button" className="mt-3 font-display text-[0.8rem] text-ops-accent" onClick={() => navigate(canWrite ? '/app/stocktake' : '/app/invoices')}>
+          {canWrite ? t('stocktake.backToList') : t('pages.backToList')}
         </button>
       </div>
     );
@@ -375,9 +375,9 @@ export const StocktakeSheetPanel: React.FC = () => {
                 </span>
               </GhostButton>
             )}
-            <GhostButton onClick={() => navigate('/app/stocktake')}>
+            <GhostButton onClick={() => navigate(canWrite ? '/app/stocktake' : '/app/invoices')}>
               <span className="inline-flex items-center gap-1">
-                <ArrowLeft size={13} /> {t('stocktake.backToList')}
+                <ArrowLeft size={13} /> {canWrite ? t('stocktake.backToList') : t('pages.backToList')}
               </span>
             </GhostButton>
           </div>

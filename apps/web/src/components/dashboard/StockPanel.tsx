@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/cn';
 import type { StockLevel, StockLevelStatus } from '../../lib/workspace-api';
 import { formatBusinessDateTime } from '../../lib/business-date';
+import { usePermissions } from '../../lib/permissions';
 import { FRESH_DATA_MS } from '../../lib/pwa-constants';
 import { useSiteChoices, useStockQuery } from '../../lib/workspace-session';
 import { useDashboard } from './dashboard-context';
@@ -29,6 +30,7 @@ export const StockPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { siteId, onScan } = useDashboard();
+  const { createDocuments } = usePermissions();
   const { sites } = useSiteChoices();
   const stockQuery = useStockQuery(siteId);
   const [search, setSearch] = useState('');
@@ -63,11 +65,11 @@ export const StockPanel: React.FC = () => {
   ];
 
   const actions = [
-    { to: '/app/transfer', label: t('app.transfer'), icon: ArrowLeftRight },
-    { to: '/app/stocktake', label: t('app.stocktake'), icon: ClipboardCheck },
-    { to: '/app/reorder', label: t('app.reorder'), icon: ShoppingBasket },
-    { to: '/app/opening-stock', label: t('app.openingStock'), icon: PackageOpen },
-  ];
+    { to: '/app/transfer', label: t('app.transfer'), icon: ArrowLeftRight, requiresWrite: true },
+    { to: '/app/stocktake', label: t('app.stocktake'), icon: ClipboardCheck, requiresWrite: true },
+    { to: '/app/reorder', label: t('app.reorder'), icon: ShoppingBasket, requiresWrite: false },
+    { to: '/app/opening-stock', label: t('app.openingStock'), icon: PackageOpen, requiresWrite: true },
+  ].filter((action) => createDocuments || !action.requiresWrite);
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
@@ -155,10 +157,12 @@ export const StockPanel: React.FC = () => {
         ) : items.length === 0 ? (
           <div className="flex flex-col items-start gap-3 px-5 py-8">
             <p className="max-w-md font-sans text-sm text-slate-500">{t('stock.empty')}</p>
-            <div className="flex flex-wrap gap-2">
-              <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
-              <ActionButton icon={PackageOpen} label={t('app.openingStock')} onClick={() => navigate('/app/opening-stock')} />
-            </div>
+            {createDocuments && (
+              <div className="flex flex-wrap gap-2">
+                <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
+                <ActionButton icon={PackageOpen} label={t('app.openingStock')} onClick={() => navigate('/app/opening-stock')} />
+              </div>
+            )}
           </div>
         ) : visible.length === 0 ? (
           <p className="px-5 py-8 font-sans text-sm text-slate-500">{t('stock.noMatches')}</p>

@@ -38,6 +38,7 @@ import { UsersSettings } from './components/dashboard/UsersSettings';
 import { ProductGroupsSettings } from './components/dashboard/ProductGroupsSettings';
 import { PartnersSettings } from './components/dashboard/PartnersSettings';
 import { UnitsSettings } from './components/dashboard/UnitsSettings';
+import { RequirePermission } from './components/dashboard/RequirePermission';
 import { appReturnPath, useMeQuery } from './lib/auth-session';
 import { useIsAuthenticated } from './lib/auth-store';
 import { useTranslation } from 'react-i18next';
@@ -128,50 +129,64 @@ export default function App() {
         <Route index element={<OverviewPanel />} />
         <Route path="invoices">
           <Route index element={<InvoicesPanel />} />
-          <Route path="new" element={<DocumentCreatePanel />} />
+          <Route element={<RequirePermission permission="createDocuments" fallback="/app/invoices" />}>
+            <Route path="new" element={<DocumentCreatePanel />} />
+          </Route>
           <Route path=":id" element={<DocumentDetailPanel />} />
         </Route>
         <Route path="stock" element={<StockPanel />} />
         <Route path="stock/:productId" element={<MovementHistoryPanel />} />
-        <Route path="write-off" element={<WriteOffPanel />} />
-        <Route path="transfer" element={<TransferPanel />} />
-        <Route path="stocktake">
-          <Route index element={<StocktakeListPanel />} />
-          <Route path=":id" element={<StocktakeSheetPanel />} />
+        <Route path="stocktake/:id" element={<StocktakeSheetPanel />} />
+        <Route element={<RequirePermission permission="createDocuments" />}>
+          <Route path="write-off" element={<WriteOffPanel />} />
+          <Route path="transfer" element={<TransferPanel />} />
+          <Route path="stocktake" element={<StocktakeListPanel />} />
+          <Route path="opening-stock" element={<OpeningStockPanel />} />
+          <Route path="photo-queue" element={<PhotoQueuePanel />} />
         </Route>
-        <Route path="opening-stock" element={<OpeningStockPanel />} />
         <Route path="reorder" element={<ReorderPanel />} />
         <Route path="inventory" element={<InventoryPanel />} />
         <Route path="expiry" element={<ExpiryPanel />} />
         <Route path="pos" element={<PosPanel />} />
         <Route path="sales">
           <Route index element={<SalesPanel />} />
-          <Route path="margins" element={<MarginsPanel />} />
+          <Route element={<RequirePermission permission="manage" fallback="/app/sales" />}>
+            <Route path="margins" element={<MarginsPanel />} />
+          </Route>
           <Route path=":id" element={<SaleReceiptPanel />} />
         </Route>
-        <Route path="recipes">
+        <Route path="recipes" element={<RequirePermission permission="manage" />}>
           <Route index element={<RecipesPanel />} />
           <Route path="new" element={<RecipeNewPanel />} />
           <Route path=":productId" element={<RecipeEditorPanel />} />
         </Route>
-        <Route path="reports">
+        <Route path="reports" element={<RequirePermission permission="manage" />}>
           <Route index element={<ReportsHubPanel />} />
           <Route path="archive" element={<ArchivePanel />} />
           <Route path="layouts" element={<ExportLayoutsPanel />} />
-          <Route path="layouts/new" element={<ExportLayoutEditorPanel />} />
-          <Route path="layouts/:id" element={<ExportLayoutEditorPanel />} />
+          <Route element={<RequirePermission permission="editLayouts" fallback="/app/reports/layouts" />}>
+            <Route path="layouts/new" element={<ExportLayoutEditorPanel />} />
+            <Route path="layouts/:id" element={<ExportLayoutEditorPanel />} />
+          </Route>
           <Route path=":kind" element={<ReportPanel />} />
         </Route>
-        <Route path="vat" element={<VatPanel />} />
-        <Route path="photo-queue" element={<PhotoQueuePanel />} />
-        <Route path="audit" element={<AuditPanel />} />
+        <Route element={<RequirePermission permission="vat" />}>
+          <Route path="vat" element={<VatPanel />} />
+        </Route>
+        <Route element={<RequirePermission permission="audit" />}>
+          <Route path="audit" element={<AuditPanel />} />
+        </Route>
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<SettingsAccountPanel />} />
           <Route path="sites" element={<SitesSettings />} />
-          <Route path="users" element={<UsersSettings />} />
-          <Route path="groups" element={<ProductGroupsSettings />} />
-          <Route path="partners" element={<PartnersSettings />} />
-          <Route path="units" element={<UnitsSettings />} />
+          <Route element={<RequirePermission permission="users" fallback="/app/settings" />}>
+            <Route path="users" element={<UsersSettings />} />
+          </Route>
+          <Route element={<RequirePermission permission="masterData" fallback="/app/settings" />}>
+            <Route path="groups" element={<ProductGroupsSettings />} />
+            <Route path="partners" element={<PartnersSettings />} />
+            <Route path="units" element={<UnitsSettings />} />
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={landing} />
