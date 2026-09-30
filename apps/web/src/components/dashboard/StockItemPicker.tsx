@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Minus, Plus, Search, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { daysUntil } from '../../lib/dashboard-data';
+import { formatDate, formatQty } from '../../lib/format';
 import type { StockBatch, StockLevel } from '../../lib/workspace-api';
 import { FieldLabel } from '../PasswordField';
 import { Select } from '../ui/Select';
@@ -37,7 +38,7 @@ export function pickedRows(
   items: PickedItem[],
   levelById: Map<string, StockLevel>,
   t: TFunction,
-  qtyFormat: Intl.NumberFormat,
+  lang?: string,
 ): PickedRow[] {
   return items.map((item) => {
     const level = levelById.get(item.productId);
@@ -49,7 +50,7 @@ export function pickedRows(
       : !(qty > 0)
         ? t('writeOff.qtyRequired')
         : qty > max
-          ? t('writeOff.onlyLeft', { qty: qtyFormat.format(max) })
+          ? t('writeOff.onlyLeft', { qty: formatQty(max, lang) })
           : null;
     const unitCost = batch?.unitCost ?? level?.avgCost ?? level?.purchasePrice ?? 0;
     return { item, level, batch, qty, max, unitCost, expired: isExpired(batch), problem };
@@ -93,11 +94,6 @@ export const StockItemPicker: React.FC<Props> = ({
 }) => {
   const { t, i18n } = useTranslation();
   const [search, setSearch] = useState('');
-  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
-  const dateFormat = useMemo(
-    () => new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short', timeZone: 'UTC' }),
-    [i18n.language],
-  );
 
   const changeSearch = (value: string) => {
     setSearch(value);
@@ -154,7 +150,7 @@ export const StockItemPicker: React.FC<Props> = ({
                       <span className="block truncate font-mono text-[0.66rem] text-slate-400">{level.code}</span>
                     </span>
                     <span className="shrink-0 font-mono text-[0.76rem] text-slate-600">
-                      {qtyFormat.format(level.onHand)} {t(`labels.unit.${level.unit}`)}
+                      {formatQty(level.onHand, i18n.language)} {t(`labels.unit.${level.unit}`)}
                     </span>
                   </button>
                 </li>
@@ -177,7 +173,7 @@ export const StockItemPicker: React.FC<Props> = ({
                   <p className="line-clamp-2 font-display text-[0.88rem] font-medium text-ops-ink">{level?.name ?? '—'}</p>
                   {level && (
                     <p className="mt-0.5 font-mono text-[0.68rem] text-slate-500">
-                      {t('writeOff.left', { qty: qtyFormat.format(max), unit: t(`labels.unit.${level.unit}`) })}
+                      {t('writeOff.left', { qty: formatQty(max, i18n.language), unit: t(`labels.unit.${level.unit}`) })}
                     </p>
                   )}
                 </div>
@@ -200,11 +196,11 @@ export const StockItemPicker: React.FC<Props> = ({
                       onChange={(value) => updateItem(item.key, { batchId: value })}
                       options={level.batches.map((batch) => {
                         const when = batch.expiryDate
-                          ? `${dateFormat.format(new Date(`${batch.expiryDate}T00:00:00Z`))}${isExpired(batch) ? ` · ${t('expiry.expired')}` : ''}`
+                          ? `${formatDate(batch.expiryDate, i18n.language)}${isExpired(batch) ? ` · ${t('expiry.expired')}` : ''}`
                           : '';
                         return {
                           value: batch.batchId,
-                          label: [batch.batchNumber, when, `${qtyFormat.format(batch.onHand)}`].filter(Boolean).join(' · '),
+                          label: [batch.batchNumber, when, `${formatQty(batch.onHand, i18n.language)}`].filter(Boolean).join(' · '),
                         };
                       })}
                     />

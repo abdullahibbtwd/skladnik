@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { create } from 'zustand';
 import { AlertTriangle, Info } from 'lucide-react';
@@ -14,6 +14,10 @@ type AlertOptions = {
 type ConfirmOptions = {
   title: string;
   description?: string;
+  /** Listed above the description, e.g. the warnings being confirmed. */
+  details?: string[];
+  /** When set, the confirm button stays disabled until this box is ticked. */
+  acknowledgeLabel?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
@@ -60,6 +64,9 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 export function DialogHost() {
   const current = useDialogStore((state) => state.current);
   const close = useDialogStore((state) => state.close);
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  useEffect(() => setAcknowledged(false), [current]);
 
   useEffect(() => {
     if (!current) return;
@@ -83,6 +90,9 @@ export function DialogHost() {
 
   const danger = current.variant === 'confirm' && current.danger;
   const Icon = danger ? AlertTriangle : Info;
+  const details = current.variant === 'confirm' ? (current.details ?? []) : [];
+  const acknowledgeLabel = current.variant === 'confirm' ? current.acknowledgeLabel : undefined;
+  const blocked = Boolean(acknowledgeLabel) && !acknowledged;
 
   return createPortal(
     <div
@@ -108,8 +118,26 @@ export function DialogHost() {
           <h2 id="skladnik-dialog-title" className="font-display text-[1.12rem] font-semibold tracking-tight text-ops-ink">
             {current.title}
           </h2>
+          {details.length > 0 && (
+            <ul className="mt-2.5 list-disc space-y-1 rounded-xl border border-amber-300/60 bg-amber-50 py-2.5 pr-3 pl-7 font-sans text-[0.8rem] text-amber-900">
+              {details.map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          )}
           {current.description && (
             <p className="mt-1.5 font-sans text-[0.88rem] leading-relaxed text-slate-500">{current.description}</p>
+          )}
+          {acknowledgeLabel && (
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-ops-canvas px-3 py-2.5 font-sans text-[0.82rem] text-ops-ink">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(event) => setAcknowledged(event.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-ops-danger"
+              />
+              <span>{acknowledgeLabel}</span>
+            </label>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 bg-ops-canvas/70 px-5 py-3.5 sm:px-6">
@@ -124,10 +152,11 @@ export function DialogHost() {
           )}
           <button
             type="button"
-            autoFocus
+            autoFocus={!acknowledgeLabel}
+            disabled={blocked}
             onClick={() => finish(true)}
             className={cn(
-              'rounded-xl px-3.5 py-2 font-display text-[0.82rem] font-medium text-white transition-colors',
+              'rounded-xl px-3.5 py-2 font-display text-[0.82rem] font-medium text-white transition-colors disabled:pointer-events-none disabled:opacity-50',
               danger
                 ? 'bg-ops-danger shadow-[0_8px_18px_rgba(225,29,72,0.28)] hover:bg-rose-600'
                 : 'bg-ops-teal shadow-[0_8px_18px_rgba(13,148,136,0.28)] hover:bg-ops-teal-hover',

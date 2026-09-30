@@ -43,6 +43,7 @@ export const DOCUMENT_TYPES = [
   'STOCKTAKE',
   'OPENING_BALANCE',
   'SALE',
+  'WRITE_OFF',
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
@@ -51,7 +52,7 @@ export const PAPER_DOCUMENT_TYPES = ['INVOICE', 'PROTOCOL', 'RECEIPT', 'CREDIT_N
 export type PaperDocumentType = (typeof PAPER_DOCUMENT_TYPES)[number];
 
 /** Internal stock operations with their own screens; their type can't be changed after creation. */
-export const STOCK_OPERATION_TYPES = ['TRANSFER', 'STOCKTAKE', 'OPENING_BALANCE'] as const;
+export const STOCK_OPERATION_TYPES = ['TRANSFER', 'STOCKTAKE', 'OPENING_BALANCE', 'WRITE_OFF'] as const;
 export type StockOperationType = (typeof STOCK_OPERATION_TYPES)[number];
 
 export function isPaperDocumentType(type: DocumentType): type is PaperDocumentType {
@@ -71,6 +72,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   STOCKTAKE: 'Stocktake',
   OPENING_BALANCE: 'Opening stock',
   SALE: 'Sale',
+  WRITE_OFF: 'Write-off',
 };
 
 export const DOCUMENT_TYPE_LABELS_BG: Record<DocumentType, string> = {
@@ -82,6 +84,7 @@ export const DOCUMENT_TYPE_LABELS_BG: Record<DocumentType, string> = {
   STOCKTAKE: 'Инвентаризация',
   OPENING_BALANCE: 'Начални наличности',
   SALE: 'Продажба',
+  WRITE_OFF: 'Протокол за брак',
 };
 
 /** Sales are recorded at the till only; the document editor never creates or edits them. */
@@ -102,6 +105,39 @@ export function isSalesManager(role: UserRole | null | undefined): boolean {
   return Boolean(role && SALES_MANAGER_ROLES.includes(role));
 }
 
+/**
+ * Purchase cost, stock value, margins and document money.
+ * CASHIER F-04: Staff keeps selling price (POS) but never cost / value / supplier prices.
+ */
+export function canSeeFinancials(role: UserRole | null | undefined): boolean {
+  return isSalesManager(role);
+}
+
+/** Full partner directory (tax IDs, contacts). Staff uses GET /partners/lookup (id + name only). */
+export const PARTNER_DIRECTORY_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
+
+export function canReadPartnerDirectory(role: UserRole | null | undefined): boolean {
+  return Boolean(role && (PARTNER_DIRECTORY_ROLES as readonly string[]).includes(role));
+}
+
+/**
+ * Document types Staff may create as drafts (goods receipt / photo capture) or write-offs.
+ * Transfer, stocktake and opening stock stay manager-only.
+ */
+export const STAFF_DOCUMENT_CREATE_TYPES = ['INVOICE', 'PROTOCOL', 'RECEIPT', 'CREDIT_NOTE', 'WRITE_OFF'] as const;
+export type StaffDocumentCreateType = (typeof STAFF_DOCUMENT_CREATE_TYPES)[number];
+
+export function canStaffCreateDocumentType(type: DocumentType): boolean {
+  return (STAFF_DOCUMENT_CREATE_TYPES as readonly string[]).includes(type);
+}
+
+/** Manager (and company-wide) roles that post / cancel / reverse any document. */
+export const DOCUMENT_MANAGER_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
+
+export function isDocumentManager(role: UserRole | null | undefined): boolean {
+  return Boolean(role && (DOCUMENT_MANAGER_ROLES as readonly string[]).includes(role));
+}
+
 export const DOCUMENT_STATUSES = ['DRAFT', 'REVIEW', 'POSTED', 'CANCELLED'] as const;
 export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 
@@ -117,10 +153,10 @@ export type StockDirection = (typeof STOCK_DIRECTIONS)[number];
 
 /** A transfer is OUT from the sending site's point of view; a stocktake's direction is decided per line. */
 export function defaultStockDirection(type: DocumentType): StockDirection {
-  return type === 'PROTOCOL' || type === 'TRANSFER' || type === 'SALE' ? 'OUT' : 'IN';
+  return type === 'PROTOCOL' || type === 'TRANSFER' || type === 'SALE' || type === 'WRITE_OFF' ? 'OUT' : 'IN';
 }
 
-/** A PROTOCOL with a reason is a write-off (протокол за брак); without one it is a handover / dispatch. */
+/** Required on a WRITE_OFF (протокол за брак), not allowed on any other type. */
 export const WRITE_OFF_REASONS = ['EXPIRED', 'DAMAGED', 'SPOILED', 'LOST', 'OTHER'] as const;
 export type WriteOffReason = (typeof WRITE_OFF_REASONS)[number];
 
@@ -143,14 +179,28 @@ export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
 };
 
 export const MASTER_DATA_WRITE_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT'];
-export const PRODUCT_WRITE_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
+/** Create, edit catalog fields, archive, supplier codes — not site managers. */
+export const PRODUCT_CATALOG_WRITE_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT'];
+/** @deprecated Prefer canWriteProductCatalog / canAdjustProductMinStock. */
+export const PRODUCT_WRITE_ROLES: readonly UserRole[] = PRODUCT_CATALOG_WRITE_ROLES;
+/** Site managers may only change the reorder minimum on an existing product. */
+export const PRODUCT_MIN_STOCK_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
 
 export function canWriteMasterData(role: UserRole | null | undefined): boolean {
   return Boolean(role && MASTER_DATA_WRITE_ROLES.includes(role));
 }
 
+export function canWriteProductCatalog(role: UserRole | null | undefined): boolean {
+  return Boolean(role && PRODUCT_CATALOG_WRITE_ROLES.includes(role));
+}
+
+/** @deprecated Prefer canWriteProductCatalog. */
 export function canWriteProducts(role: UserRole | null | undefined): boolean {
-  return Boolean(role && PRODUCT_WRITE_ROLES.includes(role));
+  return canWriteProductCatalog(role);
+}
+
+export function canAdjustProductMinStock(role: UserRole | null | undefined): boolean {
+  return Boolean(role && PRODUCT_MIN_STOCK_ROLES.includes(role));
 }
 
 export const UNITS_OF_MEASURE = ['PCS', 'PACK', 'KG', 'L', 'CASE', 'CARTON', 'JAR', 'OTHER'] as const;
@@ -263,3 +313,9 @@ export type CaptureExtractionStatus = (typeof CAPTURE_EXTRACTION_STATUSES)[numbe
 export * from './reports';
 export * from './compliance';
 export * from './vat';
+export * from './annex38';
+export * from './document-checks';
+export * from './tax-ids';
+export * from './settings';
+export * from './quantity';
+export * from './recipe-units';

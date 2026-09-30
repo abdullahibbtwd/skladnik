@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next';
 import type { ReportCell, ReportColumnType, ReportLang } from '@skladnik/shared';
 import { businessToday, shiftDate } from '../../lib/business-date';
 import { cn } from '../../lib/cn';
+import { appLocale, formatDate, formatMoney, formatPercent, formatPrice, formatQty, formatInt } from '../../lib/format';
 import { flattenProductGroups } from '../../lib/workspace-api';
 import { useProductGroupsQuery, useSitesQuery } from '../../lib/workspace-session';
+import { DateRangeFields } from '../ui/DateField';
 import type { SelectOption } from '../ui/Select';
 
 export function reportLang(language: string | undefined): ReportLang {
@@ -37,26 +39,14 @@ export function PeriodPicker({ value, onChange }: { value: DateRange; onChange: 
   const presets = periodPresets(today);
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="date"
-          value={value.from}
-          max={value.to || today}
-          onChange={(event) => onChange({ ...value, from: event.target.value })}
-          aria-label={t('reports.from')}
-          className={dateInputClass}
-        />
-        <span className="text-slate-400">–</span>
-        <input
-          type="date"
-          value={value.to}
-          min={value.from}
-          max={today}
-          onChange={(event) => onChange({ ...value, to: event.target.value })}
-          aria-label={t('reports.to')}
-          className={dateInputClass}
-        />
-      </div>
+      <DateRangeFields
+        from={value.from}
+        to={value.to}
+        onChange={onChange}
+        max={today}
+        fromLabel={t('reports.from')}
+        toLabel={t('reports.to')}
+      />
       <div className="flex flex-wrap gap-1.5">
         {(Object.keys(presets) as (keyof typeof presets)[]).map((key) => {
           const preset = presets[key];
@@ -152,23 +142,18 @@ export function Segmented<T extends string>({
 /** Screen and print formatting of report cells in the chosen language. */
 export function useCellFormatter(lang: ReportLang) {
   return useMemo(() => {
-    const locale = lang === 'bg' ? 'bg-BG' : 'en-GB';
-    const formats = {
-      qty: new Intl.NumberFormat(locale, { maximumFractionDigits: 3 }),
-      int: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }),
-      price: new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
-      money: new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      percent: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-    };
-    const date = new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-    const formatDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? date.format(new Date(`${value}T00:00:00Z`)) : value);
+    const locale = appLocale(lang);
     const cell = (value: ReportCell | undefined, type: ReportColumnType) => {
       if (value === null || value === undefined || value === '') return '';
-      if (typeof value === 'string') return type === 'date' ? formatDate(value) : value;
-      if (type === 'percent') return `${formats.percent.format(value)}%`;
+      if (typeof value === 'string') return type === 'date' ? formatDate(value, lang) : value;
+      if (type === 'percent') return formatPercent(value, lang);
       if (type === 'text' || type === 'date') return String(value);
-      return formats[type].format(value);
+      if (type === 'qty') return formatQty(value, lang);
+      if (type === 'int') return formatInt(value, lang);
+      if (type === 'price') return formatPrice(value, lang);
+      if (type === 'money') return formatMoney(value, lang);
+      return String(value);
     };
-    return { cell, date: formatDate };
+    return { cell, date: (value: string) => formatDate(value, lang), locale };
   }, [lang]);
 }

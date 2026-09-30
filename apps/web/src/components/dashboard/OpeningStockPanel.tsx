@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useAuthRole } from '../../lib/auth-store';
 import { formatEuro } from '../../lib/dashboard-data';
 import { addDocumentLine, createDocument, postDocument, submitDocument, type ProductRecord } from '../../lib/workspace-api';
+import { usePermissions } from '../../lib/permissions';
 import { useSitesQuery } from '../../lib/workspace-session';
 import { FieldError, FieldLabel } from '../PasswordField';
+import { DateField } from '../ui/DateField';
 import { confirm } from '../ui/Dialog';
 import { toast } from '../ui/Toaster';
 import { CatalogProductSearch } from './CatalogProductSearch';
@@ -28,8 +29,8 @@ export const OpeningStockPanel: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  const permissions = usePermissions();
+  const canWrite = permissions.openingStock;
   const { siteId } = useDashboard();
   const sitesQuery = useSitesQuery();
   const siteName = sitesQuery.data?.sites.find((site) => site.id === siteId)?.name ?? '';
@@ -71,7 +72,6 @@ export const OpeningStockPanel: React.FC = () => {
       const created = await createDocument({
         type: 'OPENING_BALANCE',
         siteId,
-        documentNumber: `OB-${Date.now()}`,
         issuedOn,
       });
       documentId = created.document.id;
@@ -103,14 +103,14 @@ export const OpeningStockPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-4 pb-28 sm:gap-5 lg:pb-0">
+    <div className="flex flex-col gap-4 sm:gap-5">
       <PageHeader eyebrow={siteName || undefined} title={t('opening.title')} description={t('opening.desc')} />
 
-      {!canWrite && <FieldError>{t('app.docStaffBlocked')}</FieldError>}
+      {!canWrite && <FieldError>{t('opening.ownerOnly')}</FieldError>}
 
       <GlassPanel>
         <FieldLabel htmlFor="opening-date">{t('opening.date')}</FieldLabel>
-        <input id="opening-date" type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} className={fieldClass} />
+        <DateField id="opening-date" value={issuedOn} onChange={setIssuedOn} className="w-40" />
         <p className="mt-1.5 font-sans text-[0.72rem] text-slate-500">{t('opening.dateHint')}</p>
       </GlassPanel>
 
@@ -168,12 +168,11 @@ export const OpeningStockPanel: React.FC = () => {
                       </div>
                       <div>
                         <FieldLabel htmlFor={`${row.key}-expiry`}>{t('stocktake.expiry')}</FieldLabel>
-                        <input
+                        <DateField
                           id={`${row.key}-expiry`}
-                          type="date"
                           value={row.expiryDate}
-                          onChange={(event) => update(row.key, { expiryDate: event.target.value })}
-                          className={fieldClass}
+                          onChange={(value) => update(row.key, { expiryDate: value })}
+                          className="w-40"
                         />
                       </div>
                     </>
@@ -210,8 +209,7 @@ export const OpeningStockPanel: React.FC = () => {
 
       {error && <FieldError>{error}</FieldError>}
 
-      <div className="sticky bottom-24 z-20 lg:bottom-4">
-        <div className={cn(glassClass, 'flex items-center justify-between gap-3 px-4 py-3')}>
+      <div className={cn(glassClass, 'flex items-center justify-between gap-3 px-4 py-3')}>
           <p className="min-w-0 font-display text-[0.84rem] font-medium text-ops-ink">
             {t('writeOff.summary', { count: checked.length })} · {formatEuro(total)}
           </p>
@@ -224,7 +222,6 @@ export const OpeningStockPanel: React.FC = () => {
             {busy ? t('common.saving') : t('opening.submit')}
           </button>
         </div>
-      </div>
     </div>
   );
 };

@@ -1,3 +1,5 @@
+import { allowsFractionalQuantity } from '@skladnik/shared';
+
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
 /**
@@ -9,5 +11,5 @@ export function suggestedOrderQty(onHand: number, minStock: number, maxStock: nu
   const target = maxStock !== null && maxStock > minStock ? maxStock : minStock * 2;
   const needed = round3(target - Math.max(onHand, 0));
   if (needed <= 0) return null;
-  return unit === 'KG' ? needed : Math.ceil(needed - 1e-9);
+  return allowsFractionalQuantity(unit) ? needed : Math.ceil(needed - 1e-9);
 }

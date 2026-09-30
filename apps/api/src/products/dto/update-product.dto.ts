@@ -14,7 +14,14 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
-import { PRODUCT_STATUSES, UNITS_OF_MEASURE, type ProductStatus, type UnitOfMeasure } from '@skladnik/shared';
+import {
+  CONTENT_UNITS,
+  PRODUCT_STATUSES,
+  UNITS_OF_MEASURE,
+  type ContentUnit,
+  type ProductStatus,
+  type UnitOfMeasure,
+} from '@skladnik/shared';
 
 export class UpdateProductDto {
   @IsOptional()
@@ -44,6 +51,19 @@ export class UpdateProductDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   packSize?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value === undefined || value === null ? value : Number(value)))
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  netContent?: number | null;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsIn(CONTENT_UNITS)
+  netContentUnit?: ContentUnit | null;
 
   @IsOptional()
   @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value)))

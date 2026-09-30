@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { extractDocumentFromImage, type ExtractDocumentResult } from './extract-document';
+import { extractDocumentFromImage, type ExtractDocumentResult, type ReasoningEffort, type VisionTuning } from './extract-document';
+
+const EFFORTS: ReasoningEffort[] = ['low', 'high', 'max'];
+/** Chosen with scripts/bench-extraction.cjs (audit F-17); GLM's own default is max. */
+const DEFAULT_EFFORT: ReasoningEffort = 'low';
 
 @Injectable()
 export class ExtractorService {
@@ -22,6 +26,20 @@ export class ExtractorService {
     return this.config.get<string>('GLM_MODEL') ?? this.config.get<string>('ZAI_VISION_MODEL') ?? 'glm-5.3-flash';
   }
 
+  tuning(): VisionTuning {
+    const effort = this.config.get<string>('GLM_REASONING_EFFORT')?.trim().toLowerCase() as ReasoningEffort | undefined;
+    const maxEdge = Number(this.config.get<string>('VISION_MAX_EDGE'));
+    const headerModel = this.config.get<string>('GLM_HEADER_MODEL')?.trim();
+    // Compact is on unless explicitly disabled: fewer output tokens is the main lever under the 20 s target (F-17).
+    const compact = this.config.get<string>('GLM_COMPACT_OUTPUT')?.trim().toLowerCase() !== 'false';
+    return {
+      effort: effort && EFFORTS.includes(effort) ? effort : DEFAULT_EFFORT,
+      ...(Number.isFinite(maxEdge) && maxEdge >= 640 ? { maxEdge } : {}),
+      ...(headerModel ? { headerModel } : {}),
+      compact,
+    };
+  }
+
   extractFromImage(image: Buffer, mimeType?: string): Promise<ExtractDocumentResult> {
     return extractDocumentFromImage({
       apiKey: this.apiKey(),
@@ -29,6 +47,7 @@ export class ExtractorService {
       model: this.model(),
       image,
       mimeType,
+      tuning: this.tuning(),
     });
   }
 }

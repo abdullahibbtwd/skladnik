@@ -18,11 +18,12 @@ export class ProductsController {
   }
 
   @Post()
-  @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
+  @Roles('OWNER', 'ACCOUNTANT')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateProductDto) {
     return this.products.create(user, dto);
   }
 
+  /** Owner/accountant: full catalog. Site manager: minStock only (enforced in the service). */
   @Patch(':id')
   @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
   update(
@@ -34,13 +35,13 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
+  @Roles('OWNER', 'ACCOUNTANT')
   archive(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.products.archive(user, id);
   }
 
   @Post(':id/supplier-codes')
-  @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
+  @Roles('OWNER', 'ACCOUNTANT')
   addSupplierCode(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -50,7 +51,7 @@ export class ProductsController {
   }
 
   @Delete(':id/supplier-codes/:mappingId')
-  @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
+  @Roles('OWNER', 'ACCOUNTANT')
   removeSupplierCode(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

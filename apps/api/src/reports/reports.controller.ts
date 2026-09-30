@@ -1,6 +1,6 @@
 import { BadRequestException, Controller, Get, Param, Query, Res, StreamableFile } from '@nestjs/common';
 import type { Response } from 'express';
-import { SALES_MANAGER_ROLES, isReportKind, type AuthUser, type ReportKind } from '@skladnik/shared';
+import { COMPANY_WIDE_ROLES, SALES_MANAGER_ROLES, isReportKind, type AuthUser, type ReportKind } from '@skladnik/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ArchiveService } from './archive.service';
@@ -21,12 +21,15 @@ export class ReportsController {
     private readonly archive: ArchiveService,
   ) {}
 
+  /** Bulk ZIP of original document files — Owner and Accountant only (spec §3 / MGR F-10). */
   @Get('archive/preview')
+  @Roles(...COMPANY_WIDE_ROLES)
   archivePreview(@CurrentUser() user: AuthUser, @Query() query: ArchiveQueryDto) {
     return this.archive.preview(user, query);
   }
 
   @Get('archive')
+  @Roles(...COMPANY_WIDE_ROLES)
   async archiveDownload(@CurrentUser() user: AuthUser, @Query() query: ArchiveQueryDto, @Res() res: Response) {
     // Validate scope and period before the first byte, so errors still arrive as JSON.
     await this.archive.preview(user, query);

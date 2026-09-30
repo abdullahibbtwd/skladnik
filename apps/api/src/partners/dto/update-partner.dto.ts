@@ -20,8 +20,15 @@ export class UpdatePartnerDto {
   @Transform(emptyToNull)
   @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsString()
-  @MaxLength(32)
-  taxId?: string | null;
+  @MaxLength(20)
+  eik?: string | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(20)
+  vatNumber?: string | null;
 
   @IsOptional()
   @Transform(emptyToNull)

@@ -136,3 +136,31 @@ export async function logoutRequest(): Promise<void> {
     window.clearTimeout(timer);
   }
 }
+
+export type AuthProviders = {
+  googleClientId: string | null;
+};
+
+export async function fetchAuthProviders(): Promise<AuthProviders> {
+  const response = await fetch('/auth/providers', { credentials: 'include' });
+  if (!response.ok) return { googleClientId: null };
+  const payload = (await response.json()) as { googleClientId?: string | null };
+  return { googleClientId: payload.googleClientId?.trim() || null };
+}
+
+export async function googleAuthRequest(credential: string): Promise<SessionUser> {
+  const data = await postJson<{ user: ApiUser }>('/auth/google', { credential });
+  return mapUser(data.user);
+}
+
+export async function forgotPasswordRequest(email: string): Promise<{
+  ok: true;
+  delivered?: boolean;
+  resetUrl?: string;
+}> {
+  return postJson('/auth/forgot-password', { email });
+}
+
+export async function resetPasswordRequest(token: string, password: string): Promise<{ ok: true }> {
+  return postJson('/auth/reset-password', { token, password });
+}

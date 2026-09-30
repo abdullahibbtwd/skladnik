@@ -139,8 +139,8 @@ export const CoreFeatures: React.FC = () => {
             <div className="rounded-[0.65rem] border border-slate-200 bg-slate-100 p-4 text-[0.8rem]">
               <div className="mb-2 flex flex-col gap-1 text-xs font-medium text-slate-600 sm:flex-row sm:items-center sm:justify-between">
                 <span className="truncate">{t('features.annexLabel')}</span>
-                <span className="rounded bg-orange-50 px-1.5 py-[0.15rem] text-[0.7rem] font-medium text-ops-warn">
-                  {t('common.inDevelopment')}
+                <span className="rounded bg-teal-50 px-1.5 py-[0.15rem] text-[0.7rem] font-medium text-ops-teal">
+                  {t('features.annexStatus')}
                 </span>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-[0.85rem] py-[0.65rem] text-[0.72rem] text-slate-500">

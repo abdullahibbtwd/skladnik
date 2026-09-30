@@ -35,6 +35,8 @@ export function DocumentPhotoViewer({
   const { t } = useTranslation();
   const [zoomIndex, setZoomIndex] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  /** Pan inside the image only after the user explicitly zooms in. */
+  const zoomed = zoomIndex > 0;
   const active = captures.find((capture) => capture.id === activeCaptureId) ?? captures[0];
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export function DocumentPhotoViewer({
     'flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:text-ops-accent disabled:opacity-40';
 
   return (
-    <section className={cn(glassClass, 'flex flex-col lg:h-full', !collapsed && 'max-lg:h-[40dvh]')}>
+    <section className={cn(glassClass, 'flex flex-col md:h-full', !collapsed && 'max-md:h-[40dvh]')}>
       <div className="flex items-center gap-1.5 border-b border-slate-100 bg-ops-canvas/60 px-2.5 py-2">
         <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
           {captures.map((capture) => (
@@ -86,7 +88,7 @@ export function DocumentPhotoViewer({
             </button>
           )}
         </div>
-        <div className={cn('flex shrink-0 gap-1', collapsed && 'max-lg:hidden')}>
+        <div className={cn('flex shrink-0 gap-1', collapsed && 'max-md:hidden')}>
           <button type="button" className={iconButton} disabled={zoomIndex === 0} onClick={() => setZoomIndex((i) => i - 1)} aria-label={t('doc.zoomOut')}>
             <ZoomOut size={14} />
           </button>
@@ -105,7 +107,7 @@ export function DocumentPhotoViewer({
         </div>
         <button
           type="button"
-          className={cn(iconButton, 'lg:hidden')}
+          className={cn(iconButton, 'md:hidden')}
           onClick={() => setCollapsed((value) => !value)}
           aria-label={collapsed ? t('doc.showPhoto') : t('doc.hidePhoto')}
         >
@@ -113,12 +115,20 @@ export function DocumentPhotoViewer({
         </button>
       </div>
 
-      <div className={cn('relative min-h-0 flex-1 overflow-auto bg-slate-100', collapsed && 'max-lg:hidden')}>
+      <div
+        className={cn(
+          'relative min-h-0 flex-1 bg-slate-100',
+          // Default: no inner scroll so the page wheel keeps working. Zoom buttons unlock pan.
+          zoomed ? 'overflow-auto overscroll-auto' : 'overflow-hidden',
+          collapsed && 'max-md:hidden',
+        )}
+      >
         <img
           src={fileUrl}
           alt={t('doc.pageAlt', { n: active.pageNumber })}
-          style={{ width: `${zoom * 100}%` }}
-          className="block h-auto max-w-none"
+          style={{ width: zoomed ? `${zoom * 100}%` : '100%' }}
+          className={cn('block h-auto', zoomed ? 'max-w-none' : 'max-h-full max-w-full object-contain')}
+          draggable={false}
         />
         {reading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/70 font-display text-[0.8rem] font-medium text-ops-accent">

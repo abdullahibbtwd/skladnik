@@ -2,20 +2,21 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { BarChart3, Banknote, CheckCircle2, ChefHat, CreditCard, Minus, Plus, ScanBarcode, Search, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { isSalesManager, type PaymentMethod } from '@skladnik/shared';
+import { canOverridePrice, DEFAULT_PRICE_OVERRIDE_ROLES, type PaymentMethod } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
+import { formatDate, formatQty } from '../../lib/format';
 import { dishLevel, findByCode, newRequestId, parseAmount, planCart, batchExpired, type CartLine, type LinePlan } from '../../lib/till-cart';
 import { ApiError, type StockLevel } from '../../lib/workspace-api';
-import { useCreateSale, useMenuQuery, useSitesQuery, useStockQuery } from '../../lib/workspace-session';
+import { useCompanySettingsQuery, useCreateSale, useMenuQuery, useSitesQuery, useStockQuery } from '../../lib/workspace-session';
 import { FieldError } from '../PasswordField';
 import { confirm } from '../ui/Dialog';
 import { Select } from '../ui/Select';
 import { toast } from '../ui/Toaster';
 import { BarcodeScanner, cameraScanSupported } from './BarcodeScanner';
 import { useDashboard } from './dashboard-context';
-import { ActionButton, GlassPanel, PageHeader } from './dashboard-ui';
+import { ActionButton, GlassPanel, PageHeader, stickyActionPagePad } from './dashboard-ui';
 
 const RESULT_LIMIT = 8;
 const BROWSE_LIMIT = 24;
@@ -64,14 +65,16 @@ export const PosPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const role = useAuthRole();
-  const manager = isSalesManager(role);
   const { siteId } = useDashboard();
+  const companyQuery = useCompanySettingsQuery();
+  const canEditPrice = canOverridePrice(role, companyQuery.data?.priceOverrideRoles ?? DEFAULT_PRICE_OVERRIDE_ROLES);
   const sitesQuery = useSitesQuery();
   const stockQuery = useStockQuery(siteId);
   const menuQuery = useMenuQuery(siteId);
   const createSale = useCreateSale();
 
-  const siteName = sitesQuery.data?.sites.find((site) => site.id === siteId)?.name ?? '';
+  const activeSite = sitesQuery.data?.sites.find((site) => site.id === siteId);
+  const siteName = activeSite?.name ?? '';
   const stockLevels = stockQuery.data?.items;
   const dishes = menuQuery.data?.dishes;
   const dishById = useMemo(() => new Map((dishes ?? []).map((dish) => [dish.id, dish])), [dishes]);
@@ -86,6 +89,7 @@ export const PosPanel: React.FC = () => {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('CASH');
+  const [paymentReference, setPaymentReference] = useState('');
   const [received, setReceived] = useState('');
   const [editingPrice, setEditingPrice] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -93,12 +97,6 @@ export const PosPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(newRequestId());
-
-  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
-  const dateFormat = useMemo(
-    () => new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short', timeZone: 'UTC' }),
-    [i18n.language],
-  );
 
   // A changed cart is a different sale; only an unchanged retry may reuse the idempotency key.
   useEffect(() => {
@@ -184,16 +182,16 @@ export const PosPanel: React.FC = () => {
       case 'qty':
         return t('writeOff.qtyRequired');
       case 'noPrice':
-        return manager ? t('pos.noPriceManager') : t('pos.noPrice');
+        return canEditPrice ? t('pos.noPriceManager') : t('pos.noPrice');
       case 'short':
         return plan.dish
           ? t('pos.onlyPortions', { count: plan.problem.available })
-          : t('pos.onlyLeft', { qty: qtyFormat.format(plan.problem.available), unit });
+          : t('pos.onlyLeft', { qty: formatQty(plan.problem.available, i18n.language), unit });
       case 'ingredientShort':
         return t('pos.ingredientShort', {
           name: plan.problem.name,
-          needed: qtyFormat.format(plan.problem.needed),
-          available: qtyFormat.format(plan.problem.available),
+          needed: formatQty(plan.problem.needed, i18n.language),
+          available: formatQty(plan.problem.available, i18n.language),
           unit: t(`labels.unit.${plan.problem.unit}`),
         });
       default:
@@ -201,15 +199,17 @@ export const PosPanel: React.FC = () => {
     }
   };
 
-  const charge = async (confirmExpired = false) => {
+  const charge = async (confirmExpired = false, confirmBelowCost = false): Promise<void> => {
     if (!ready || createSale.isPending) return;
     setError(null);
     try {
       const result = await createSale.mutateAsync({
         siteId,
         paymentMethod: method,
+        ...(method === 'CARD' && activeSite?.eShop && paymentReference.trim() ? { paymentReference: paymentReference.trim() } : {}),
         clientRequestId: requestId.current,
         confirmExpired,
+        confirmBelowCost,
         items: plans.map((plan) => ({
           productId: plan.line.productId,
           quantity: plan.qty,
@@ -221,6 +221,7 @@ export const PosPanel: React.FC = () => {
       toast.success(t('pos.done', { number: result.sale.number, total: formatEuro(result.sale.total) }));
       setCart([]);
       setReceived('');
+      setPaymentReference('');
       setMethod('CASH');
       refocus();
     } catch (err) {
@@ -231,7 +232,17 @@ export const PosPanel: React.FC = () => {
           confirmLabel: t('pos.sellExpired'),
           danger: true,
         });
-        if (ok) await charge(true);
+        if (ok) await charge(true, confirmBelowCost);
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'BELOW_COST_CONFIRM') {
+        const ok = await confirm({
+          title: t('pos.belowCostTitle'),
+          description: `${err.warnings.join('. ')}. ${t('pos.belowCostConfirm')}`,
+          confirmLabel: t('pos.sellBelowCost'),
+          danger: true,
+        });
+        if (ok) await charge(confirmExpired, true);
         return;
       }
       setError(err instanceof Error ? err.message : t('pos.failed'));
@@ -257,9 +268,9 @@ export const PosPanel: React.FC = () => {
 
   const batchLabel = (batch: { batchNumber: string; expiryDate: string | null; onHand: number }) => {
     const when = batch.expiryDate
-      ? `${dateFormat.format(new Date(`${batch.expiryDate}T00:00:00Z`))}${batchExpired(batch) ? ` · ${t('expiry.expired')}` : ''}`
+      ? `${formatDate(batch.expiryDate, i18n.language)}${batchExpired(batch) ? ` · ${t('expiry.expired')}` : ''}`
       : '';
-    return [batch.batchNumber, when, qtyFormat.format(batch.onHand)].filter(Boolean).join(' · ');
+    return [batch.batchNumber, when, formatQty(batch.onHand, i18n.language)].filter(Boolean).join(' · ');
   };
 
   const payButton = (
@@ -275,14 +286,14 @@ export const PosPanel: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col gap-4 pb-44 sm:gap-5 lg:pb-0">
+    <div className={cn('flex flex-col gap-4 sm:gap-5', cart.length > 0 && stickyActionPagePad)}>
       <PageHeader
         eyebrow={siteName || undefined}
         title={t('pos.title')}
         description={t('pos.desc')}
         action={<ActionButton icon={BarChart3} label={t('pos.todaysSales')} onClick={() => navigate('/app/sales')} />}
       />
-      <div className="-mt-1 lg:hidden">
+      <div className="-mt-1 md:hidden">
         <ActionButton icon={BarChart3} label={t('pos.todaysSales')} onClick={() => navigate('/app/sales')} />
       </div>
 
@@ -374,7 +385,7 @@ export const PosPanel: React.FC = () => {
                       <span className="block truncate font-mono text-[0.66rem] text-slate-400">
                         {dishById.has(level.productId)
                           ? t('pos.portionsLeft', { count: level.onHand })
-                          : `${level.code} · ${qtyFormat.format(level.onHand)} ${t(`labels.unit.${level.unit}`)}`}
+                          : `${level.code} · ${formatQty(level.onHand, i18n.language)} ${t(`labels.unit.${level.unit}`)}`}
                       </span>
                     </span>
                     <span className={cn('shrink-0 font-mono text-[0.84rem] tabular-nums', level.sellingPrice > 0 ? 'text-ops-ink' : 'text-slate-400')}>
@@ -421,7 +432,13 @@ export const PosPanel: React.FC = () => {
                 const unit = level ? t(`labels.unit.${level.unit}`) : '';
                 const problem = problemText(plan);
                 return (
-                  <li key={line.key} className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 last:border-0 sm:px-5">
+                  <li
+                    key={line.key}
+                    className={cn(
+                      'flex flex-col gap-2 border-b border-slate-100 px-4 py-3 last:border-0 sm:px-5',
+                      problem && 'bg-ops-danger/5',
+                    )}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="line-clamp-2 font-display text-[0.86rem] font-medium text-ops-ink">{level?.name ?? '—'}</p>
@@ -478,8 +495,12 @@ export const PosPanel: React.FC = () => {
                           inputMode="decimal"
                           value={line.qty}
                           onChange={(event) => updateLine(line.key, { qty: event.target.value })}
+                          aria-invalid={Boolean(problem)}
                           aria-label={t('writeOff.qty')}
-                          className="h-9 w-16 rounded-lg border border-slate-200 bg-white px-1.5 text-center font-mono text-[0.88rem] text-ops-ink outline-none focus:border-ops-teal/50"
+                          className={cn(
+                            'h-9 w-16 rounded-lg border bg-white px-1.5 text-center font-mono text-[0.88rem] text-ops-ink outline-none focus:border-ops-teal/50',
+                            problem ? 'border-ops-danger/50' : 'border-slate-200',
+                          )}
                         />
                         <button
                           type="button"
@@ -515,19 +536,26 @@ export const PosPanel: React.FC = () => {
                         ) : (
                           <button
                             type="button"
-                            disabled={!manager}
+                            disabled={!canEditPrice}
                             onClick={() => setEditingPrice(line.key)}
-                            title={manager ? t('pos.changePrice') : undefined}
+                            title={canEditPrice ? t('pos.changePrice') : undefined}
                             className={cn(
                               'rounded-md px-1 font-mono text-[0.74rem] text-slate-500',
-                              manager && 'underline decoration-dotted underline-offset-2 hover:text-ops-accent',
+                              canEditPrice && 'underline decoration-dotted underline-offset-2 hover:text-ops-accent',
                               line.price !== null && 'text-ops-accent',
                             )}
                           >
                             × {formatEuro(Number.isFinite(plan.unitPrice) ? plan.unitPrice : 0)}
                           </button>
                         )}
-                        <span className="min-w-[4.5rem] font-mono text-[0.9rem] font-medium text-ops-ink tabular-nums">{formatEuro(plan.total)}</span>
+                        <span
+                          className={cn(
+                            'min-w-[4.5rem] font-mono text-[0.9rem] font-medium tabular-nums',
+                            problem ? 'text-ops-danger' : 'text-ops-ink',
+                          )}
+                        >
+                          {formatEuro(plan.total)}
+                        </span>
                       </div>
                     </div>
                     {problem && <p className="font-display text-[0.72rem] font-medium text-ops-danger">{problem}</p>}
@@ -602,14 +630,31 @@ export const PosPanel: React.FC = () => {
               </div>
             )}
 
+            {method === 'CARD' && activeSite?.eShop && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="pos-payment-ref" className="shrink-0 font-sans text-[0.78rem] text-slate-500">
+                  {t('pos.paymentReference')}
+                </label>
+                <input
+                  id="pos-payment-ref"
+                  type="text"
+                  value={paymentReference}
+                  onChange={(event) => setPaymentReference(event.target.value)}
+                  maxLength={200}
+                  placeholder={t('pos.paymentReferenceHint')}
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 font-mono text-[0.84rem] outline-none focus:border-ops-teal/50"
+                />
+              </div>
+            )}
+
             {error && <FieldError>{error}</FieldError>}
-            <div className="hidden lg:flex lg:flex-col">{payButton}</div>
+            <div className="hidden md:flex md:flex-col">{payButton}</div>
           </div>
         </GlassPanel>
       </div>
 
       {cart.length > 0 && (
-        <div className="fixed inset-x-3 bottom-24 z-30 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] backdrop-blur sm:inset-x-6 lg:hidden">
+        <div className="fixed inset-x-3 bottom-24 z-30 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] backdrop-blur sm:inset-x-6 md:hidden">
           <div className="min-w-0">
             <p className="font-display text-[0.8rem] font-medium text-ops-ink">{t('pos.cartTitle', { count: itemCount })}</p>
             <p className="truncate font-sans text-[0.72rem] text-slate-500">

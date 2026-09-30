@@ -8,13 +8,11 @@ import { businessToday, shiftDate } from '../../lib/business-date';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
 import { useMarginsQuery, useSitesQuery } from '../../lib/workspace-session';
+import { DateField } from '../ui/DateField';
 import { useDashboard } from './dashboard-context';
-import { GlassPanel, MetricCard, MetricGrid, PageHeader, tableHeadRowClass, tableRowClass } from './dashboard-ui';
+import { GlassPanel, MetricCard, MetricGrid, PageHeader, desktopTableWrapClass, mobileCardClass, mobileCardListClass, tableHeadRowClass, tableRowClass } from './dashboard-ui';
 
 type Grouping = 'product' | 'group';
-
-const dateClass =
-  'h-10 rounded-xl border border-slate-200 bg-white px-3 font-mono text-[0.84rem] text-ops-ink outline-none focus:border-ops-teal/50';
 
 function monthStart(date: string) {
   return `${date.slice(0, 8)}01`;
@@ -66,9 +64,9 @@ export const MarginsPanel: React.FC = () => {
       <GlassPanel>
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <input type="date" value={from} max={to || today} onChange={(event) => setFrom(event.target.value)} aria-label={t('margins.from')} className={dateClass} />
+            <DateField value={from} max={to || today} onChange={setFrom} aria-label={t('margins.from')} className="w-40" />
             <span className="text-slate-400">–</span>
-            <input type="date" value={to} min={from} max={today} onChange={(event) => setTo(event.target.value)} aria-label={t('margins.to')} className={dateClass} />
+            <DateField value={to} min={from} max={today} onChange={setTo} aria-label={t('margins.to')} className="w-40" />
             <div className="ml-auto grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-ops-canvas p-1" role="radiogroup" aria-label={t('margins.groupBy')}>
               {(['product', 'group'] as const).map((option) => (
                 <button
@@ -139,42 +137,72 @@ export const MarginsPanel: React.FC = () => {
         ) : rows.length === 0 ? (
           <p className="px-4 py-8 text-center font-sans text-[0.82rem] text-slate-500 sm:px-5">{t('sales.noSales')}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-4 py-2.5 font-medium sm:px-5">{by === 'product' ? t('sales.product') : t('margins.group')}</th>
-                  {by === 'product' && <th className="px-3 py-2.5 text-right font-medium">{t('writeOff.qty')}</th>}
-                  <th className="px-3 py-2.5 text-right font-medium">{t('sales.turnover')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('margins.net')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('sales.cost')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('sales.profit')}</th>
-                  <th className="px-4 py-2.5 text-right font-medium sm:px-5">{t('margins.margin')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id ?? `none-${row.name}`} className={tableRowClass()}>
-                    <td className="px-4 py-2.5 sm:px-5">
-                      <p className="font-display text-[0.84rem] text-ops-ink">{row.id === null && by === 'group' ? t('margins.noGroup') : row.name}</p>
-                      {row.code && <p className="font-mono text-[0.66rem] text-slate-400">{row.code}</p>}
-                    </td>
-                    {by === 'product' && <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] tabular-nums">{qtyFormat.format(row.quantity)}</td>}
-                    <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] tabular-nums">{formatEuro(row.gross)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] text-slate-500 tabular-nums">{formatEuro(row.net)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] text-slate-500 tabular-nums">
-                      {row.cost !== undefined ? formatEuro(row.cost) : '—'}
-                      {row.linesWithoutCost ? <span className="text-amber-700">*</span> : null}
-                    </td>
-                    <td className={cn('px-3 py-2.5 text-right font-mono text-[0.82rem] font-medium tabular-nums', (row.profit ?? 0) < 0 ? 'text-ops-danger' : 'text-ops-teal')}>
-                      {row.profit !== undefined ? formatEuro(row.profit) : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-[0.8rem] tabular-nums sm:px-5">{marginText(row.marginPercent)}</td>
+          <>
+            <ul className={mobileCardListClass()}>
+              {rows.map((row) => (
+                <li key={row.id ?? `none-${row.name}`} className={mobileCardClass()}>
+                  <div className="min-w-0">
+                    <p className="font-display text-[0.86rem] font-medium text-ops-ink">
+                      {row.id === null && by === 'group' ? t('margins.noGroup') : row.name}
+                    </p>
+                    {row.code && <p className="font-mono text-[0.66rem] text-slate-400">{row.code}</p>}
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[0.74rem] tabular-nums text-slate-500">
+                      {by === 'product' && (
+                        <span>
+                          {t('writeOff.qty')}: {qtyFormat.format(row.quantity)}
+                        </span>
+                      )}
+                      <span>
+                        {t('sales.turnover')}: {formatEuro(row.gross)}
+                      </span>
+                      <span className={cn((row.profit ?? 0) < 0 ? 'text-ops-danger' : 'text-ops-teal')}>
+                        {t('sales.profit')}: {row.profit !== undefined ? formatEuro(row.profit) : '—'}
+                      </span>
+                      <span>
+                        {t('margins.margin')}: {marginText(row.marginPercent)}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className={desktopTableWrapClass()}>
+              <table className="w-full min-w-[40rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-4 py-2.5 font-medium sm:px-5">{by === 'product' ? t('sales.product') : t('margins.group')}</th>
+                    {by === 'product' && <th className="px-3 py-2.5 text-right font-medium">{t('writeOff.qty')}</th>}
+                    <th className="px-3 py-2.5 text-right font-medium">{t('sales.turnover')}</th>
+                    <th className="px-3 py-2.5 text-right font-medium">{t('margins.net')}</th>
+                    <th className="px-3 py-2.5 text-right font-medium">{t('sales.cost')}</th>
+                    <th className="px-3 py-2.5 text-right font-medium">{t('sales.profit')}</th>
+                    <th className="px-4 py-2.5 text-right font-medium sm:px-5">{t('margins.margin')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id ?? `none-${row.name}`} className={tableRowClass()}>
+                      <td className="px-4 py-2.5 sm:px-5">
+                        <p className="font-display text-[0.84rem] text-ops-ink">{row.id === null && by === 'group' ? t('margins.noGroup') : row.name}</p>
+                        {row.code && <p className="font-mono text-[0.66rem] text-slate-400">{row.code}</p>}
+                      </td>
+                      {by === 'product' && <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] tabular-nums">{qtyFormat.format(row.quantity)}</td>}
+                      <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] tabular-nums">{formatEuro(row.gross)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] text-slate-500 tabular-nums">{formatEuro(row.net)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] text-slate-500 tabular-nums">
+                        {row.cost !== undefined ? formatEuro(row.cost) : '—'}
+                        {row.linesWithoutCost ? <span className="text-amber-700">*</span> : null}
+                      </td>
+                      <td className={cn('px-3 py-2.5 text-right font-mono text-[0.82rem] font-medium tabular-nums', (row.profit ?? 0) < 0 ? 'text-ops-danger' : 'text-ops-teal')}>
+                        {row.profit !== undefined ? formatEuro(row.profit) : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-[0.8rem] tabular-nums sm:px-5">{marginText(row.marginPercent)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
     </div>

@@ -1,6 +1,6 @@
 import { FieldOverflowError, fixedRecord, fixedWidthFile, formatAmount, recordWidth, type FixedField } from './fixed-width';
 import { stableHash } from './hash';
-import { isValidBgVatNumber, isValidEgn, isValidEik, isValidLnch, ledgerTaxId } from './identifiers';
+import { isValidBgVatNumber, isValidEgn, isValidEik, isValidLnch, ledgerTaxId } from '@skladnik/shared';
 
 function expectEqual(actual: unknown, expected: unknown, label: string) {
   const a = JSON.stringify(actual);

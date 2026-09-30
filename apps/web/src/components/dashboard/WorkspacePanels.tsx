@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, FileCode2, Timer } from 'lucide-react';
+import { CheckCircle2, Timer } from 'lucide-react';
 import { useLogout } from '../../lib/auth-session';
 import { useRequiredUser } from '../../lib/auth-store';
 import { useSitesQuery } from '../../lib/workspace-session';
@@ -8,6 +8,8 @@ import { ExpiringBatches } from './ExpiringBatches';
 import { ExpiryChip, GhostButton, GlassPanel, LiveBadge, PageHeader, SpecularRim, glassClass } from './dashboard-ui';
 import { cn } from '../../lib/cn';
 import { useTranslation } from 'react-i18next';
+
+const EXPIRY_CHIP_LABELS = ['expiry.watch', 'expiry.plan', 'expiry.sellNow', 'expiry.pull'] as const;
 
 export const ExpiryPanel: React.FC = () => {
   const { t } = useTranslation();
@@ -27,58 +29,30 @@ export const ExpiryPanel: React.FC = () => {
           {data.expired > 0 && <LiveBadge>{t('expiry.expiredCount', { count: data.expired })}</LiveBadge>}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2.5">
-          <ExpiryChip days={30} count={data.expiring[30]} active={data.expiring[30] > 0} subLabel={t('expiry.watch')} />
-          <ExpiryChip days={14} count={data.expiring[14]} active={data.expiring[14] > 0} subLabel={t('expiry.plan')} />
-          <ExpiryChip days={7} count={data.expiring[7]} active={data.expiring[7] > 0} subLabel={t('expiry.sellNow')} />
-          <ExpiryChip days={3} count={data.expiring[3]} active={data.expiring[3] > 0} subLabel={t('expiry.pull')} />
+          {data.expiring.map(({ days, count }, index) => (
+            <ExpiryChip key={index} days={days} count={count} active={count > 0} subLabel={t(EXPIRY_CHIP_LABELS[index])} />
+          ))}
         </div>
       </section>
+
+      {data.expired > 0 && (
+        <GlassPanel
+          padded={false}
+          title={t('expiry.expiredWriteOff')}
+          action={<LiveBadge>{t('expiry.batches', { count: data.expiredBoard.length })}</LiveBadge>}
+        >
+          <ExpiringBatches lines={data.expiredBoard} empty={t('empty.noExpiry')} />
+        </GlassPanel>
+      )}
 
       <GlassPanel
         padded={false}
         title={t('expiry.useFirst')}
-        action={<LiveBadge>{t('expiry.batches', { count: data.fefoBoard.length })}</LiveBadge>}
+        action={<LiveBadge>{t('expiry.batches', { count: data.useFirstBoard.length })}</LiveBadge>}
       >
-        <ExpiringBatches lines={data.fefoBoard} empty={data.stockReady ? t('empty.noExpiry') : t('stock.loading')} />
+        <ExpiringBatches lines={data.useFirstBoard} empty={data.stockReady ? t('empty.noExpiry') : t('stock.loading')} />
       </GlassPanel>
     </div>
-  );
-};
-
-/** Honest placeholder for screens that have no data source yet. */
-const ComingSoon: React.FC<{
-  eyebrow: string;
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  body: string;
-}> = ({ eyebrow, title, description, icon: Icon, body }) => {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-5 sm:gap-6">
-      <PageHeader eyebrow={eyebrow} title={title} description={description} />
-      <GlassPanel title={t('common.comingSoon')}>
-        <div className="flex items-start gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-ops-canvas text-ops-accent">
-            <Icon size={16} />
-          </div>
-          <p className="max-w-xl font-sans text-[0.84rem] leading-relaxed text-slate-600">{body}</p>
-        </div>
-      </GlassPanel>
-    </div>
-  );
-};
-
-export const AuditPanel: React.FC = () => {
-  const { t } = useTranslation();
-  return (
-    <ComingSoon
-      eyebrow={t('pages.auditEyebrow')}
-      title={t('pages.auditTitle')}
-      description={t('pages.auditDesc')}
-      icon={FileCode2}
-      body={t('audit.comingSoon')}
-    />
   );
 };
 

@@ -34,6 +34,16 @@ export function partnerKey(value: string): string {
     .join(' ');
 }
 
+const UNIT_TOKENS: Record<string, string> = { gr: 'g', gra: 'g', grama: 'g', lt: 'l', ltr: 'l', litra: 'l', kgr: 'kg', mililitra: 'ml' };
+
+/** nameKey with unit spellings folded, so "400гр" and "400 г", "1лт" and "1 л" agree. */
+export function productKey(value: string): string {
+  return nameKey(value)
+    .split(' ')
+    .map((token) => UNIT_TOKENS[token] ?? token)
+    .join(' ');
+}
+
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -54,8 +64,11 @@ function ratio(a: string, b: string) {
 
 const sortTokens = (key: string) => key.split(' ').sort().join(' ');
 const numbersIn = (key: string) => (key.match(/\d+(?:\.\d+)?/g) ?? []).join(' ');
+const isWord = (token: string) => /[a-z]/.test(token) && token.length > 1;
 
-type Entry<T> = { item: T; key: string; sorted: string; numbers: string };
+type Entry<T> = { item: T; key: string; sorted: string; numbers: string; tokens: Set<string> };
+
+export type NameSuggestion<T> = { item: T; score: number };
 
 /**
  * Finds an existing record by name. Exact key first; otherwise the closest key above `threshold`,
@@ -69,13 +82,34 @@ export class NameIndex<T extends { name: string }> {
     items: T[],
     private readonly keyOf: (name: string) => string = nameKey,
     private readonly threshold = 0.88,
+    /** Products only: two companies differing by one word are usually different companies. */
+    private readonly allowExtraWord = false,
   ) {
     for (const item of items) this.add(item);
   }
 
   add(item: T) {
     const key = this.keyOf(item.name);
-    if (key) this.entries.push({ item, key, sorted: sortTokens(key), numbers: numbersIn(key) });
+    if (key) this.entries.push({ item, key, sorted: sortTokens(key), numbers: numbersIn(key), tokens: new Set(key.split(' ')) });
+  }
+
+  /** Closest names for a person to choose from; never used to link on its own. */
+  suggest(name: string, limit = 3): NameSuggestion<T>[] {
+    const key = this.keyOf(name);
+    if (!key) return [];
+    const sorted = sortTokens(key);
+    const numbers = numbersIn(key);
+    const tokens = new Set(key.split(' '));
+    return this.entries
+      .map((entry) => {
+        const shared = [...entry.tokens].filter((token) => tokens.has(token)).length;
+        const jaccard = shared / (entry.tokens.size + tokens.size - shared);
+        const score = Math.max(ratio(key, entry.key), ratio(sorted, entry.sorted), jaccard) + (entry.numbers === numbers ? 0.1 : 0);
+        return { item: entry.item, score: Math.min(1, Math.round(score * 100) / 100) };
+      })
+      .filter((row) => row.score >= 0.5)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
   }
 
   find(name: string): T | null {
@@ -102,6 +136,24 @@ export class NameIndex<T extends { name: string }> {
         tied = true;
       }
     }
-    return best && bestScore >= this.threshold && !tied ? best.item : null;
+    if (best && bestScore >= this.threshold && !tied) return best.item;
+    return this.allowExtraWord ? this.findWithOneExtraWord(key, numbers) : null;
+  }
+
+  /**
+   * "Кисело мляко краве 3,6% 400 г" for "Кисело мляко 3,6% 400 г": every word and number of exactly one record,
+   * plus at most one extra word. The record needs two words of its own, so "Мляко 1 л" never
+   * swallows "Мляко козе 1 л".
+   */
+  private findWithOneExtraWord(key: string, numbers: string): T | null {
+    const tokens = new Set(key.split(' '));
+    const hits = this.entries.filter(
+      (entry) =>
+        entry.numbers === numbers &&
+        [...entry.tokens].filter(isWord).length >= 2 &&
+        tokens.size - entry.tokens.size <= 1 &&
+        [...entry.tokens].every((token) => tokens.has(token)),
+    );
+    return hits.length === 1 ? hits[0].item : null;
   }
 }

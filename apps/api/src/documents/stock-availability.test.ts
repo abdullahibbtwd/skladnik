@@ -1,4 +1,4 @@
-import { onHandByKey, stockShortfalls } from './stock-availability';
+import { onHandByKey, shortfallMessage, stockShortfalls } from './stock-availability';
 
 const onHand = onHandByKey([
   { productId: 'milk', batchNumber: 'L1', direction: 'IN', quantity: 10 },
@@ -29,12 +29,20 @@ const split = stockShortfalls(
   ],
   onHand,
 );
-if (split.length !== 1 || !split[0].includes('batch L1') || !split[0].includes('6 on hand, 7 to take out')) {
+if (
+  split.length !== 1 ||
+  !split[0]!.product.includes('batch L1') ||
+  split[0]!.available !== 6 ||
+  split[0]!.requested !== 7
+) {
   throw new Error(`expected one L1 shortfall, got ${JSON.stringify(split)}`);
+}
+if (!shortfallMessage(split[0]!).includes('6 on hand, 7 to take out')) {
+  throw new Error(`unexpected message ${shortfallMessage(split[0]!)}`);
 }
 
 const unknownBatch = stockShortfalls([{ ...milk, batchNumber: 'NOPE', quantity: 1 }], onHand);
-if (unknownBatch.length !== 1 || !unknownBatch[0].includes('0 on hand')) {
+if (unknownBatch.length !== 1 || unknownBatch[0]!.available !== 0) {
   throw new Error(`expected unknown batch to be short, got ${JSON.stringify(unknownBatch)}`);
 }
 
@@ -42,7 +50,7 @@ const negative = stockShortfalls(
   [{ ...bread, quantity: 1 }],
   onHandByKey([{ productId: 'bread', batchNumber: null, direction: 'OUT', quantity: 2 }]),
 );
-if (negative.length !== 1 || !negative[0].includes('0 on hand')) {
+if (negative.length !== 1 || negative[0]!.available !== 0) {
   throw new Error(`expected negative stock to read as 0 on hand, got ${JSON.stringify(negative)}`);
 }
 

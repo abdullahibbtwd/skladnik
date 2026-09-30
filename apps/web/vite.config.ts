@@ -26,6 +26,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon-180x180.png', 'pwa-icon.svg'],
       manifest: {
         id: '/',
+        lang: 'bg',
         name: 'Skladnik — Smart Retail & Stock Management',
         short_name: 'Skladnik',
         description: 'Stock, invoices, till and reports for grocery stores, cafés and retail outlets.',

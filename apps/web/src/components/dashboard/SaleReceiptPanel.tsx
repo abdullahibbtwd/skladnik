@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Undo2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatBusinessDateTime } from '../../lib/business-date';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
+import { formatDate, formatQty } from '../../lib/format';
 import { useSaleQuery, useVoidSale } from '../../lib/workspace-session';
 import { FieldError, FieldLabel } from '../PasswordField';
 import { toast } from '../ui/Toaster';
@@ -20,7 +21,6 @@ export const SaleReceiptPanel: React.FC = () => {
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
 
   if (saleQuery.isLoading) return <p className="font-sans text-[0.86rem] text-slate-500">{t('common.loading')}</p>;
   if (!sale) {
@@ -65,6 +65,7 @@ export const SaleReceiptPanel: React.FC = () => {
           sale.postedAt ? formatBusinessDateTime(sale.postedAt, i18n.language) : null,
           sale.cashier?.name,
           sale.paymentMethod ? t(`labels.paymentMethod.${sale.paymentMethod}`) : null,
+          sale.paymentReference,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -113,13 +114,13 @@ export const SaleReceiptPanel: React.FC = () => {
                     <p className="font-mono text-[0.66rem] text-slate-400">
                       {line.product?.code}
                       {line.batch && ` · ${t('sales.batch', { number: line.batch.batchNumber })}`}
-                      {line.batch?.expiryDate && ` · ${line.batch.expiryDate}`}
+                      {line.batch?.expiryDate && ` · ${formatDate(line.batch.expiryDate, i18n.language)}`}
                     </p>
                     {line.issued && (
                       <ul className="mt-1 flex flex-col gap-0.5 border-l-2 border-slate-100 pl-2">
                         {line.issued.map((row, index) => (
                           <li key={`${row.productId}-${index}`} className="font-sans text-[0.7rem] text-slate-500">
-                            {row.name} · {qtyFormat.format(row.quantity)} {t(`labels.unit.${row.unit}`)}
+                            {row.name} · {formatQty(row.quantity, i18n.language)} {t(`labels.unit.${row.unit}`)}
                             {row.batchNumber && ` · ${t('sales.batch', { number: row.batchNumber })}`}
                           </li>
                         ))}
@@ -127,7 +128,7 @@ export const SaleReceiptPanel: React.FC = () => {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono text-[0.82rem] tabular-nums">
-                    {qtyFormat.format(line.quantity)} {line.product ? t(`labels.unit.${line.product.unit}`) : ''}
+                    {formatQty(line.quantity, i18n.language)} {line.product ? t(`labels.unit.${line.product.unit}`) : ''}
                   </td>
                   <td className="px-3 py-2.5 text-right font-mono text-[0.82rem] tabular-nums">{formatEuro(line.unitPrice)}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-[0.76rem] text-slate-500">{line.vatRate}%</td>

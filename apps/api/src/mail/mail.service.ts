@@ -48,4 +48,40 @@ export class MailService {
 
     return { delivered: true };
   }
+
+  async sendPasswordResetEmail(input: {
+    to: string;
+    name: string;
+    resetUrl: string;
+  }): Promise<{ delivered: boolean }> {
+    if (!this.resend) {
+      this.logger.warn(`RESEND_API_KEY is not set. Password reset URL for ${input.to}: ${input.resetUrl}`);
+      return { delivered: false };
+    }
+
+    const from =
+      this.config.get<string>('RESEND_FROM_EMAIL')?.trim() || 'Skladnik <beth.t@example.com>';
+    const greeting = input.name.trim() || 'there';
+
+    const { error } = await this.resend.emails.send({
+      from,
+      to: input.to,
+      subject: 'Reset your Skladnik password',
+      html: `
+        <p>Hi ${greeting},</p>
+        <p>We received a request to reset the password for your Skladnik account.</p>
+        <p><a href="${input.resetUrl}">Choose a new password</a></p>
+        <p>This link expires in one hour. If you did not ask for a reset, you can ignore this email.</p>
+      `,
+      text: `Hi ${greeting},\n\nReset your Skladnik password: ${input.resetUrl}\n\nThis link expires in one hour. If you did not ask for a reset, ignore this email.`,
+    });
+
+    if (error) {
+      const detail = typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
+      this.logger.error(`Resend failed for password reset to ${input.to}: ${detail}`);
+      throw new BadGatewayException('Could not send the password reset email. Try again later.');
+    }
+
+    return { delivered: true };
+  }
 }

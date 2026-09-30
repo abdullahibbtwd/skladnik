@@ -6,6 +6,17 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 export type SiteLedgerRow = LedgerCostRow & { inTotal: number; outTotal: number; lastAt: Date | null };
 
+/**
+ * What a batch cost: quantity and value of the INs that carry a cost. A reversed IN is taken back out by
+ * its reversal (an OUT with reversalOfId); stock put back by undoing an OUT doesn't change what the batch cost.
+ */
+export const IN_BASIS_QTY = Prisma.sql`COALESCE(SUM(CASE WHEN "unitCost" IS NOT NULL THEN
+    CASE WHEN "direction" = 'IN' AND "reversalOfId" IS NULL THEN "quantity"
+         WHEN "direction" = 'OUT' AND "reversalOfId" IS NOT NULL THEN -"quantity" END END), 0)::float8`;
+export const IN_BASIS_VALUE = Prisma.sql`COALESCE(SUM(CASE WHEN "unitCost" IS NOT NULL THEN
+    CASE WHEN "direction" = 'IN' AND "reversalOfId" IS NULL THEN "quantity" * "unitCost"
+         WHEN "direction" = 'OUT' AND "reversalOfId" IS NOT NULL THEN -"quantity" * "unitCost" END END), 0)::float8`;
+
 /** On hand, IN cost totals and last movement per product and batch at one site. */
 export async function siteLedger(db: Db, companyId: string, siteId: string, productIds?: string[]): Promise<SiteLedgerRow[]> {
   if (productIds && productIds.length === 0) return [];
@@ -16,8 +27,8 @@ export async function siteLedger(db: Db, companyId: string, siteId: string, prod
     SELECT "productId", "batchId",
       COALESCE(SUM(CASE WHEN "direction" = 'IN' THEN "quantity" END), 0)::float8 AS "inTotal",
       COALESCE(SUM(CASE WHEN "direction" = 'OUT' THEN "quantity" END), 0)::float8 AS "outTotal",
-      COALESCE(SUM(CASE WHEN "direction" = 'IN' AND "unitCost" IS NOT NULL THEN "quantity" END), 0)::float8 AS "inQty",
-      COALESCE(SUM(CASE WHEN "direction" = 'IN' AND "unitCost" IS NOT NULL THEN "quantity" * "unitCost" END), 0)::float8 AS "inValue",
+      ${IN_BASIS_QTY} AS "inQty",
+      ${IN_BASIS_VALUE} AS "inValue",
       MAX("occurredAt") AS "lastAt"
     FROM "StockMovement"
     WHERE "companyId" = ${companyId} AND "siteId" = ${siteId} ${productFilter}

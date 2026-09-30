@@ -8,13 +8,18 @@ import { REFRESH_COOKIE } from './auth.constants';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { RateLimit, type RateLimitRule } from './decorators/rate-limit.decorator';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SignupDto } from './dto/signup.dto';
 import { SignupWithInviteDto } from './dto/signup-with-invite.dto';
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { InvitesService } from '../invites/invites.service';
 
 const SIGNUP_LIMIT: RateLimitRule = { name: 'signup', limit: 10, windowSeconds: 60 * 60, by: 'ip' };
+const RESET_LIMIT: RateLimitRule = { name: 'password-reset', limit: 10, windowSeconds: 15 * 60, by: 'ip' };
+const GOOGLE_LIMIT: RateLimitRule = { name: 'google-auth', limit: 30, windowSeconds: 15 * 60, by: 'ip' };
 
 @Controller('auth')
 export class AuthController {
@@ -22,6 +27,12 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly invites: InvitesService,
   ) {}
+
+  @Public()
+  @Get('providers')
+  providers() {
+    return this.auth.providers();
+  }
 
   @Public()
   @UseGuards(RateLimitGuard)
@@ -53,6 +64,30 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     return this.auth.login(req.user, res);
+  }
+
+  @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(GOOGLE_LIMIT)
+  @Post('google')
+  google(@Body() dto: GoogleAuthDto, @Res({ passthrough: true }) res: Response) {
+    return this.auth.loginWithGoogle(dto.credential, res);
+  }
+
+  @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(RESET_LIMIT)
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(RESET_LIMIT)
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto, @Res({ passthrough: true }) res: Response) {
+    return this.auth.resetPassword(dto.token, dto.password, res);
   }
 
   @Public()

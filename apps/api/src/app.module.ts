@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { join } from 'path';
+import { ActivityModule } from './activity/activity.module';
 import { AuthModule } from './auth/auth.module';
+import { CompanyModule } from './company/company.module';
 import { DocumentsModule } from './documents/documents.module';
 import { ExtractionModule } from './extraction/extraction.module';
 import { HealthModule } from './health/health.module';
@@ -16,6 +18,7 @@ import { ProductsModule } from './products/products.module';
 import { RecipesModule } from './recipes/recipes.module';
 import { ReportsModule } from './reports/reports.module';
 import { VatModule } from './vat/vat.module';
+import { Annex38Module } from './annex38/annex38.module';
 import { SalesModule } from './sales/sales.module';
 import { SitesModule } from './sites/sites.module';
 import { StockModule } from './stock/stock.module';
@@ -42,6 +45,8 @@ import { UsersModule } from './users/users.module';
     QueueModule,
     AuthModule,
     TenancyModule,
+    CompanyModule,
+    ActivityModule,
     SitesModule,
     UsersModule,
     InvitesModule,
@@ -55,6 +60,7 @@ import { UsersModule } from './users/users.module';
     RecipesModule,
     ReportsModule,
     VatModule,
+    Annex38Module,
     ExtractionModule,
     StorageModule,
     HealthModule,

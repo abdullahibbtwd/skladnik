@@ -5,8 +5,12 @@ import { useTranslation } from 'react-i18next';
 import {
   DEFAULT_MARKUP_PERCENT,
   MAX_WASTAGE_PERCENT,
+  grossQuantity,
   isSalesManager,
   recipeCosting,
+  recipeQtyToStock,
+  recipeQuantityUnits,
+  type ContentUnit,
   type UnitOfMeasure,
 } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
@@ -81,7 +85,7 @@ export const RecipesPanel: React.FC = () => {
       <button
         type="button"
         onClick={newRecipe}
-        className="flex items-center justify-center gap-2 rounded-xl bg-ops-teal px-4 py-3 font-display text-[0.86rem] font-medium text-white lg:hidden"
+        className="flex items-center justify-center gap-2 rounded-xl bg-ops-teal px-4 py-3 font-display text-[0.86rem] font-medium text-white md:hidden"
       >
         <Plus size={16} />
         {t('recipes.new')}
@@ -268,7 +272,10 @@ type IngredientRow = {
   name: string;
   code: string;
   unit: UnitOfMeasure;
+  netContent: number | null;
+  netContentUnit: ContentUnit | null;
   quantity: string;
+  quantityUnit: '' | ContentUnit;
   wastage: string;
   unitCost: number;
   onHand: number | null;
@@ -281,11 +288,22 @@ function rowsFromCard(card: RecipeCard): IngredientRow[] {
     name: row.name,
     code: row.code,
     unit: row.unit,
+    netContent: row.netContent,
+    netContentUnit: row.netContentUnit,
     quantity: String(row.quantity),
+    quantityUnit: row.quantityUnit ?? '',
     wastage: row.wastagePercent ? String(row.wastagePercent) : '',
     unitCost: row.unitCost,
     onHand: row.onHand,
   }));
+}
+
+function unitLabel(t: (key: string) => string, unit: string) {
+  return t(`labels.unit.${unit}`);
+}
+
+function contentOf(row: Pick<IngredientRow, 'unit' | 'netContent' | 'netContentUnit'>) {
+  return { unit: row.unit, netContent: row.netContent, netContentUnit: row.netContentUnit };
 }
 
 export const RecipeEditorPanel: React.FC = () => {
@@ -351,11 +369,18 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
   const parsed = rows.map((row) => {
     const quantity = parseAmount(row.quantity);
     const wastage = row.wastage.trim() === '' ? 0 : parseAmount(row.wastage);
+    const quantityUnit = row.quantityUnit === '' ? null : row.quantityUnit;
+    const stockQty =
+      Number.isFinite(quantity) && quantity > 0
+        ? recipeQtyToStock(quantity, quantityUnit, contentOf(row))
+        : null;
     return {
       row,
       quantity,
       wastage,
-      qtyOk: Number.isFinite(quantity) && quantity > 0 && quantity <= 100000,
+      quantityUnit,
+      stockQty,
+      qtyOk: Number.isFinite(quantity) && quantity > 0 && quantity <= 100000 && stockQty != null,
       wastageOk: Number.isFinite(wastage) && wastage >= 0 && wastage <= MAX_WASTAGE_PERCENT,
     };
   });
@@ -369,7 +394,7 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
     sellingPrice: dish.sellingPrice,
     vatRate: dish.vatRate,
     ingredients: parsed.map((line) => ({
-      quantity: line.qtyOk ? line.quantity : 0,
+      quantity: line.qtyOk && line.stockQty != null ? line.stockQty : 0,
       wastagePercent: line.wastageOk ? line.wastage : 0,
       unitCost: line.row.unitCost,
     })),
@@ -392,9 +417,12 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
         name: product.name,
         code: product.code,
         unit: product.unit,
+        netContent: product.netContent,
+        netContentUnit: product.netContentUnit,
         quantity: '',
+        quantityUnit: '',
         wastage: '',
-        unitCost: level?.avgCost ?? product.purchasePrice,
+        unitCost: level?.avgCost ?? product.purchasePrice ?? 0,
         onHand: level ? level.onHand : 0,
       },
     ]);
@@ -412,6 +440,7 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
         ingredients: parsed.map((line) => ({
           productId: line.row.productId,
           quantity: Math.round(line.quantity * 10000) / 10000,
+          quantityUnit: line.quantityUnit,
           wastagePercent: Math.round(line.wastage * 100) / 100,
         })),
       });
@@ -452,7 +481,7 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
   const portionsLabel = yieldOk ? t('recipes.yieldShort', { count: yieldPortions }) : '—';
 
   return (
-    <div className="flex flex-col gap-4 pb-28 sm:gap-5 lg:pb-0">
+    <div className="flex flex-col gap-4 sm:gap-5">
       <BackLink to="/app/recipes" label={t('recipes.back')} />
       <PageHeader
         eyebrow={card.recipe ? t('recipes.cardEyebrow') : t('recipes.newCardEyebrow')}
@@ -507,15 +536,24 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
                 {parsed.map((line, index) => {
                   const { row } = line;
                   const costLine = costing.lines[index];
-                  const unit = t(`labels.unit.${row.unit}`);
+                  const stockUnit = unitLabel(t, row.unit);
+                  const qtyUnitKey = line.quantityUnit ?? row.unit;
+                  const qtyUnit = unitLabel(t, qtyUnitKey);
+                  const unitChoices = recipeQuantityUnits(contentOf(row));
+                  const grossInRecipeUnit = line.qtyOk
+                    ? Math.round((grossQuantity(line.quantity, line.wastage) / (yieldOk ? yieldPortions : 1)) * 10000) / 10000
+                    : null;
                   return (
                     <li key={row.key} className="border-b border-slate-100 px-4 py-3 last:border-0 sm:px-5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate font-display text-[0.86rem] text-ops-ink">{row.name}</p>
                           <p className="font-mono text-[0.66rem] text-slate-400">
-                            {row.code} · {row.unitCost > 0 ? t('recipes.unitCost', { cost: formatEuro(row.unitCost), unit }) : t('recipes.noCost')}
-                            {row.onHand !== null && ` · ${t('recipes.onHand', { qty: qtyFormat.format(row.onHand), unit })}`}
+                            {row.code} · {row.unitCost > 0 ? t('recipes.unitCost', { cost: formatEuro(row.unitCost), unit: stockUnit }) : t('recipes.noCost')}
+                            {row.onHand !== null && ` · ${t('recipes.onHand', { qty: qtyFormat.format(row.onHand), unit: stockUnit })}`}
+                            {row.netContent != null && row.netContentUnit
+                              ? ` · ${t('recipes.netContentShort', { qty: row.netContent, unit: unitLabel(t, row.netContentUnit) })}`
+                              : ''}
                           </p>
                         </div>
                         <button
@@ -530,15 +568,26 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
                           <X size={15} />
                         </button>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
                         <label className="block">
-                          <span className="mb-1 block font-sans text-[0.68rem] text-slate-500">{t('recipes.netQty', { unit })}</span>
+                          <span className="mb-1 block font-sans text-[0.68rem] text-slate-500">{t('recipes.netQty', { unit: qtyUnit })}</span>
                           <input
                             inputMode="decimal"
                             value={row.quantity}
                             onChange={(event) => edit(row.key, { quantity: event.target.value })}
                             placeholder="0"
                             className={cn(inputClass, row.quantity !== '' && !line.qtyOk && 'border-ops-danger/50')}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block font-sans text-[0.68rem] text-slate-500">{t('recipes.qtyUnit')}</span>
+                          <Select
+                            value={row.quantityUnit}
+                            onChange={(value) => edit(row.key, { quantityUnit: value as '' | ContentUnit })}
+                            options={unitChoices.map((unit) => ({
+                              value: unit === row.unit ? '' : unit,
+                              label: unitLabel(t, unit),
+                            }))}
                           />
                         </label>
                         <label className="block">
@@ -554,7 +603,7 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
                         <div>
                           <span className="mb-1 block font-sans text-[0.68rem] text-slate-500">{t('recipes.grossPerPortion')}</span>
                           <p className="flex h-10 items-center font-mono text-[0.82rem] text-slate-600 tabular-nums">
-                            {line.qtyOk ? `${qtyFormat.format(costLine.perPortion)} ${unit}` : '—'}
+                            {grossInRecipeUnit != null ? `${qtyFormat.format(grossInRecipeUnit)} ${qtyUnit}` : '—'}
                           </p>
                         </div>
                         <div>
@@ -638,7 +687,7 @@ const RecipeEditor: React.FC<{ card: RecipeCard }> = ({ card }) => {
 
           {error && <FieldError>{error}</FieldError>}
 
-          <div className="fixed inset-x-3 bottom-24 z-20 flex gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] backdrop-blur lg:static lg:inset-auto lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+          <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] md:border-0 md:bg-transparent md:p-0 md:shadow-none">
             {card.recipe && (
               <button
                 type="button"

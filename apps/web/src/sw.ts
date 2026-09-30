@@ -106,13 +106,15 @@ registerRoute(
   }),
 );
 
+const documentPlugins = [ok, savedCopyOnServerError(API_CACHES.document), new ExpirationPlugin({ maxEntries: OFFLINE_DOCUMENT_DETAILS_KEPT, maxAgeSeconds: 30 * DAY_SECONDS, purgeOnQuotaError: true })];
 registerRoute(
   onPath(/^\/documents\/[0-9a-f-]{36}$/i),
-  new NetworkFirst({
-    cacheName: API_CACHES.document,
-    networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
-    plugins: [ok, savedCopyOnServerError(API_CACHES.document), new ExpirationPlugin({ maxEntries: OFFLINE_DOCUMENT_DETAILS_KEPT, maxAgeSeconds: 30 * DAY_SECONDS, purgeOnQuotaError: true })],
-  }),
+  unlessFresh(
+    new NetworkFirst({ cacheName: API_CACHES.document, networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS, plugins: documentPlugins }),
+    // A refetch (e.g. polling while a photo is read) waits for the server, however slow: a saved copy
+    // would freeze the screen on "reading". It still falls back to the copy when the request fails.
+    new NetworkFirst({ cacheName: API_CACHES.document, plugins: documentPlugins }),
+  ),
 );
 
 registerRoute(

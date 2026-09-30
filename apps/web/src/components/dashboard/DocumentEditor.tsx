@@ -5,14 +5,18 @@ import {
   defaultStockDirection,
   type DocumentType,
 } from '@skladnik/shared';
-import { useAuthRole } from '../../lib/auth-store';
-import { useCreateDocument, usePartnersQuery, useSitesQuery } from '../../lib/workspace-session';
+import { ApiError, type DuplicateDocumentRef } from '../../lib/workspace-api';
+import { useCreateDocument, usePartnerLookupQuery, useSitesQuery } from '../../lib/workspace-session';
 import { FieldError, FieldLabel } from '../PasswordField';
+import { DateField } from '../ui/DateField';
 import { Select } from '../ui/Select';
 import { toast } from '../ui/Toaster';
 import { useTranslation } from 'react-i18next';
 import { useDashboard } from './dashboard-context';
 import { GhostButton, GlassPanel, PageHeader } from './dashboard-ui';
+import { DateSanityHint, DuplicateNotice } from './document-checks-ui';
+import { InlineCreateSupplier } from './InlineCreateSupplier';
+import { usePermissions } from '../../lib/permissions';
 
 const fieldClass =
   'w-full rounded-lg border border-slate-200 bg-ops-canvas px-3 py-[0.65rem] font-sans text-[0.88rem] text-ops-ink outline-none placeholder:text-slate-400 focus:border-ops-teal/50 focus:bg-white focus:ring-1 focus:ring-ops-teal/30 disabled:opacity-60';
@@ -32,11 +36,11 @@ const CREATE_HEADINGS: Partial<Record<DocumentType, { title: string; desc: strin
 export const DocumentCreatePanel: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  const { createDocuments, seeFinancials } = usePermissions();
+  const canWrite = createDocuments;
   const { siteId: dashboardSiteId } = useDashboard();
   const sitesQuery = useSitesQuery();
-  const partnersQuery = usePartnersQuery();
+  const partnersQuery = usePartnerLookupQuery();
   const createDocument = useCreateDocument();
   const sites = (sitesQuery.data?.sites ?? []).filter((site) => site.isActive);
   const partners = partnersQuery.data?.partners ?? [];
@@ -50,6 +54,7 @@ export const DocumentCreatePanel: React.FC = () => {
   const [documentNumber, setDocumentNumber] = useState('');
   const [issuedOn, setIssuedOn] = useState(todayIso());
   const [error, setError] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<DuplicateDocumentRef | null>(null);
 
   useEffect(() => {
     if (!siteId && dashboardSiteId) setSiteId(dashboardSiteId);
@@ -62,6 +67,7 @@ export const DocumentCreatePanel: React.FC = () => {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    setDuplicate(null);
     if (!canWrite) {
       setError(t('doc.staffCannotCreate'));
       return;
@@ -79,6 +85,7 @@ export const DocumentCreatePanel: React.FC = () => {
       navigate(`/app/invoices/${result.document.id}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('doc.createFailed'));
+      setDuplicate(err instanceof ApiError ? err.existingDocument : null);
     }
   };
 
@@ -121,10 +128,16 @@ export const DocumentCreatePanel: React.FC = () => {
               value={partnerId}
               onChange={setPartnerId}
               options={[
-                { value: '', label: t('labels.noPartner') },
+                {
+                  value: '',
+                  label: type === 'INVOICE' || type === 'CREDIT_NOTE' ? t('doc.partnerRequired') : t('labels.noPartner'),
+                },
                 ...partners.map((partner) => ({ value: partner.id, label: partner.name })),
               ]}
             />
+            {(type === 'INVOICE' || type === 'CREDIT_NOTE') && seeFinancials && (
+              <InlineCreateSupplier disabled={createDocument.isPending} onCreated={setPartnerId} />
+            )}
           </div>
           <div>
             <FieldLabel htmlFor="doc-number">{t('doc.documentNumber')}</FieldLabel>
@@ -139,14 +152,8 @@ export const DocumentCreatePanel: React.FC = () => {
           </div>
           <div>
             <FieldLabel htmlFor="doc-date">{t('doc.issuedOn')}</FieldLabel>
-            <input
-              id="doc-date"
-              type="date"
-              required
-              value={issuedOn}
-              onChange={(event) => setIssuedOn(event.target.value)}
-              className={fieldClass}
-            />
+            <DateField id="doc-date" value={issuedOn} onChange={setIssuedOn} className="w-full" />
+            <DateSanityHint issuedOn={issuedOn} type={type} />
           </div>
           <div className="flex items-end sm:col-span-2">
             <button
@@ -159,7 +166,7 @@ export const DocumentCreatePanel: React.FC = () => {
           </div>
           {error && (
             <div className="sm:col-span-2">
-              <FieldError>{error}</FieldError>
+              {duplicate ? <DuplicateNotice duplicate={duplicate} /> : <FieldError>{error}</FieldError>}
             </div>
           )}
         </form>

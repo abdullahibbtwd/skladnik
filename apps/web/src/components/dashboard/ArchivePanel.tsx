@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, FileArchive, FileImage, FileWarning } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { isSalesManager } from '@skladnik/shared';
+import { isCompanyWideRole } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
 import { businessToday } from '../../lib/business-date';
 import { archivePath, fetchArchivePreview, type ReportParams } from '../../lib/workspace-api';
@@ -17,7 +17,7 @@ export const ArchivePanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const role = useAuthRole();
-  const manager = isSalesManager(role);
+  const allowed = isCompanyWideRole(role);
   const siteOptions = useSiteOptions();
   const [siteId, setSiteId] = useState('');
   const [range, setRange] = useState<DateRange>(() => periodPresets(businessToday()).lastMonth);
@@ -28,10 +28,10 @@ export const ArchivePanel: React.FC = () => {
     () => ({ lang: reportLang(i18n.language), siteId: siteId || undefined, from: range.from, to: range.to, includeUnposted }),
     [i18n.language, siteId, range, includeUnposted],
   );
-  const previewQuery = useArchivePreviewQuery(params, manager && validRange);
+  const previewQuery = useArchivePreviewQuery(params, allowed && validRange);
   const preview = previewQuery.data;
 
-  if (!manager) return <p className="font-sans text-[0.86rem] text-slate-500">{t('reports.managersOnly')}</p>;
+  if (!allowed) return <p className="font-sans text-[0.86rem] text-slate-500">{t('reports.archive.companyWideOnly')}</p>;
 
   // The ZIP can be large, so the browser downloads it directly; the preview call first refreshes the session.
   const download = async () => {

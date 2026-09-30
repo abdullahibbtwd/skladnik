@@ -10,6 +10,8 @@ import {
   VAT_SALES_FIELD_LABELS,
   VAT_SALES_FIELDS,
   hasBlockingIssues,
+  normaliseTaxId,
+  partnerTaxNumber,
   isVatPeriod,
   shiftVatPeriod,
   vatPeriodOf,
@@ -30,10 +32,11 @@ import {
 import { toNumber } from '../common/decimal';
 import { ComplianceFilingsService } from '../compliance/filings.service';
 import { stableHash } from '../compliance/hash';
-import { isValidBgVatNumber, normaliseTaxId } from '../compliance/identifiers';
+import { recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildXlsx, type XlsxColumn } from '../reports/export/xlsx';
 import { round2 } from '../reports/report-math';
+import { STANDING_DOCUMENT } from '../documents/reversal';
 import { businessDate, businessRange } from '../sales/business-day';
 import type { VatDocumentTreatmentDto, VatEntryDto, VatExportQueryDto, VatReturnInputsDto, VatSettingsDto, VatSubmittedDto } from './dto/vat.dto';
 import { nraFiles } from './nra-format';
@@ -77,7 +80,7 @@ const PURCHASE_SELECT = {
   vatCredit: true,
   vatPeriod: true,
   site: { select: { name: true } },
-  partner: { select: { name: true, taxId: true } },
+  partner: { select: { name: true, eik: true, vatNumber: true } },
   lines: { select: { quantity: true, unitPrice: true, finalUnitPrice: true, lineTotal: true, vatRate: true } },
 } satisfies Prisma.DocumentSelect;
 
@@ -95,18 +98,14 @@ export class VatService {
 
   async settings(companyId: string): Promise<VatSettingsRecord> {
     const [company, row] = await Promise.all([
-      this.prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true } }),
+      this.prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true, vatNumber: true } }),
       this.prisma.vatSettings.findUnique({ where: { companyId } }),
     ]);
-    return this.settingsRecord(company.name, row);
+    return this.settingsRecord(company, row);
   }
 
   async saveSettings(user: AuthUser, dto: VatSettingsDto) {
-    let vatNumber = dto.vatNumber ? normaliseTaxId(dto.vatNumber) : null;
-    if (vatNumber && /^\d{9,10}$/.test(vatNumber)) vatNumber = `BG${vatNumber}`;
-    if (vatNumber && !isValidBgVatNumber(vatNumber)) throw new BadRequestException(`${vatNumber} is not a valid Bulgarian VAT number.`);
     const data = {
-      vatNumber,
       legalName: dto.legalName,
       declarant: dto.declarant,
       branch: dto.branch,
@@ -114,19 +113,20 @@ export class VatService {
       coefficient: new Prisma.Decimal(dto.coefficient),
     };
     await this.prisma.vatSettings.upsert({ where: { companyId: user.companyId }, create: { companyId: user.companyId, ...data }, update: data });
-    await this.log(user, 'VatSettings', user.companyId, 'UPDATE', { vatNumber, salesGrouping: dto.salesGrouping });
+    await this.log(user, 'VatSettings', user.companyId, 'UPDATE', { after: { ...dto } });
     return this.settings(user.companyId);
   }
 
-  private settingsRecord(companyName: string, row: VatSettingsRow | null): VatSettingsRecord {
+  /** The VAT number lives on the company profile (Settings → Company); the rest is VAT-specific. */
+  private settingsRecord(company: { name: string; vatNumber: string | null }, row: VatSettingsRow | null): VatSettingsRecord {
     return {
-      vatNumber: row?.vatNumber ?? null,
+      vatNumber: company.vatNumber,
       legalName: row?.legalName ?? null,
       declarant: row?.declarant ?? null,
       branch: row?.branch ?? 0,
       salesGrouping: (row?.salesGrouping as VatSalesGrouping | undefined) ?? 'MONTH',
       coefficient: row ? toNumber(row.coefficient) : 0,
-      companyName,
+      companyName: company.name,
     };
   }
 
@@ -152,7 +152,7 @@ export class VatService {
       create: { companyId: user.companyId, period, ...data },
       update: data,
     });
-    await this.log(user, 'VatReturnInput', period, 'UPDATE', { ...dto });
+    await this.log(user, 'VatReturnInput', period, 'UPDATE', { label: period, after: { ...dto } });
     return this.period(user, period);
   }
 
@@ -165,8 +165,8 @@ export class VatService {
     const range = vatPeriodRange(period);
     const today = businessDate();
     const sales = businessRange(range.from, range.to);
-    const [company, settingsRow, sites, documents, saleDocs, entryRows, inputsRow, filings, unposted, receipts] = await Promise.all([
-      this.prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true } }),
+    const [company, settingsRow, sites, documents, saleDocs, entryRows, inputsRow, filings, unposted, receipts, reversed] = await Promise.all([
+      this.prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true, vatNumber: true } }),
       this.prisma.vatSettings.findUnique({ where: { companyId } }),
       this.prisma.site.findMany({ where: { companyId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, name: true } }),
       this.prisma.document.findMany({
@@ -174,6 +174,7 @@ export class VatService {
           companyId,
           status: 'POSTED',
           type: { in: ['INVOICE', 'CREDIT_NOTE'] },
+          ...STANDING_DOCUMENT,
           OR: [{ vatPeriod: period }, { vatPeriod: null, issuedOn: { gte: dateValue(range.from), lte: dateValue(range.to) } }],
         },
         select: PURCHASE_SELECT,
@@ -196,9 +197,18 @@ export class VatService {
       this.prisma.document.count({
         where: { companyId, status: 'POSTED', type: 'RECEIPT', issuedOn: { gte: dateValue(range.from), lte: dateValue(range.to) } },
       }),
+      this.prisma.document.count({
+        where: {
+          companyId,
+          status: 'POSTED',
+          type: { in: ['INVOICE', 'CREDIT_NOTE'] },
+          reversedBy: { isNot: null },
+          OR: [{ vatPeriod: period }, { vatPeriod: null, issuedOn: { gte: dateValue(range.from), lte: dateValue(range.to) } }],
+        },
+      }),
     ]);
 
-    const settings = this.settingsRecord(company.name, settingsRow);
+    const settings = this.settingsRecord(company, settingsRow);
     const siteInfo = new Map(sites.map((site, index) => [site.id, { name: site.name, number: index + 1 }]));
     const till: TillSaleInput[] = saleDocs.flatMap((doc) => {
       const site = siteInfo.get(doc.siteId)!;
@@ -233,6 +243,7 @@ export class VatService {
     const issues: ComplianceIssue[] = [...built.issues];
     if (unposted > 0) issues.push({ severity: 'warning', code: 'UNPOSTED_DOCUMENTS', params: { count: unposted }, ref: { kind: 'period', period } });
     if (receipts > 0) issues.push({ severity: 'info', code: 'RECEIPTS_NOT_TAX_DOCUMENTS', params: { count: receipts }, ref: { kind: 'period', period } });
+    if (reversed > 0) issues.push({ severity: 'info', code: 'REVERSED_DOCUMENTS', params: { count: reversed }, ref: { kind: 'period', period } });
     issues.push(...(await this.lateDocuments(companyId, period)));
 
     const sourceHash = stableHash(fileContent(built.header, built.purchases, built.sales, built.cells));
@@ -267,7 +278,7 @@ export class VatService {
       issuedOn: isoDate(doc.issuedOn),
       siteName: doc.site.name,
       partnerName: doc.partner?.name ?? null,
-      partnerTaxId: doc.partner?.taxId ?? null,
+      partnerTaxId: partnerTaxNumber(doc.partner),
       lines: doc.lines.map((line) => ({
         net: line.lineTotal !== null ? toNumber(line.lineTotal) : toNumber(line.quantity) * toNumber(line.finalUnitPrice ?? line.unitPrice),
         rate: toNumber(line.vatRate),
@@ -296,6 +307,7 @@ export class VatService {
         companyId,
         status: 'POSTED',
         type: { in: ['INVOICE', 'CREDIT_NOTE'] },
+        ...STANDING_DOCUMENT,
         vatPeriod: null,
         issuedOn: { gte: dateValue(vatPeriodRange(first).from), lte: dateValue(vatPeriodRange(last).to) },
       },
@@ -323,7 +335,7 @@ export class VatService {
   async setTreatment(user: AuthUser, documentId: string, dto: VatDocumentTreatmentDto) {
     const doc = await this.prisma.document.findFirst({
       where: { id: documentId, companyId: user.companyId },
-      select: { id: true, type: true, issuedOn: true, vatCredit: true, vatPeriod: true },
+      select: { id: true, number: true, type: true, issuedOn: true, vatCredit: true, vatPeriod: true },
     });
     if (!doc) throw new NotFoundException('Document not found');
     if (doc.type !== 'INVOICE' && doc.type !== 'CREDIT_NOTE') throw new BadRequestException('Only invoices and credit or debit notes go in the purchase ledger.');
@@ -339,8 +351,9 @@ export class VatService {
     }
     await this.prisma.document.update({ where: { id: doc.id }, data });
     await this.log(user, 'Document', doc.id, 'VAT_TREATMENT', {
-      from: { vatCredit: doc.vatCredit, vatPeriod: doc.vatPeriod },
-      to: { vatCredit: data.vatCredit ?? doc.vatCredit, vatPeriod: data.vatPeriod === undefined ? doc.vatPeriod : data.vatPeriod },
+      label: doc.number,
+      before: { vatCredit: doc.vatCredit, vatPeriod: doc.vatPeriod },
+      after: { vatCredit: data.vatCredit ?? doc.vatCredit, vatPeriod: data.vatPeriod === undefined ? doc.vatPeriod : data.vatPeriod },
     });
     return { ok: true };
   }
@@ -349,21 +362,21 @@ export class VatService {
 
   async createEntry(user: AuthUser, dto: VatEntryDto) {
     const row = await this.prisma.vatLedgerEntry.create({ data: { companyId: user.companyId, createdById: user.id, ...this.entryData(dto) } });
-    await this.log(user, 'VatLedgerEntry', row.id, 'CREATE', { ledger: dto.ledger, period: dto.period, number: dto.number });
+    await this.log(user, 'VatLedgerEntry', row.id, 'CREATE', { label: dto.number, after: { ...dto } });
     return this.entryRecord(row);
   }
 
   async updateEntry(user: AuthUser, id: string, dto: VatEntryDto) {
     await this.findEntry(user.companyId, id);
     const row = await this.prisma.vatLedgerEntry.update({ where: { id }, data: this.entryData(dto) });
-    await this.log(user, 'VatLedgerEntry', id, 'UPDATE', { ledger: dto.ledger, period: dto.period, number: dto.number });
+    await this.log(user, 'VatLedgerEntry', id, 'UPDATE', { label: dto.number, after: { ...dto } });
     return this.entryRecord(row);
   }
 
   async deleteEntry(user: AuthUser, id: string) {
     const row = await this.findEntry(user.companyId, id);
     await this.prisma.vatLedgerEntry.delete({ where: { id } });
-    await this.log(user, 'VatLedgerEntry', id, 'DELETE', { ledger: row.ledger, period: row.period, number: row.number });
+    await this.log(user, 'VatLedgerEntry', id, 'DELETE', { label: row.number, before: { ledger: row.ledger, period: row.period, number: row.number } });
     return { ok: true };
   }
 
@@ -442,11 +455,13 @@ export class VatService {
   }
 
   async download(user: AuthUser, id: string) {
+    await this.filings.find(user.companyId, id, KIND);
     const { filing, body } = await this.filings.zip(user.companyId, id);
     return { body, fileName: `VAT_${filing.period.replace('-', '')}_v${filing.version}.zip` };
   }
 
   async markSubmitted(user: AuthUser, id: string, dto: VatSubmittedDto) {
+    await this.filings.find(user.companyId, id, KIND);
     const submittedAt = dto.submittedAt ?? businessDate();
     if (submittedAt > businessDate()) throw new BadRequestException('The submission date cannot be in the future.');
     return this.filings.markSubmitted(user, id, dto.submissionRef, dateValue(submittedAt));
@@ -537,9 +552,13 @@ export class VatService {
     return all.filter((field) => always.includes(field) || rows.some((row) => (row.amounts[field] ?? 0) !== 0));
   }
 
-  private log(user: AuthUser, entityType: string, entityId: string, action: string, metadata: Record<string, unknown>) {
-    return this.prisma.activityLog.create({
-      data: { companyId: user.companyId, userId: user.id, entityType, entityId, action, metadata: metadata as Prisma.InputJsonValue },
-    });
+  private log(
+    user: AuthUser,
+    entityType: string,
+    entityId: string,
+    action: string,
+    entry: { label?: string | null; before?: Record<string, unknown>; after?: Record<string, unknown> },
+  ) {
+    return recordActivity(this.prisma, user, { entityType, entityId, action, ...entry });
   }
 }

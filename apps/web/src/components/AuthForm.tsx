@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRight, Mail, ShieldCheck, Store } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { GoogleSignInButton } from './GoogleSignInButton';
 import { FieldError, FieldLabel, PasswordField, textFieldClass } from './PasswordField';
 import { useLoginMutation, useSignupMutation, useSignupWithInviteMutation } from '../lib/auth-session';
 import { useInvitePreviewQuery } from '../lib/workspace-session';
@@ -31,6 +32,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
   const login = useLoginMutation();
   const signup = useSignupMutation();
   const signupInvite = useSignupWithInviteMutation();
@@ -42,6 +44,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
     setPassword('');
     setConfirmPassword('');
     setError(null);
+    setGoogleError(null);
   }, [mode]);
 
   useEffect(() => {
@@ -168,13 +171,25 @@ export const AuthForm: React.FC<AuthFormProps> = ({
           </div>
         </div>
 
-        <PasswordField
-          id={`${idPrefix}-password`}
-          label={t('auth.password')}
-          value={password}
-          autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-          onChange={setPassword}
-        />
+        <div>
+          <PasswordField
+            id={`${idPrefix}-password`}
+            label={t('auth.password')}
+            value={password}
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            onChange={setPassword}
+          />
+          {mode === 'login' && (
+            <p className="mt-1.5 text-right">
+              <Link
+                to="/forgot-password"
+                className="font-display text-[0.78rem] font-medium text-ops-teal hover:underline"
+              >
+                {t('auth.forgotPassword')}
+              </Link>
+            </p>
+          )}
+        </div>
 
         {mode === 'signup' && (
           <div>
@@ -191,6 +206,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         )}
 
         {error && <FieldError>{error}</FieldError>}
+        {googleError && <FieldError>{googleError}</FieldError>}
 
         <button
           type="submit"
@@ -218,6 +234,17 @@ export const AuthForm: React.FC<AuthFormProps> = ({
             </>
           )}
         </button>
+
+        {!inviteToken && (
+          <GoogleSignInButton
+            mode={mode}
+            onSuccess={onSuccess}
+            onError={(message) => {
+              setError(null);
+              setGoogleError(message);
+            }}
+          />
+        )}
       </form>
 
       <div className="mt-5 border-t border-slate-100 pt-4 text-center font-sans text-[0.82rem] text-slate-500">

@@ -12,8 +12,16 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
-import { PRODUCT_STATUSES, UNITS_OF_MEASURE, type ProductStatus, type UnitOfMeasure } from '@skladnik/shared';
+import {
+  CONTENT_UNITS,
+  PRODUCT_STATUSES,
+  UNITS_OF_MEASURE,
+  type ContentUnit,
+  type ProductStatus,
+  type UnitOfMeasure,
+} from '@skladnik/shared';
 
 export class CreateProductDto {
   @IsString()
@@ -38,6 +46,20 @@ export class CreateProductDto {
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0.001)
   packSize?: number;
+
+  /** Net weight/volume of one stock unit (e.g. 400 with unit G for a 400 g cheese pack). */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value === undefined || value === null ? null : Number(value)))
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  netContent?: number | null;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value === undefined || value === null ? null : value))
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsIn(CONTENT_UNITS)
+  netContentUnit?: ContentUnit | null;
 
   @Transform(({ value }) => Number(value))
   @IsNumber({ maxDecimalPlaces: 2 })

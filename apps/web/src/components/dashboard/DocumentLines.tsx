@@ -3,23 +3,39 @@ import { Loader2, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
-import type { DocumentLineRecord, DocumentLineWriteInput, ProductRecord } from '../../lib/workspace-api';
+import { formatDate } from '../../lib/format';
+import { usePermissions } from '../../lib/permissions';
+import type {
+  CreateProductFromLineInput,
+  DocumentLineRecord,
+  DocumentLineWriteInput,
+  ProductRecord,
+  ProductSuggestion,
+} from '../../lib/workspace-api';
 import { useProductsQuery } from '../../lib/workspace-session';
+import { DateField } from '../ui/DateField';
 import { toast } from '../ui/Toaster';
+import { ScannedLineMatch, needsProductMatch } from './ScannedLineMatch';
 
-export type LineIssue = 'product' | 'archived' | 'qty' | 'batch' | 'expiry';
+export type LineIssue = 'product' | 'archived' | 'pending' | 'qty' | 'batch' | 'expiry';
 
 /** Mirrors the API's postingErrors() so problems show on the line before the user tries to post. */
 export function lineIssues(line: DocumentLineRecord): LineIssue[] {
   if (!line.product) return ['product'];
   const issues: LineIssue[] = [];
   if (line.product.status === 'ARCHIVED') issues.push('archived');
+  if (line.product.status === 'PENDING_REVIEW') issues.push('pending');
   if (line.quantity <= 0) issues.push('qty');
   if (line.product.batchTracking) {
     if (!line.batchNumber?.trim()) issues.push('batch');
     if (!line.expiryDate) issues.push('expiry');
   }
   return issues;
+}
+
+/** OCR's printed line total disagrees with qty × price by more than a cent: this is the line to check. */
+function printedTotalDiffers(line: DocumentLineRecord) {
+  return line.printedLineTotal != null && line.lineTotal != null && Math.abs(line.printedLineTotal - line.lineTotal) > 0.01;
 }
 
 const inputClass =
@@ -38,17 +54,40 @@ export function DocumentLines({
   onSelect,
   onUpdate,
   onDelete,
+  onCreateProduct,
+  onConfirmProduct,
   saving,
+  expiryGuardDate,
 }: {
   lines: DocumentLineRecord[];
   editable: boolean;
+  /** Document date when an expired batch on this document needs confirmation. */
+  expiryGuardDate?: string;
   selectedLineId: string | null;
   onSelect: (lineId: string | null) => void;
   onUpdate: (lineId: string, input: Partial<DocumentLineWriteInput>) => Promise<void>;
   onDelete: (lineId: string) => Promise<void>;
+  onCreateProduct: (lineId: string, input: CreateProductFromLineInput) => Promise<void>;
+  onConfirmProduct: (productId: string) => Promise<void>;
   saving: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { seeFinancials } = usePermissions();
+  /** A suggestion that still needs batch details opens the line form with it already picked. */
+  const [preset, setPreset] = useState<{ lineId: string; product: PickedProduct } | null>(null);
+
+  const link = async (line: DocumentLineRecord, suggestion: ProductSuggestion) => {
+    if (suggestion.batchTracking && (!line.batchNumber?.trim() || !line.expiryDate)) {
+      setPreset({ lineId: line.id, product: suggestion });
+      onSelect(line.id);
+      return;
+    }
+    try {
+      await onUpdate(line.id, { productId: suggestion.id });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('doc.saveLineFailed'));
+    }
+  };
 
   return (
     <ul>
@@ -56,7 +95,8 @@ export function DocumentLines({
         const issues = lineIssues(line);
         const selected = line.id === selectedLineId;
         const printedDiffers =
-          line.printed.description && line.product && line.printed.description.trim() !== line.product.name.trim();
+          line.printed.description && (!line.product || line.printed.description.trim() !== line.product.name.trim());
+        const matching = editable && !selected && needsProductMatch(line);
         return (
           <li key={line.id} className={cn('border-b border-slate-100 last:border-0', selected && 'bg-indigo-50/40')}>
             <button
@@ -79,6 +119,11 @@ export function DocumentLines({
               <span className="min-w-0 flex-1">
                 <span className="line-clamp-2 font-display text-[0.86rem] font-medium text-ops-ink">
                   {line.product?.name ?? t('doc.unmatched')}
+                  {line.product?.status === 'PENDING_REVIEW' && (
+                    <span className="ml-1.5 rounded bg-orange-100 px-1 py-px align-middle font-sans text-[0.64rem] font-medium text-ops-warn">
+                      {t('doc.pendingReview')}
+                    </span>
+                  )}
                 </span>
                 {printedDiffers && (
                   <span className="line-clamp-2 font-sans text-[0.72rem] text-slate-500">
@@ -86,10 +131,12 @@ export function DocumentLines({
                   </span>
                 )}
                 <span className="mt-0.5 block font-mono text-[0.7rem] text-slate-500">
-                  {line.quantity} {line.unit ? t(`labels.unit.${line.unit}`) : ''} × {formatEuro(line.finalUnitPrice ?? line.unitPrice)}
-                  {line.discountPercent > 0 ? ` (−${line.discountPercent}%)` : ''}
+                  {line.quantity} {line.unit ? t(`labels.unit.${line.unit}`) : ''}
+                  {seeFinancials
+                    ? ` × ${formatEuro(line.finalUnitPrice ?? line.unitPrice ?? 0)}${line.discountPercent > 0 ? ` (−${line.discountPercent}%)` : ''}`
+                    : ''}
                   {line.product?.batchTracking && line.batchNumber ? ` · ${line.batchNumber}` : ''}
-                  {line.product?.batchTracking && line.expiryDate ? ` · ${line.expiryDate}` : ''}
+                  {line.expiryDate && (line.product?.batchTracking || line.expired) ? ` · ${formatDate(line.expiryDate, i18n.language)}` : ''}
                 </span>
                 {issues.length > 0 && (
                   <span className="mt-1 flex items-center gap-1 font-display text-[0.7rem] font-medium text-ops-warn">
@@ -97,23 +144,55 @@ export function DocumentLines({
                     {issues.map((issue) => t(`doc.issue.${issue}`)).join(' · ')}
                   </span>
                 )}
+                {line.expired && (
+                  <span className="mt-1 inline-flex items-center gap-1 rounded-md border border-ops-danger/25 bg-rose-50 px-1.5 py-0.5 font-display text-[0.7rem] font-medium text-ops-danger">
+                    <TriangleAlert size={11} />
+                    {t('doc.lineExpired', { date: line.expiryDate ? formatDate(line.expiryDate, i18n.language) : '—' })}
+                  </span>
+                )}
               </span>
-              <span className="shrink-0 font-mono text-[0.8rem] text-ops-ink">
-                {line.lineTotal === null ? '—' : formatEuro(line.lineTotal)}
-              </span>
+              {seeFinancials && (
+                <span className="flex shrink-0 flex-col items-end">
+                  <span className="font-mono text-[0.8rem] text-ops-ink">{line.lineTotal == null ? '—' : formatEuro(line.lineTotal)}</span>
+                  {printedTotalDiffers(line) && (
+                    <span className="font-mono text-[0.68rem] text-ops-danger" title={t('doc.printedLineTotalHint')}>
+                      {t('doc.printedLineTotal', { total: formatEuro(line.printedLineTotal!) })}
+                    </span>
+                  )}
+                </span>
+              )}
             </button>
+
+            {matching && (
+              <div className="px-4 pb-3 sm:px-5">
+                <ScannedLineMatch
+                  line={line}
+                  busy={saving}
+                  onLink={(suggestion) => link(line, suggestion)}
+                  onChoose={() => onSelect(line.id)}
+                  onCreate={(input) => onCreateProduct(line.id, input)}
+                  onConfirmPending={onConfirmProduct}
+                />
+              </div>
+            )}
 
             {selected && editable && (
               <div className="px-4 pb-4 sm:px-5">
                 <LineForm
                   key={line.id}
                   line={line}
+                  initialProduct={preset?.lineId === line.id ? preset.product : undefined}
                   saving={saving}
+                  expiryGuardDate={expiryGuardDate}
                   hasNext={index < lines.length - 1}
-                  onCancel={() => onSelect(null)}
+                  onCancel={() => {
+                    setPreset(null);
+                    onSelect(null);
+                  }}
                   onDelete={() => onDelete(line.id)}
                   onSubmit={async (input, next) => {
                     await onUpdate(line.id, input);
+                    setPreset(null);
                     onSelect(next && index < lines.length - 1 ? lines[index + 1].id : null);
                   }}
                 />
@@ -128,23 +207,31 @@ export function DocumentLines({
 
 export function LineForm({
   line,
+  initialProduct,
   saving,
   hasNext = false,
+  expiryGuardDate,
   onSubmit,
   onCancel,
   onDelete,
 }: {
   line?: DocumentLineRecord;
+  /** Picked in place of the line's product, e.g. a "did you mean" that needs batch details. */
+  initialProduct?: PickedProduct;
   saving: boolean;
   hasNext?: boolean;
+  expiryGuardDate?: string;
   onSubmit: (input: DocumentLineWriteInput, next: boolean) => Promise<void>;
   onCancel?: () => void;
   onDelete?: () => Promise<void>;
 }) {
-  const { t } = useTranslation();
-  const [product, setProduct] = useState<PickedProduct | null>(line?.product ?? null);
+  const { t, i18n } = useTranslation();
+  const { seeFinancials } = usePermissions();
+  const [product, setProduct] = useState<PickedProduct | null>(
+    initialProduct ?? (line?.product && line.product.status === 'ACTIVE' ? line.product : null),
+  );
   const [quantity, setQuantity] = useState(String(line?.quantity ?? 1));
-  const [unitPrice, setUnitPrice] = useState(line ? String(line.unitPrice) : '');
+  const [unitPrice, setUnitPrice] = useState(line ? String(line.unitPrice ?? 0) : '');
   const [discountPercent, setDiscountPercent] = useState(String(line?.discountPercent ?? 0));
   const [batchNumber, setBatchNumber] = useState(line?.batchNumber ?? '');
   const [expiryDate, setExpiryDate] = useState(line?.expiryDate ?? '');
@@ -165,8 +252,8 @@ export function LineForm({
         {
           productId: product.id,
           quantity: Number(quantity),
-          unitPrice: Number(unitPrice),
-          discountPercent: Number(discountPercent) || 0,
+          unitPrice: seeFinancials ? Number(unitPrice) : 0,
+          discountPercent: seeFinancials ? Number(discountPercent) || 0 : 0,
           ...(!line || product.id !== line.productId ? { vatRate: product.vatRate } : {}),
           batchNumber: product.batchTracking ? batchNumber.trim() : undefined,
           expiryDate: product.batchTracking ? (line ? expiryDate : expiryDate || undefined) : undefined,
@@ -205,23 +292,27 @@ export function LineForm({
           value={product}
           onChange={(next) => {
             setProduct(next);
-            if (next && !line) setUnitPrice(String(next.purchasePrice));
+            if (next && !line && seeFinancials) setUnitPrice(String(next.purchasePrice ?? 0));
           }}
         />
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className={cn('grid gap-2', seeFinancials ? 'grid-cols-3' : 'grid-cols-1')}>
         <label>
           <span className={labelClass}>{t('doc.qty')}</span>
           <input type="number" inputMode="decimal" min="0.001" step="0.001" required value={quantity} onChange={(event) => setQuantity(event.target.value)} className={inputClass} />
         </label>
-        <label>
-          <span className={labelClass}>{t('doc.price')}</span>
-          <input type="number" inputMode="decimal" min="0" step="0.0001" required value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} className={inputClass} />
-        </label>
-        <label>
-          <span className={labelClass}>{t('doc.discount')}</span>
-          <input type="number" inputMode="decimal" min="0" max="100" step="0.01" value={discountPercent} onChange={(event) => setDiscountPercent(event.target.value)} className={inputClass} />
-        </label>
+        {seeFinancials && (
+          <>
+            <label>
+              <span className={labelClass}>{t('doc.price')}</span>
+              <input type="number" inputMode="decimal" min="0" step="0.0001" required value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} className={inputClass} />
+            </label>
+            <label>
+              <span className={labelClass}>{t('doc.discount')}</span>
+              <input type="number" inputMode="decimal" min="0" max="100" step="0.01" value={discountPercent} onChange={(event) => setDiscountPercent(event.target.value)} className={inputClass} />
+            </label>
+          </>
+        )}
       </div>
       {product?.batchTracking && (
         <div className="grid grid-cols-2 gap-2">
@@ -231,8 +322,14 @@ export function LineForm({
           </label>
           <label>
             <span className={labelClass}>{t('doc.expiry')}</span>
-            <input type="date" value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} className={inputClass} />
+            <DateField value={expiryDate} onChange={setExpiryDate} className="w-full" />
           </label>
+          {expiryGuardDate && expiryDate && expiryDate < expiryGuardDate && (
+            <p className="col-span-2 flex items-start gap-1.5 font-sans text-[0.74rem] font-medium text-ops-danger">
+              <TriangleAlert size={13} className="mt-px shrink-0" />
+              {t('doc.expiryBeforeDocument', { date: formatDate(expiryGuardDate, i18n.language) })}
+            </p>
+          )}
         </div>
       )}
       {error && <p className="font-sans text-[0.76rem] text-ops-danger">{error}</p>}

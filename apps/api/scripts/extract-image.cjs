@@ -26,6 +26,7 @@ extractDocumentFromImage({
   model: process.env.GLM_MODEL ?? process.env.ZAI_VISION_MODEL ?? 'glm-5.3-flash',
   image: readFileSync(file),
   mimeType: mime,
+  tuning: { effort: process.env.GLM_REASONING_EFFORT || 'low' },
 })
   .then((result) => {
     if (!result.ok) {

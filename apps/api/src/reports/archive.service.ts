@@ -3,6 +3,7 @@ import type { Readable } from 'stream';
 import {
   REPORT_DOCUMENT_TYPE_LABELS,
   WRITE_OFF_REASON_LABELS,
+  partnerTaxNumber,
   isPaperDocumentType,
   type AuthUser,
   type DocumentType,
@@ -134,7 +135,7 @@ export class ArchiveService {
         status: true,
         siteId: true,
         writeOffReason: true,
-        partner: { select: { name: true, taxId: true } },
+        partner: { select: { name: true, eik: true, vatNumber: true } },
         captures: { select: { pageNumber: true, imageKey: true, sourceKey: true } },
       },
     });
@@ -153,7 +154,7 @@ export class ArchiveService {
           status: doc.status,
           typeLabel,
           partner: doc.partner?.name ?? null,
-          partnerTaxId: doc.partner?.taxId ?? null,
+          partnerTaxId: partnerTaxNumber(doc.partner),
           partyName: doc.partner?.name ?? REPORT_DOCUMENT_TYPE_LABELS[type][lang],
           site: scope.siteName.get(doc.siteId) ?? '',
           captures: doc.captures,
@@ -162,7 +163,7 @@ export class ArchiveService {
     const files = planArchive(documents, { siteFolders: scope.multi });
     if (files.length >= ZIP_MAX_ENTRIES) throw new BadRequestException('Too many files for one archive; narrow the period');
     const withoutScans = docs.filter(
-      (doc) => doc.captures.length === 0 && isPaperDocumentType(doc.type as DocumentType) && !doc.writeOffReason,
+      (doc) => doc.captures.length === 0 && isPaperDocumentType(doc.type as DocumentType),
     ).length;
     return { from, to, documents, files, withoutScans };
   }

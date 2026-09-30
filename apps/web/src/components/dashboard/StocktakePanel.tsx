@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, ClipboardCheck, Plus, Printer, Search, Trash2 } from 'lucide-react';
@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthRole } from '../../lib/auth-store';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
+import { formatDate, formatQty } from '../../lib/format';
 import {
   createDocument,
   fillStocktake,
@@ -24,6 +25,7 @@ import {
   useSubmitDocument,
 } from '../../lib/workspace-session';
 import { FieldError, FieldLabel } from '../PasswordField';
+import { DateField } from '../ui/DateField';
 import { confirm } from '../ui/Dialog';
 import { toast } from '../ui/Toaster';
 import { CatalogProductSearch } from './CatalogProductSearch';
@@ -45,18 +47,13 @@ import {
 const inputClass =
   'h-10 w-24 rounded-lg border border-slate-200 bg-white px-2 text-center font-mono text-[0.9rem] text-ops-ink outline-none focus:border-ops-teal/50 disabled:opacity-60';
 
-function stamp(date = new Date()) {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
-}
-
 function useCanWrite() {
   const role = useAuthRole();
   return role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
 }
 
 export const StocktakeListPanel: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const canWrite = useCanWrite();
@@ -85,7 +82,6 @@ export const StocktakeListPanel: React.FC = () => {
       const created = await createDocument({
         type: 'STOCKTAKE',
         siteId,
-        documentNumber: `ST-${stamp()}`,
         issuedOn: new Date().toISOString().slice(0, 10),
       });
       await fillStocktake(created.document.id).catch(() => undefined);
@@ -115,7 +111,7 @@ export const StocktakeListPanel: React.FC = () => {
                 <p className="font-display text-[0.82rem] font-medium text-ops-ink">{doc.documentNumber}</p>
                 <p className="font-mono text-[0.66rem] text-slate-400">{t('invoices.lines', { count: doc.lineCount })}</p>
               </td>
-              <td className="px-3 py-3 font-mono text-[0.74rem] text-slate-500">{doc.issuedOn}</td>
+              <td className="px-3 py-3 font-mono text-[0.74rem] text-slate-500">{formatDate(doc.issuedOn, i18n.language)}</td>
               <td className="px-4 py-3 text-right sm:px-5">
                 <StatusPill status={doc.status} />
               </td>
@@ -146,7 +142,7 @@ export const StocktakeListPanel: React.FC = () => {
       />
 
       {canWrite && (
-        <div className="lg:hidden">
+        <div className="md:hidden">
           <ActionButton
             icon={ClipboardCheck}
             label={starting ? t('stocktake.starting') : t('stocktake.start')}
@@ -204,8 +200,6 @@ export const StocktakeSheetPanel: React.FC = () => {
   const [newLine, setNewLine] = useState<NewLine | null>(null);
   const [newLineError, setNewLineError] = useState<string | null>(null);
   const saving = useRef(new Set<string>());
-
-  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
 
   useEffect(() => {
     if (document && document.type !== 'STOCKTAKE') navigate(`/app/invoices/${document.id}`, { replace: true });
@@ -344,6 +338,7 @@ export const StocktakeSheetPanel: React.FC = () => {
       title: t('stocktake.cancelTitle'),
       description: t('stocktake.cancelBody'),
       confirmLabel: t('doc.cancelConfirm'),
+      cancelLabel: t('common.back'),
       danger: true,
     });
     if (!ok) return;
@@ -357,14 +352,14 @@ export const StocktakeSheetPanel: React.FC = () => {
 
   const varianceTone = (value: number | null | undefined) =>
     !value ? 'text-slate-400' : value < 0 ? 'text-ops-danger' : 'text-ops-teal';
-  const signed = (value: number) => `${value > 0 ? '+' : ''}${qtyFormat.format(value)}`;
+  const signed = (value: number) => `${value > 0 ? '+' : ''}${formatQty(value, i18n.language)}`;
 
   return (
-    <div className="flex flex-col gap-5 pb-28 sm:gap-6 lg:pb-0">
+    <div className="flex flex-col gap-5 sm:gap-6">
       <PageHeader
         eyebrow={`${posted ? t('stocktake.protocol') : t('labels.documentType.STOCKTAKE')} · ${document.site.name}`}
         title={document.documentNumber}
-        description={`${document.issuedOn}${posted ? '' : ` · ${t('stocktake.sheetHint')}`}`}
+        description={`${formatDate(document.issuedOn, i18n.language)}${posted ? '' : ` · ${t('stocktake.sheetHint')}`}`}
         action={
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             <StatusPill status={document.status} />
@@ -384,7 +379,7 @@ export const StocktakeSheetPanel: React.FC = () => {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2 lg:hidden print:hidden">
+      <div className="flex flex-wrap items-center gap-2 md:hidden print:hidden">
         <StatusPill status={document.status} />
         {posted && (
           <GhostButton onClick={() => window.print()}>
@@ -487,11 +482,11 @@ export const StocktakeSheetPanel: React.FC = () => {
                         <p className="font-mono text-[0.66rem] text-slate-400">
                           {line.product?.code}
                           {line.batchNumber ? ` · ${line.batchNumber}` : ''}
-                          {line.expiryDate ? ` · ${line.expiryDate}` : ''}
+                          {line.expiryDate ? ` · ${formatDate(line.expiryDate, i18n.language)}` : ''}
                         </p>
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] whitespace-nowrap text-slate-600">
-                        {st?.expectedQuantity === null || st?.expectedQuantity === undefined ? '—' : qtyFormat.format(st.expectedQuantity)}{' '}
+                        {st?.expectedQuantity === null || st?.expectedQuantity === undefined ? '—' : formatQty(st.expectedQuantity, i18n.language)}{' '}
                         <span className="text-slate-400">{unitLabel(line)}</span>
                       </td>
                       <td className="px-3 py-2.5 text-right">
@@ -543,7 +538,7 @@ export const StocktakeSheetPanel: React.FC = () => {
                           </div>
                         ) : (
                           <span className="font-mono text-[0.84rem] text-ops-ink">
-                            {st?.countedQuantity === null || st?.countedQuantity === undefined ? '—' : qtyFormat.format(st.countedQuantity)}
+                            {st?.countedQuantity === null || st?.countedQuantity === undefined ? '—' : formatQty(st.countedQuantity, i18n.language)}
                           </span>
                         )}
                       </td>
@@ -588,12 +583,11 @@ export const StocktakeSheetPanel: React.FC = () => {
                       </div>
                       <div>
                         <FieldLabel htmlFor="st-new-expiry">{t('stocktake.expiry')}</FieldLabel>
-                        <input
+                        <DateField
                           id="st-new-expiry"
-                          type="date"
                           value={newLine.expiryDate}
-                          onChange={(event) => setNewLine({ ...newLine, expiryDate: event.target.value })}
-                          className="h-10 rounded-lg border border-slate-200 bg-white px-2 font-mono text-[0.86rem] outline-none focus:border-ops-teal/50"
+                          onChange={(value) => setNewLine({ ...newLine, expiryDate: value })}
+                          className="w-40"
                         />
                       </div>
                     </>
@@ -627,30 +621,28 @@ export const StocktakeSheetPanel: React.FC = () => {
       </GlassPanel>
 
       {writable && (
-        <div className="sticky bottom-24 z-20 lg:bottom-4 print:hidden">
-          <div className={cn(glassClass, 'flex flex-wrap items-center gap-3 px-4 py-3')}>
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-[0.86rem] font-semibold text-ops-ink">
-                {t('stocktake.progress', { counted: summary?.counted ?? 0, total: summary?.lines ?? 0 })} ·{' '}
-                {formatEuro(summary?.netValue ?? 0)}
-              </p>
-              <p className={cn('truncate font-sans text-[0.72rem]', posting?.ok ? 'text-ops-teal' : 'text-ops-warn')}>
-                {setCounts.isPending ? t('common.saving') : posting?.ok ? t('stocktake.readyToPost') : (posting?.errors[0] ?? '')}
-              </p>
-            </div>
-            {uncounted.length > 0 && (
-              <GhostButton onClick={() => void zeroUncounted()} disabled={setCounts.isPending}>
-                {t('stocktake.zeroUncounted', { count: uncounted.length })}
-              </GhostButton>
-            )}
-            <ActionButton
-              icon={ClipboardCheck}
-              label={t('stocktake.post')}
-              onClick={() => void runPost()}
-              primary
-              disabled={!posting?.ok || postDocument.isPending || submitDocument.isPending || Object.keys(drafts).length > 0}
-            />
+        <div className={cn(glassClass, 'flex flex-wrap items-center gap-3 px-4 py-3 print:hidden')}>
+          <div className="min-w-0 flex-1">
+            <p className="font-display text-[0.86rem] font-semibold text-ops-ink">
+              {t('stocktake.progress', { counted: summary?.counted ?? 0, total: summary?.lines ?? 0 })} ·{' '}
+              {formatEuro(summary?.netValue ?? 0)}
+            </p>
+            <p className={cn('truncate font-sans text-[0.72rem]', posting?.ok ? 'text-ops-teal' : 'text-ops-warn')}>
+              {setCounts.isPending ? t('common.saving') : posting?.ok ? t('stocktake.readyToPost') : (posting?.errors[0] ?? '')}
+            </p>
           </div>
+          {uncounted.length > 0 && (
+            <GhostButton onClick={() => void zeroUncounted()} disabled={setCounts.isPending}>
+              {t('stocktake.zeroUncounted', { count: uncounted.length })}
+            </GhostButton>
+          )}
+          <ActionButton
+            icon={ClipboardCheck}
+            label={t('stocktake.post')}
+            onClick={() => void runPost()}
+            primary
+            disabled={!posting?.ok || postDocument.isPending || submitDocument.isPending || Object.keys(drafts).length > 0}
+          />
         </div>
       )}
 

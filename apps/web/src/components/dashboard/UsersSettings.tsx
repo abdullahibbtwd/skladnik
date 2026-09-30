@@ -20,13 +20,17 @@ import { toast } from '../ui/Toaster';
 import { alert, confirm } from '../ui/Dialog';
 import {
   ActionButton,
+  desktopTableWrapClass,
   GhostButton,
   GlassPanel,
   LiveBadge,
+  mobileCardClass,
+  mobileCardListClass,
   PageHeader,
   tableHeadRowClass,
   tableRowClass,
 } from './dashboard-ui';
+import { RowActionsMenu } from './RowActionsMenu';
 import { WorkspaceModal } from './WorkspaceModal';
 import { Plus, UserPlus } from 'lucide-react';
 
@@ -179,76 +183,130 @@ export const UsersSettings: React.FC = () => {
         {usersQuery.isPending ? (
           <p className="px-5 py-8 font-sans text-sm text-slate-500">{t('users.loading')}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[44rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-5 py-3 font-display font-medium">{t('common.name')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('common.email')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('account.role')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('users.assignedSites')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('common.status')}</th>
-                  <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id} className={tableRowClass()}>
-                    <td className="px-5 py-3.5 font-display text-[0.86rem] font-medium text-ops-ink">{user.name}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{user.email}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{t(`labels.role.${user.role}`)}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-500">
-                      {user.allSites ? t('users.allSites') : user.sites.map((site) => site.name).join(', ') || '—'}
-                    </td>
-                    <td className="px-4 py-3.5 font-display text-[0.72rem]">
-                      <span className={user.isActive ? 'text-ops-teal' : 'text-slate-400'}>{user.isActive ? t('common.active') : t('common.deactivated')}</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <div className="flex justify-end gap-1.5">
-                        <GhostButton onClick={() => openEdit(user)}>{t('common.edit')}</GhostButton>
-                        {user.isActive && user.id !== actor.id && (
-                          <GhostButton
-                            danger
-                            onClick={async () => {
-                              const ok = await confirm({
-                                title: t('users.deactivateNamed', { name: user.name }),
-                                description: t('users.deactivateBody'),
-                                confirmLabel: t('common.deactivate'),
-                                danger: true,
-                              });
-                              if (!ok) return;
-                              try {
-                                await deactivateUser.mutateAsync(user.id);
-                                flash(t('users.deactivated'));
-                              } catch (deactivateError) {
-                                flash(deactivateError instanceof Error ? deactivateError.message : t('common.couldNotDeactivate'), 'error');
-                              }
-                            }}
-                          >
-                            {t('common.deactivate')}
-                          </GhostButton>
-                        )}
-                        {!user.isActive && (
-                          <GhostButton
-                            onClick={async () => {
-                              try {
-                                await updateUser.mutateAsync({ id: user.id, isActive: true });
-                                flash(t('users.reactivated'));
-                              } catch (reactivateError) {
-                                flash(reactivateError instanceof Error ? reactivateError.message : t('common.couldNotReactivate'), 'error');
-                              }
-                            }}
-                          >
-                            {t('common.reactivate')}
-                          </GhostButton>
-                        )}
+          <>
+            <ul className={mobileCardListClass()}>
+              {users.map((user) => {
+                const deactivate = async () => {
+                  const ok = await confirm({
+                    title: t('users.deactivateNamed', { name: user.name }),
+                    description: t('users.deactivateBody'),
+                    confirmLabel: t('common.deactivate'),
+                    danger: true,
+                  });
+                  if (!ok) return;
+                  try {
+                    await deactivateUser.mutateAsync(user.id);
+                    flash(t('users.deactivated'));
+                  } catch (deactivateError) {
+                    flash(deactivateError instanceof Error ? deactivateError.message : t('common.couldNotDeactivate'), 'error');
+                  }
+                };
+                const reactivate = async () => {
+                  try {
+                    await updateUser.mutateAsync({ id: user.id, isActive: true });
+                    flash(t('users.reactivated'));
+                  } catch (reactivateError) {
+                    flash(reactivateError instanceof Error ? reactivateError.message : t('common.couldNotReactivate'), 'error');
+                  }
+                };
+                const actions = [
+                  { label: t('common.edit'), onClick: () => openEdit(user) },
+                  ...(user.isActive && user.id !== actor.id
+                    ? [{ label: t('common.deactivate'), onClick: () => void deactivate(), danger: true }]
+                    : []),
+                  ...(!user.isActive ? [{ label: t('common.reactivate'), onClick: () => void reactivate() }] : []),
+                ];
+                return (
+                  <li key={user.id} className={mobileCardClass()}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-display text-[0.86rem] font-medium text-ops-ink">{user.name}</p>
+                        <p className="font-sans text-[0.74rem] text-slate-500">{user.email}</p>
+                        <p className="mt-1 font-sans text-[0.74rem] text-slate-500">
+                          {t(`labels.role.${user.role}`)} ·{' '}
+                          {user.allSites ? t('users.allSites') : user.sites.map((site) => site.name).join(', ') || '—'}
+                        </p>
+                        <p className={`mt-0.5 font-display text-[0.72rem] ${user.isActive ? 'text-ops-teal' : 'text-slate-400'}`}>
+                          {user.isActive ? t('common.active') : t('common.deactivated')}
+                        </p>
                       </div>
-                    </td>
+                      <RowActionsMenu actions={actions} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className={desktopTableWrapClass()}>
+              <table className="w-full min-w-[44rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-5 py-3 font-display font-medium">{t('common.name')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('common.email')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('account.role')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('users.assignedSites')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('common.status')}</th>
+                    <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className={tableRowClass()}>
+                      <td className="px-5 py-3.5 font-display text-[0.86rem] font-medium text-ops-ink">{user.name}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{user.email}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{t(`labels.role.${user.role}`)}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-500">
+                        {user.allSites ? t('users.allSites') : user.sites.map((site) => site.name).join(', ') || '—'}
+                      </td>
+                      <td className="px-4 py-3.5 font-display text-[0.72rem]">
+                        <span className={user.isActive ? 'text-ops-teal' : 'text-slate-400'}>{user.isActive ? t('common.active') : t('common.deactivated')}</span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          <GhostButton onClick={() => openEdit(user)}>{t('common.edit')}</GhostButton>
+                          {user.isActive && user.id !== actor.id && (
+                            <GhostButton
+                              danger
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: t('users.deactivateNamed', { name: user.name }),
+                                  description: t('users.deactivateBody'),
+                                  confirmLabel: t('common.deactivate'),
+                                  danger: true,
+                                });
+                                if (!ok) return;
+                                try {
+                                  await deactivateUser.mutateAsync(user.id);
+                                  flash(t('users.deactivated'));
+                                } catch (deactivateError) {
+                                  flash(deactivateError instanceof Error ? deactivateError.message : t('common.couldNotDeactivate'), 'error');
+                                }
+                              }}
+                            >
+                              {t('common.deactivate')}
+                            </GhostButton>
+                          )}
+                          {!user.isActive && (
+                            <GhostButton
+                              onClick={async () => {
+                                try {
+                                  await updateUser.mutateAsync({ id: user.id, isActive: true });
+                                  flash(t('users.reactivated'));
+                                } catch (reactivateError) {
+                                  flash(reactivateError instanceof Error ? reactivateError.message : t('common.couldNotReactivate'), 'error');
+                                }
+                              }}
+                            >
+                              {t('common.reactivate')}
+                            </GhostButton>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
 
@@ -260,70 +318,122 @@ export const UsersSettings: React.FC = () => {
         {pendingInvites.length === 0 ? (
           <p className="px-5 py-6 font-sans text-sm text-slate-500">{t('users.noInvites')}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-5 py-3 font-display font-medium">{t('common.email')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('account.role')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('users.sites')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('users.expires')}</th>
-                  <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingInvites.map((invite: InviteRecord) => (
-                  <tr key={invite.id} className={tableRowClass()}>
-                    <td className="px-5 py-3.5 font-sans text-[0.82rem] text-ops-ink">{invite.email}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem]">{t(`labels.role.${invite.role}`)}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-500">
-                      {isCompanyWideRole(invite.role) ? t('users.allSites') : invite.sites.map((site) => site.name).join(', ') || '—'}
-                    </td>
-                    <td className="px-4 py-3.5 font-sans text-[0.78rem] text-slate-500">
-                      {new Date(invite.expiresAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <div className="flex justify-end gap-1.5">
-                        <GhostButton
-                          onClick={async () => {
-                            try {
-                              const result = await resendInvite.mutateAsync(invite.id);
-                              setCopiedUrl(result.inviteUrl);
-                              flash(result.delivered ? t('users.inviteResent') : t('users.inviteRefreshed'));
-                            } catch (resendError) {
-                              flash(resendError instanceof Error ? resendError.message : t('users.resendFailed'), 'error');
-                            }
-                          }}
-                        >
-                          {t('common.resend')}
-                        </GhostButton>
-                        <GhostButton
-                          danger
-                          onClick={async () => {
-                            const ok = await confirm({
-                              title: t('users.revokeTitle'),
-                              description: t('users.revokeBody', { email: invite.email }),
-                              confirmLabel: t('users.revoke'),
-                              danger: true,
-                            });
-                            if (!ok) return;
-                            try {
-                              await revokeInvite.mutateAsync(invite.id);
-                              flash(t('users.revoked'));
-                            } catch (revokeError) {
-                              flash(revokeError instanceof Error ? revokeError.message : t('users.revokeFailed'), 'error');
-                            }
-                          }}
-                        >
-                          {t('users.revoke')}
-                        </GhostButton>
+          <>
+            <ul className={mobileCardListClass()}>
+              {pendingInvites.map((invite: InviteRecord) => {
+                const resend = async () => {
+                  try {
+                    const result = await resendInvite.mutateAsync(invite.id);
+                    setCopiedUrl(result.inviteUrl);
+                    flash(result.delivered ? t('users.inviteResent') : t('users.inviteRefreshed'));
+                  } catch (resendError) {
+                    flash(resendError instanceof Error ? resendError.message : t('users.resendFailed'), 'error');
+                  }
+                };
+                const revoke = async () => {
+                  const ok = await confirm({
+                    title: t('users.revokeTitle'),
+                    description: t('users.revokeBody', { email: invite.email }),
+                    confirmLabel: t('users.revoke'),
+                    danger: true,
+                  });
+                  if (!ok) return;
+                  try {
+                    await revokeInvite.mutateAsync(invite.id);
+                    flash(t('users.revoked'));
+                  } catch (revokeError) {
+                    flash(revokeError instanceof Error ? revokeError.message : t('users.revokeFailed'), 'error');
+                  }
+                };
+                return (
+                  <li key={invite.id} className={mobileCardClass()}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-display text-[0.86rem] font-medium text-ops-ink">{invite.email}</p>
+                        <p className="font-sans text-[0.74rem] text-slate-500">
+                          {t(`labels.role.${invite.role}`)} ·{' '}
+                          {isCompanyWideRole(invite.role) ? t('users.allSites') : invite.sites.map((site) => site.name).join(', ') || '—'}
+                        </p>
+                        <p className="mt-0.5 font-sans text-[0.72rem] text-slate-400">
+                          {t('users.expires')} {new Date(invite.expiresAt).toLocaleDateString()}
+                        </p>
                       </div>
-                    </td>
+                      <RowActionsMenu
+                        actions={[
+                          { label: t('common.resend'), onClick: () => void resend() },
+                          { label: t('users.revoke'), onClick: () => void revoke(), danger: true },
+                        ]}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className={desktopTableWrapClass()}>
+              <table className="w-full min-w-[36rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-5 py-3 font-display font-medium">{t('common.email')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('account.role')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('users.sites')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('users.expires')}</th>
+                    <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {pendingInvites.map((invite: InviteRecord) => (
+                    <tr key={invite.id} className={tableRowClass()}>
+                      <td className="px-5 py-3.5 font-sans text-[0.82rem] text-ops-ink">{invite.email}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem]">{t(`labels.role.${invite.role}`)}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-500">
+                        {isCompanyWideRole(invite.role) ? t('users.allSites') : invite.sites.map((site) => site.name).join(', ') || '—'}
+                      </td>
+                      <td className="px-4 py-3.5 font-sans text-[0.78rem] text-slate-500">
+                        {new Date(invite.expiresAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          <GhostButton
+                            onClick={async () => {
+                              try {
+                                const result = await resendInvite.mutateAsync(invite.id);
+                                setCopiedUrl(result.inviteUrl);
+                                flash(result.delivered ? t('users.inviteResent') : t('users.inviteRefreshed'));
+                              } catch (resendError) {
+                                flash(resendError instanceof Error ? resendError.message : t('users.resendFailed'), 'error');
+                              }
+                            }}
+                          >
+                            {t('common.resend')}
+                          </GhostButton>
+                          <GhostButton
+                            danger
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: t('users.revokeTitle'),
+                                description: t('users.revokeBody', { email: invite.email }),
+                                confirmLabel: t('users.revoke'),
+                                danger: true,
+                              });
+                              if (!ok) return;
+                              try {
+                                await revokeInvite.mutateAsync(invite.id);
+                                flash(t('users.revoked'));
+                              } catch (revokeError) {
+                                flash(revokeError instanceof Error ? revokeError.message : t('users.revokeFailed'), 'error');
+                              }
+                            }}
+                          >
+                            {t('users.revoke')}
+                          </GhostButton>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
 

@@ -32,6 +32,14 @@ if (noProduct.ok || !noProduct.errors[0]?.includes('product is required')) {
   throw new Error(`expected product error, got ${JSON.stringify(noProduct)}`);
 }
 
+// Audit F-03: a line on a product a scan made up showed "ready to post".
+const pendingProduct = canDocumentBePosted({
+  lines: [line({ product: { name: 'OCR guess', batchTracking: false, status: 'PENDING_REVIEW' } })],
+});
+if (pendingProduct.ok || !pendingProduct.errors[0]?.includes("hasn't been reviewed")) {
+  throw new Error(`expected unreviewed-product error, got ${JSON.stringify(pendingProduct)}`);
+}
+
 const ok = canDocumentBePosted({
   lines: [
     line(),
@@ -80,7 +88,7 @@ if (twice.ok || !twice.errors[0]?.includes('twice')) {
   throw new Error(`expected duplicate count error, got ${JSON.stringify(twice)}`);
 }
 
-const header = { type: 'TRANSFER', direction: 'OUT', writeOffReason: null, issuedOn: '2026-09-28' };
+const header = { type: 'TRANSFER', direction: 'OUT', issuedOn: '2026-09-28' };
 const expired = expiredBatchWarnings(header, [
   { productName: 'Milk', batchNumber: 'L1', expiryDate: '2026-09-27' },
   { productName: 'Milk', batchNumber: 'L2', expiryDate: '2026-09-28' },
@@ -88,9 +96,24 @@ const expired = expiredBatchWarnings(header, [
 if (expired.length !== 1 || !expired[0].includes('L1')) {
   throw new Error(`expected one expired warning (expiring today is still fine), got ${JSON.stringify(expired)}`);
 }
-const writeOff = expiredBatchWarnings({ ...header, type: 'PROTOCOL', writeOffReason: 'EXPIRED' }, [
+const writeOff = expiredBatchWarnings({ ...header, type: 'WRITE_OFF' }, [
   { productName: 'Milk', batchNumber: 'L1', expiryDate: '2026-01-01' },
 ]);
 if (writeOff.length !== 0) throw new Error('write-offs never need the expiry confirmation');
+
+const received = expiredBatchWarnings({ type: 'RECEIPT', direction: 'IN', issuedOn: '2026-09-30' }, [
+  { productName: 'Кренвирши', batchNumber: 'QA-EXP-01', expiryDate: '2026-09-01' },
+]);
+if (received.length !== 1 || !received[0].includes('received already expired')) {
+  throw new Error(`receiving an expired batch needs confirmation, got ${JSON.stringify(received)}`);
+}
+const opening = expiredBatchWarnings({ type: 'OPENING_BALANCE', direction: 'IN', issuedOn: '2026-09-30' }, [
+  { productName: 'Milk', batchNumber: 'L1', expiryDate: '2026-09-01' },
+]);
+if (opening.length !== 0) throw new Error('opening stock records what is on the shelf, expired or not');
+const supplierReturn = expiredBatchWarnings({ type: 'CREDIT_NOTE', direction: 'OUT', issuedOn: '2026-09-30' }, [
+  { productName: 'Milk', batchNumber: 'L1', expiryDate: '2026-09-01' },
+]);
+if (supplierReturn.length !== 0) throw new Error('returning expired stock to the supplier needs no confirmation');
 
 console.log('canDocumentBePosted unit checks passed.');

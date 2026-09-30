@@ -18,15 +18,54 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  DOCUMENT_PAYMENT_METHODS,
   DOCUMENT_TYPES,
   PAPER_DOCUMENT_TYPES,
   STOCK_DIRECTIONS,
+  UNITS_OF_MEASURE,
   WRITE_OFF_REASONS,
+  type UnitOfMeasure,
+  type DocumentPaymentMethod,
   type DocumentType,
   type PaperDocumentType,
   type StockDirection,
   type WriteOffReason,
 } from '@skladnik/shared';
+
+const emptyToNull = ({ value }: { value: unknown }) => (value === '' ? null : value);
+const MAX_AMOUNT = 9_999_999_999.99;
+
+/** Amounts printed on the paper; null clears one. Negative values are allowed for credit notes. */
+class PrintedTotalsDto {
+  @IsOptional()
+  @Transform(emptyToNull)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-MAX_AMOUNT)
+  @Max(MAX_AMOUNT)
+  printedTaxableBase?: number | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-MAX_AMOUNT)
+  @Max(MAX_AMOUNT)
+  printedVatAmount?: number | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-MAX_AMOUNT)
+  @Max(MAX_AMOUNT)
+  printedTotal?: number | null;
+
+  @IsOptional()
+  @Transform(emptyToNull)
+  @IsIn([...DOCUMENT_PAYMENT_METHODS, null])
+  paymentMethod?: DocumentPaymentMethod | null;
+}
 
 export function lineQuantity(dto: { quantity?: number; qty?: number }) {
   const value = dto.quantity ?? dto.qty;
@@ -36,7 +75,7 @@ export function lineQuantity(dto: { quantity?: number; qty?: number }) {
   return Number(value);
 }
 
-export class CreateDocumentDto {
+export class CreateDocumentDto extends PrintedTotalsDto {
   @IsIn(DOCUMENT_TYPES)
   type!: DocumentType;
 
@@ -47,10 +86,12 @@ export class CreateDocumentDto {
   @IsUUID()
   partnerId?: string;
 
+  /** Left out for documents the company issues itself: the next number of their series is taken. */
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : value))
   @IsString()
-  @MinLength(1)
   @MaxLength(64)
-  documentNumber!: string;
+  documentNumber?: string;
 
   @IsDateString()
   issuedOn!: string;
@@ -103,7 +144,7 @@ export class ScanDocumentDto {
   capturedAt?: string;
 }
 
-export class UpdateDocumentDto {
+export class UpdateDocumentDto extends PrintedTotalsDto {
   @IsOptional()
   @IsIn(DOCUMENT_TYPES)
   type?: DocumentType;
@@ -156,10 +197,29 @@ export class UpdateDocumentDto {
 }
 
 export class PostDocumentDto {
-  /** Required when the document hands over or moves an expired batch. */
+  /** Required when the document receives, hands over or moves an expired batch. */
   @IsOptional()
   @IsBoolean()
   confirmExpired?: boolean;
+
+  /** Required when the document date is more than DOCUMENT_DATE_MAX_AGE_DAYS in the past. */
+  @IsOptional()
+  @IsBoolean()
+  confirmDate?: boolean;
+}
+
+export class ReverseDocumentDto {
+  /** Why the posted document is wrong; kept on the reversal and in the activity log. */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+
+  /** Required when the document is in a VAT period whose return was already generated. */
+  @IsOptional()
+  @IsBoolean()
+  confirmFiledPeriod?: boolean;
 }
 
 export class StocktakeCountDto {
@@ -213,10 +273,11 @@ export class CreateDocumentLineDto {
   @Min(0.001)
   quantity?: number;
 
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  unitPrice!: number;
+  unitPrice?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -268,10 +329,15 @@ export class UpdateDocumentLineDto {
 
   @IsOptional()
   @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   unitPrice?: number;
 
   @IsOptional()
   @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
   discountPercent?: number;
 
   @IsOptional()
@@ -295,4 +361,38 @@ export class UpdateDocumentLineDto {
   @IsNumber()
   @Min(0)
   countedQuantity?: number | null;
+}
+
+/** "Create product" from an unmatched scanned line; the line is linked to the new product. */
+export class CreateProductFromLineDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(180)
+  name!: string;
+
+  /** Left out to take the next free P-00001 style code. */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  code?: string;
+
+  @IsIn(UNITS_OF_MEASURE)
+  unit!: UnitOfMeasure;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  vatRate!: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  sellingPrice?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  batchTracking?: boolean;
 }

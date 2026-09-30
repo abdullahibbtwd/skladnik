@@ -1,7 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { grossQuantity, recipeCosting, type AuthUser } from '@skladnik/shared';
+import {
+  grossQuantity,
+  recipeCosting,
+  recipeQtyToStock,
+  recipeUnitProblem,
+  type AuthUser,
+  type ContentUnit,
+} from '@skladnik/shared';
 import { toNumber } from '../common/decimal';
+import { changes, recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CostBook } from '../stock/costing';
 import { loadCostBook } from '../stock/ledger';
@@ -20,17 +28,52 @@ const dishSelect = {
   group: { select: { id: true, name: true } },
 } satisfies Prisma.ProductSelect;
 
+const ingredientProductSelect = {
+  id: true,
+  name: true,
+  code: true,
+  unit: true,
+  status: true,
+  batchTracking: true,
+  netContent: true,
+  netContentUnit: true,
+} satisfies Prisma.ProductSelect;
+
 const recipeInclude = {
   product: { select: dishSelect },
   ingredients: {
     orderBy: { position: 'asc' },
     include: {
-      product: { select: { id: true, name: true, code: true, unit: true, status: true, batchTracking: true } },
+      product: { select: ingredientProductSelect },
     },
   },
 } satisfies Prisma.RecipeInclude;
 
 type RecipeRow = Prisma.RecipeGetPayload<{ include: typeof recipeInclude }>;
+
+type IngredientProduct = Prisma.ProductGetPayload<{ select: typeof ingredientProductSelect }>;
+
+function productContent(product: Pick<IngredientProduct, 'unit' | 'netContent' | 'netContentUnit'>) {
+  return {
+    unit: product.unit,
+    netContent: product.netContent === null ? null : toNumber(product.netContent),
+    netContentUnit: product.netContentUnit as ContentUnit | null,
+  };
+}
+
+/** Net quantity in stock units (for costing and stock issue). */
+function stockNetQty(
+  quantity: number,
+  quantityUnit: ContentUnit | null | undefined,
+  product: Pick<IngredientProduct, 'name' | 'unit' | 'netContent' | 'netContentUnit'>,
+) {
+  const content = productContent(product);
+  const problem = recipeUnitProblem(quantityUnit, content, product.name);
+  if (problem) throw new BadRequestException(problem);
+  const stock = recipeQtyToStock(quantity, quantityUnit, content);
+  if (stock == null) throw new BadRequestException(recipeUnitProblem(quantityUnit, content, product.name) ?? 'Invalid recipe unit');
+  return stock;
+}
 
 /** What one unit of an ingredient costs at a site right now: on-hand value ÷ on hand, else the average / catalog price. */
 function currentUnitCost(book: CostBook, productId: string) {
@@ -45,7 +88,7 @@ function costRecipe(recipe: RecipeRow, book: CostBook) {
     sellingPrice: toNumber(recipe.product.sellingPrice),
     vatRate: toNumber(recipe.product.vatRate),
     ingredients: recipe.ingredients.map((row) => ({
-      quantity: toNumber(row.quantity),
+      quantity: stockNetQty(toNumber(row.quantity), row.quantityUnit as ContentUnit | null, row.product),
       wastagePercent: toNumber(row.wastagePercent),
       unitCost: currentUnitCost(book, row.productId),
     })),
@@ -119,18 +162,25 @@ export class RecipesService {
         notes: recipe.notes,
         updatedAt: recipe.updatedAt.toISOString(),
       },
-      ingredients: recipe.ingredients.map((row, index) => ({
-        productId: row.productId,
-        name: row.product.name,
-        code: row.product.code,
-        unit: row.product.unit,
-        status: row.product.status,
-        quantity: toNumber(row.quantity),
-        wastagePercent: toNumber(row.wastagePercent),
-        gross: costing.lines[index].gross,
-        unitCost: currentUnitCost(book, row.productId),
-        onHand: book.onHand(row.productId),
-      })),
+      ingredients: recipe.ingredients.map((row, index) => {
+        const content = productContent(row.product);
+        const quantityUnit = (row.quantityUnit as ContentUnit | null) ?? null;
+        return {
+          productId: row.productId,
+          name: row.product.name,
+          code: row.product.code,
+          unit: row.product.unit,
+          netContent: content.netContent,
+          netContentUnit: content.netContentUnit,
+          status: row.product.status,
+          quantity: toNumber(row.quantity),
+          quantityUnit,
+          wastagePercent: toNumber(row.wastagePercent),
+          gross: costing.lines[index].gross,
+          unitCost: currentUnitCost(book, row.productId),
+          onHand: book.onHand(row.productId),
+        };
+      }),
       costing,
     };
   }
@@ -149,7 +199,7 @@ export class RecipesService {
     const [ingredients, usedIn] = await Promise.all([
       this.prisma.product.findMany({
         where: { companyId: user.companyId, id: { in: ids } },
-        select: { id: true, name: true, recipe: { select: { id: true } } },
+        select: { id: true, name: true, unit: true, netContent: true, netContentUnit: true, recipe: { select: { id: true } } },
       }),
       this.prisma.recipeIngredient.findFirst({
         where: { companyId: user.companyId, productId },
@@ -163,6 +213,24 @@ export class RecipesService {
       throw new BadRequestException(`${dish.name} is an ingredient of ${usedIn.recipe.product.name}; recipes can't contain other dishes yet`);
     }
 
+    const byId = new Map(ingredients.map((row) => [row.id, row]));
+    for (const row of dto.ingredients) {
+      const product = byId.get(row.productId)!;
+      stockNetQty(row.quantity, row.quantityUnit, product);
+    }
+
+    const previous = await this.prisma.recipe.findUnique({
+      where: { productId },
+      select: {
+        yieldPortions: true,
+        markupPercent: true,
+        notes: true,
+        ingredients: {
+          orderBy: { position: 'asc' },
+          select: { productId: true, quantity: true, quantityUnit: true, wastagePercent: true },
+        },
+      },
+    });
     await this.prisma.$transaction(async (tx) => {
       const recipe = await tx.recipe.upsert({
         where: { productId },
@@ -184,27 +252,38 @@ export class RecipesService {
           productId: row.productId,
           position,
           quantity: row.quantity,
+          quantityUnit: row.quantityUnit ?? null,
           wastagePercent: row.wastagePercent ?? 0,
         })),
       });
     });
 
-    await this.log(user, productId, 'RECIPE_SAVE', {
-      dish: dish.name,
+    const saved = {
       yieldPortions: dto.yieldPortions,
-      ingredients: dto.ingredients.length,
-    });
+      markupPercent: dto.markupPercent,
+      notes: dto.notes ?? null,
+      ingredients: dto.ingredients.map((row) => ({
+        productId: row.productId,
+        quantity: row.quantity,
+        quantityUnit: row.quantityUnit ?? null,
+        wastagePercent: row.wastagePercent ?? 0,
+      })),
+    };
+    const diff = previous ? changes(previous, saved) : { after: saved };
+    if (diff) await this.log(user, { id: productId, label: dish.name }, 'RECIPE_SAVE', diff);
     return { productId };
   }
 
   async remove(user: AuthUser, productId: string) {
     const recipe = await this.prisma.recipe.findFirst({
       where: { productId, companyId: user.companyId },
-      select: { id: true, product: { select: { name: true } } },
+      select: { id: true, yieldPortions: true, markupPercent: true, product: { select: { name: true } } },
     });
     if (!recipe) throw new NotFoundException('Recipe not found');
     await this.prisma.recipe.delete({ where: { id: recipe.id } });
-    await this.log(user, productId, 'RECIPE_DELETE', { dish: recipe.product.name });
+    await this.log(user, { id: productId, label: recipe.product.name }, 'RECIPE_DELETE', {
+      before: { yieldPortions: recipe.yieldPortions, markupPercent: recipe.markupPercent },
+    });
     return { productId };
   }
 
@@ -214,7 +293,16 @@ export class RecipesService {
       where: { companyId: user.companyId, product: { status: { not: 'ARCHIVED' } } },
       include: {
         product: { select: { ...dishSelect, barcodes: { select: { barcode: true } } } },
-        ingredients: { orderBy: { position: 'asc' }, select: { productId: true, quantity: true, wastagePercent: true } },
+        ingredients: {
+          orderBy: { position: 'asc' },
+          select: {
+            productId: true,
+            quantity: true,
+            quantityUnit: true,
+            wastagePercent: true,
+            product: { select: { unit: true, netContent: true, netContentUnit: true, name: true } },
+          },
+        },
       },
       orderBy: { product: { name: 'asc' } },
     });
@@ -224,10 +312,13 @@ export class RecipesService {
       siteId,
       dishes: recipes.map((recipe) => {
         const portions = toNumber(recipe.yieldPortions) || 1;
-        const ingredients = recipe.ingredients.map((row) => ({
-          productId: row.productId,
-          perPortion: round4(grossQuantity(toNumber(row.quantity), toNumber(row.wastagePercent)) / portions),
-        }));
+        const ingredients = recipe.ingredients.map((row) => {
+          const stockQty = stockNetQty(toNumber(row.quantity), row.quantityUnit as ContentUnit | null, row.product);
+          return {
+            productId: row.productId,
+            perPortion: round4(grossQuantity(stockQty, toNumber(row.wastagePercent)) / portions),
+          };
+        });
         const available = ingredients
           .filter((row) => row.perPortion > 0)
           .map((row) => Math.floor(Math.max(0, book.onHand(row.productId)) / row.perPortion + 1e-9));
@@ -242,9 +333,12 @@ export class RecipesService {
     };
   }
 
-  private async log(user: AuthUser, entityId: string, action: string, metadata: Prisma.InputJsonValue) {
-    await this.prisma.activityLog.create({
-      data: { companyId: user.companyId, userId: user.id, entityType: 'Product', entityId, action, metadata },
-    });
+  private async log(
+    user: AuthUser,
+    dish: { id: string; label: string },
+    action: string,
+    diff: { before?: Record<string, unknown>; after?: Record<string, unknown> },
+  ) {
+    await recordActivity(this.prisma, user, { entityType: 'Product', entityId: dish.id, label: dish.label, action, ...diff });
   }
 }

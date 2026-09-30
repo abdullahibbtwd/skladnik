@@ -17,13 +17,17 @@ import { toast } from '../ui/Toaster';
 import { confirm } from '../ui/Dialog';
 import {
   ActionButton,
+  desktopTableWrapClass,
   GhostButton,
   GlassPanel,
   LiveBadge,
+  mobileCardClass,
+  mobileCardListClass,
   PageHeader,
   tableHeadRowClass,
   tableRowClass,
 } from './dashboard-ui';
+import { RowActionsMenu } from './RowActionsMenu';
 import { WorkspaceModal } from './WorkspaceModal';
 
 type SiteFormState = {
@@ -124,77 +128,135 @@ export const SitesSettings: React.FC = () => {
         ) : sites.length === 0 ? (
           <p className="px-5 py-8 font-sans text-sm text-slate-500">{t('sites.empty')}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-5 py-3 font-display font-medium">{t('common.name')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('common.type')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('common.address')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('sites.personInCharge')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('common.status')}</th>
-                  {isOwner && <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {sites.map((site) => (
-                  <tr key={site.id} className={tableRowClass()}>
-                    <td className="px-5 py-3.5 font-display text-[0.86rem] font-medium text-ops-ink">{site.name}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{t(`labels.siteType.${site.type}`)}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-500">{site.address || '—'}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{site.manager?.name ?? '—'}</td>
-                    <td className="px-4 py-3.5">
-                      <span className={site.isActive ? 'font-display text-[0.72rem] text-ops-teal' : 'font-display text-[0.72rem] text-slate-400'}>
-                        {site.isActive ? t('common.active') : t('common.deactivated')}
-                      </span>
-                    </td>
-                    {isOwner && (
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <GhostButton onClick={() => openEdit(site)}>{t('common.edit')}</GhostButton>
-                          {site.isActive ? (
-                            <GhostButton
-                              danger
-                              onClick={async () => {
-                                const ok = await confirm({
-                                  title: t('sites.deactivateNamed', { name: site.name }),
-                                  description: t('sites.deactivateBody'),
-                                  confirmLabel: t('common.deactivate'),
-                                  danger: true,
-                                });
-                                if (!ok) return;
-                                try {
-                                  await deactivateSite.mutateAsync(site.id);
-                                  flash(t('sites.deactivated'));
-                                } catch (deactivateError) {
-                                  flash(deactivateError instanceof Error ? deactivateError.message : t('common.couldNotDeactivate'), 'error');
-                                }
-                              }}
-                            >
-                              {t('common.deactivate')}
-                            </GhostButton>
-                          ) : (
-                            <GhostButton
-                              onClick={async () => {
-                                try {
-                                  await updateSite.mutateAsync({ id: site.id, isActive: true });
-                                  flash(t('sites.reactivated'));
-                                } catch (reactivateError) {
-                                  flash(reactivateError instanceof Error ? reactivateError.message : t('common.couldNotReactivate'), 'error');
-                                }
-                              }}
-                            >
-                              {t('common.reactivate')}
-                            </GhostButton>
-                          )}
-                        </div>
-                      </td>
-                    )}
+          <>
+            <ul className={mobileCardListClass()}>
+              {sites.map((site) => {
+                const deactivate = async () => {
+                  const ok = await confirm({
+                    title: t('sites.deactivateNamed', { name: site.name }),
+                    description: t('sites.deactivateBody'),
+                    confirmLabel: t('common.deactivate'),
+                    danger: true,
+                  });
+                  if (!ok) return;
+                  try {
+                    await deactivateSite.mutateAsync(site.id);
+                    flash(t('sites.deactivated'));
+                  } catch (deactivateError) {
+                    flash(deactivateError instanceof Error ? deactivateError.message : t('common.couldNotDeactivate'), 'error');
+                  }
+                };
+                const reactivate = async () => {
+                  try {
+                    await updateSite.mutateAsync({ id: site.id, isActive: true });
+                    flash(t('sites.reactivated'));
+                  } catch (reactivateError) {
+                    flash(reactivateError instanceof Error ? reactivateError.message : t('common.couldNotReactivate'), 'error');
+                  }
+                };
+                return (
+                  <li key={site.id} className={mobileCardClass()}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-display text-[0.86rem] font-medium text-ops-ink">{site.name}</p>
+                        <p className="font-sans text-[0.74rem] text-slate-500">
+                          {t(`labels.siteType.${site.type}`)}
+                          {site.address ? ` · ${site.address}` : ''}
+                        </p>
+                        <p className="mt-0.5 font-sans text-[0.72rem] text-slate-400">
+                          {site.manager?.name ?? t('sites.notAssigned')} ·{' '}
+                          <span className={site.isActive ? 'text-ops-teal' : 'text-slate-400'}>
+                            {site.isActive ? t('common.active') : t('common.deactivated')}
+                          </span>
+                        </p>
+                      </div>
+                      {isOwner && (
+                        <RowActionsMenu
+                          actions={[
+                            { label: t('common.edit'), onClick: () => openEdit(site) },
+                            site.isActive
+                              ? { label: t('common.deactivate'), onClick: () => void deactivate(), danger: true }
+                              : { label: t('common.reactivate'), onClick: () => void reactivate() },
+                          ]}
+                        />
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className={desktopTableWrapClass()}>
+              <table className="w-full min-w-[40rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-5 py-3 font-display font-medium">{t('common.name')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('common.type')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('common.address')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('sites.personInCharge')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('common.status')}</th>
+                    {isOwner && <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {sites.map((site) => (
+                    <tr key={site.id} className={tableRowClass()}>
+                      <td className="px-5 py-3.5 font-display text-[0.86rem] font-medium text-ops-ink">{site.name}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{t(`labels.siteType.${site.type}`)}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-500">{site.address || '—'}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{site.manager?.name ?? '—'}</td>
+                      <td className="px-4 py-3.5">
+                        <span className={site.isActive ? 'font-display text-[0.72rem] text-ops-teal' : 'font-display text-[0.72rem] text-slate-400'}>
+                          {site.isActive ? t('common.active') : t('common.deactivated')}
+                        </span>
+                      </td>
+                      {isOwner && (
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <GhostButton onClick={() => openEdit(site)}>{t('common.edit')}</GhostButton>
+                            {site.isActive ? (
+                              <GhostButton
+                                danger
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: t('sites.deactivateNamed', { name: site.name }),
+                                    description: t('sites.deactivateBody'),
+                                    confirmLabel: t('common.deactivate'),
+                                    danger: true,
+                                  });
+                                  if (!ok) return;
+                                  try {
+                                    await deactivateSite.mutateAsync(site.id);
+                                    flash(t('sites.deactivated'));
+                                  } catch (deactivateError) {
+                                    flash(deactivateError instanceof Error ? deactivateError.message : t('common.couldNotDeactivate'), 'error');
+                                  }
+                                }}
+                              >
+                                {t('common.deactivate')}
+                              </GhostButton>
+                            ) : (
+                              <GhostButton
+                                onClick={async () => {
+                                  try {
+                                    await updateSite.mutateAsync({ id: site.id, isActive: true });
+                                    flash(t('sites.reactivated'));
+                                  } catch (reactivateError) {
+                                    flash(reactivateError instanceof Error ? reactivateError.message : t('common.couldNotReactivate'), 'error');
+                                  }
+                                }}
+                              >
+                                {t('common.reactivate')}
+                              </GhostButton>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
 

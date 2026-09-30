@@ -15,13 +15,17 @@ import { toast } from '../ui/Toaster';
 import { confirm } from '../ui/Dialog';
 import {
   ActionButton,
+  desktopTableWrapClass,
   GhostButton,
   GlassPanel,
   LiveBadge,
+  mobileCardClass,
+  mobileCardListClass,
   PageHeader,
   tableHeadRowClass,
   tableRowClass,
 } from './dashboard-ui';
+import { RowActionsMenu } from './RowActionsMenu';
 import { WorkspaceModal } from './WorkspaceModal';
 
 type GroupForm = { name: string; parentId: string };
@@ -88,6 +92,59 @@ function GroupRows({
   );
 }
 
+function GroupCards({
+  nodes,
+  depth,
+  canWrite,
+  onEdit,
+  onAddChild,
+  onDelete,
+}: {
+  nodes: ProductGroupNode[];
+  depth: number;
+  canWrite: boolean;
+  onEdit: (node: ProductGroupNode) => void;
+  onAddChild: (parentId: string) => void;
+  onDelete: (node: ProductGroupNode) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {nodes.map((node) => (
+        <React.Fragment key={node.id}>
+          <li className={mobileCardClass()} style={{ paddingLeft: 16 + depth * 14 }}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-display text-[0.86rem] font-medium text-ops-ink">{node.name}</p>
+                <p className="font-sans text-[0.74rem] text-slate-500">
+                  {t('groups.products')}: {node.productCount}
+                </p>
+              </div>
+              {canWrite && (
+                <RowActionsMenu
+                  actions={[
+                    { label: t('groups.addChild'), onClick: () => onAddChild(node.id) },
+                    { label: t('common.edit'), onClick: () => onEdit(node) },
+                    { label: t('common.delete'), onClick: () => onDelete(node), danger: true },
+                  ]}
+                />
+              )}
+            </div>
+          </li>
+          <GroupCards
+            nodes={node.children}
+            depth={depth + 1}
+            canWrite={canWrite}
+            onEdit={onEdit}
+            onAddChild={onAddChild}
+            onDelete={onDelete}
+          />
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 export const ProductGroupsSettings: React.FC = () => {
   const { t } = useTranslation();
   const role = useAuthRole();
@@ -115,6 +172,22 @@ export const ProductGroupsSettings: React.FC = () => {
     setForm({ name: node.name, parentId: node.parentId ?? '' });
     setError(null);
     setModal(node);
+  };
+
+  const handleDelete = async (node: ProductGroupNode) => {
+    const ok = await confirm({
+      title: t('groups.deleteNamed', { name: node.name }),
+      description: t('groups.deleteBody'),
+      confirmLabel: t('common.delete'),
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteGroup.mutateAsync(node.id);
+      toast.success(t('groups.deleted'));
+    } catch (deleteError) {
+      toast.error(deleteError instanceof Error ? deleteError.message : t('common.couldNotDelete'));
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -160,41 +233,39 @@ export const ProductGroupsSettings: React.FC = () => {
         ) : groups.length === 0 ? (
           <p className="px-5 py-8 font-sans text-sm text-slate-500">{t('groups.empty')}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-5 py-3 font-display font-medium">{t('common.name')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('groups.products')}</th>
-                  {canWrite && <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                <GroupRows
-                  nodes={groups}
-                  depth={0}
-                  canWrite={canWrite}
-                  onEdit={openEdit}
-                  onAddChild={(parentId) => openCreate(parentId)}
-                  onDelete={async (node) => {
-                    const ok = await confirm({
-                      title: t('groups.deleteNamed', { name: node.name }),
-                      description: t('groups.deleteBody'),
-                      confirmLabel: t('common.delete'),
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    try {
-                      await deleteGroup.mutateAsync(node.id);
-                      toast.success(t('groups.deleted'));
-                    } catch (deleteError) {
-                      toast.error(deleteError instanceof Error ? deleteError.message : t('common.couldNotDelete'));
-                    }
-                  }}
-                />
-              </tbody>
-            </table>
-          </div>
+          <>
+            <ul className={mobileCardListClass()}>
+              <GroupCards
+                nodes={groups}
+                depth={0}
+                canWrite={canWrite}
+                onEdit={openEdit}
+                onAddChild={(parentId) => openCreate(parentId)}
+                onDelete={(node) => void handleDelete(node)}
+              />
+            </ul>
+            <div className={desktopTableWrapClass()}>
+              <table className="w-full min-w-[32rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-5 py-3 font-display font-medium">{t('common.name')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('groups.products')}</th>
+                    {canWrite && <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  <GroupRows
+                    nodes={groups}
+                    depth={0}
+                    canWrite={canWrite}
+                    onEdit={openEdit}
+                    onAddChild={(parentId) => openCreate(parentId)}
+                    onDelete={(node) => void handleDelete(node)}
+                  />
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
 

@@ -57,7 +57,7 @@ export const HeroSection: React.FC = () => {
               {[
                 { icon: Zap, title: t('hero.stat1Title'), sub: t('hero.stat1Sub'), tone: 'teal' },
                 { icon: ShieldCheck, title: t('hero.stat2Title'), sub: t('hero.stat2Sub'), tone: 'indigo' },
-                { icon: FileCheck2, title: t('hero.stat3Title'), sub: t('hero.stat3Sub'), tone: 'warn' },
+                { icon: FileCheck2, title: t('hero.stat3Title'), sub: t('hero.stat3Sub'), tone: 'indigo' },
                 { icon: MonitorSmartphone, title: t('hero.stat4Title'), sub: t('hero.stat4Sub'), tone: 'teal' },
               ].map((item) => (
                 <div key={item.title} className="flex min-w-0 items-start gap-2.5 md:items-center md:gap-3">

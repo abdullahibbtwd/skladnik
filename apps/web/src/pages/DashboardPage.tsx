@@ -16,7 +16,7 @@ import { newQueueId } from '../lib/photo-queue';
 import { isQuotaError, queuePhoto, usePhotoQueueRuntime } from '../lib/photo-queue-runtime';
 import { isTransientStatus } from '../lib/photo-sync';
 import { ApiError, scanDocument } from '../lib/workspace-api';
-import { useDocumentsQuery, useSiteChoices, useStockQuery } from '../lib/workspace-session';
+import { useDocumentsQuery, useExpiryWindows, useSiteChoices, useStockQuery } from '../lib/workspace-session';
 import { toast } from '../components/ui/Toaster';
 
 export const DashboardPage: React.FC = () => {
@@ -59,21 +59,22 @@ export const DashboardPage: React.FC = () => {
   }, [sites, siteId, user]);
 
   const stockQuery = useStockQuery(siteId);
+  const expiryWindows = useExpiryWindows();
 
   const data = useMemo(() => {
     const documents = (documentsQuery.data?.documents ?? []).filter(
       (doc) => !siteId || doc.site.id === siteId || doc.targetSite?.id === siteId,
     );
-    const next = buildDashboardState(documents, stockQuery.data?.siteId === siteId ? stockQuery.data.items : undefined);
+    const next = buildDashboardState(documents, stockQuery.data?.siteId === siteId ? stockQuery.data.items : undefined, expiryWindows);
     const notices: (Notice | null)[] = [
       next.pending.length > 0
-        ? { text: t('notices.invoicesWaiting', { count: next.pending.length }), to: '/app/invoices' }
+        ? { text: t('notices.documentsWaiting', { count: next.pending.length }), to: '/app/invoices' }
         : null,
       next.reorderCount > 0 ? { text: t('notices.belowMin', { count: next.reorderCount }), to: '/app/reorder' } : null,
       next.expired > 0 ? { text: t('notices.expiredBatches', { count: next.expired }), to: '/app/expiry' } : null,
     ];
     return { ...next, notifications: notices.filter((note): note is Notice => note !== null) };
-  }, [documentsQuery.data, stockQuery.data, siteId, t]);
+  }, [documentsQuery.data, stockQuery.data, siteId, expiryWindows, t]);
 
   if (!user) {
     const offlineSnapshot = sessionUnreachable && readOfflineSession() !== null;
@@ -103,9 +104,10 @@ export const DashboardPage: React.FC = () => {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
-  const canCreateDocuments = user.role === 'OWNER' || user.role === 'ACCOUNTANT' || user.role === 'SITE_MANAGER';
+  const canCreateDocuments =
+    user.role === 'OWNER' || user.role === 'ACCOUNTANT' || user.role === 'SITE_MANAGER' || user.role === 'STAFF';
 
-  const onStartDocument = (type: 'RECEIPT' | 'PROTOCOL') => {
+  const onStartDocument = (type: 'RECEIPT' | 'WRITE_OFF') => {
     if (!canCreateDocuments) {
       toast.error(t('app.docStaffBlocked'));
       return;
@@ -114,7 +116,7 @@ export const DashboardPage: React.FC = () => {
       toast.error(t('app.docNeedSite'));
       return;
     }
-    navigate(type === 'PROTOCOL' ? '/app/write-off' : `/app/invoices/new?type=${type}`);
+    navigate(type === 'WRITE_OFF' ? '/app/write-off' : `/app/invoices/new?type=${type}`);
   };
 
   const onWriteOffBatch = (line: StockLine) => {

@@ -8,6 +8,7 @@ import type {
   ComplianceFilingRecord,
   ComplianceIssue,
 } from '@skladnik/shared';
+import { recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { zipToBuffer } from '../reports/export/zip';
 import { StorageService } from '../storage/storage.service';
@@ -18,6 +19,10 @@ export type FilingFileInput = { name: string; body: Buffer; contentType: string 
 export type NewFiling = {
   kind: ComplianceFilingKind;
   period: string;
+  /** '' company-wide; the site id for a per-site filing. */
+  scope?: string;
+  /** Activity log label; defaults to kind and period. */
+  label?: string;
   sourceHash: string;
   summary: Record<string, number | string>;
   issues: ComplianceIssue[];
@@ -43,27 +48,38 @@ export class ComplianceFilingsService {
     private readonly storage: StorageService,
   ) {}
 
-  async list(companyId: string, kind: ComplianceFilingKind, period?: string) {
+  async list(companyId: string, kind: ComplianceFilingKind, period?: string, scope = '') {
     const rows = await this.prisma.complianceFiling.findMany({
-      where: { companyId, kind, ...(period ? { period } : {}) },
+      where: { companyId, kind, scope, ...(period ? { period } : {}) },
       orderBy: [{ period: 'desc' }, { version: 'desc' }],
     });
     return rows.map((row) => this.toRecord(row));
   }
 
-  async latest(companyId: string, kind: ComplianceFilingKind, period: string) {
-    const row = await this.prisma.complianceFiling.findFirst({ where: { companyId, kind, period }, orderBy: { version: 'desc' } });
+  /** Every filing of a kind, all periods and scopes, newest first. */
+  async archive(companyId: string, kind: ComplianceFilingKind, limit = 200) {
+    const rows = await this.prisma.complianceFiling.findMany({
+      where: { companyId, kind },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map((row) => this.toRecord(row));
+  }
+
+  async latest(companyId: string, kind: ComplianceFilingKind, period: string, scope = '') {
+    const row = await this.prisma.complianceFiling.findFirst({ where: { companyId, kind, period, scope }, orderBy: { version: 'desc' } });
     return row ? this.toRecord(row) : null;
   }
 
   async create(user: AuthUser, filing: NewFiling) {
+    const scope = filing.scope ?? '';
     const last = await this.prisma.complianceFiling.findFirst({
-      where: { companyId: user.companyId, kind: filing.kind, period: filing.period },
+      where: { companyId: user.companyId, kind: filing.kind, period: filing.period, scope },
       orderBy: { version: 'desc' },
       select: { version: true },
     });
     const version = (last?.version ?? 0) + 1;
-    const prefix = `compliance/${user.companyId}/${filing.kind}/${filing.period}/v${version}`;
+    const prefix = `compliance/${user.companyId}/${filing.kind}/${scope ? `${scope}/` : ''}${filing.period}/v${version}`;
     const files: ComplianceFilingFile[] = [];
     for (const file of filing.files) {
       const key = `${prefix}/${file.name}`;
@@ -76,6 +92,7 @@ export class ComplianceFilingsService {
           companyId: user.companyId,
           kind: filing.kind,
           period: filing.period,
+          scope,
           version,
           sourceHash: filing.sourceHash,
           summary: filing.summary as Prisma.InputJsonValue,
@@ -85,15 +102,12 @@ export class ComplianceFilingsService {
           createdByName: user.name || user.email,
         },
       });
-      await this.prisma.activityLog.create({
-        data: {
-          companyId: user.companyId,
-          userId: user.id,
-          entityType: 'ComplianceFiling',
-          entityId: row.id,
-          action: 'GENERATE',
-          metadata: { kind: filing.kind, period: filing.period, version },
-        },
+      await recordActivity(this.prisma, user, {
+        entityType: 'ComplianceFiling',
+        entityId: row.id,
+        label: filing.label ?? `${filing.kind} ${filing.period}`,
+        action: 'GENERATE',
+        metadata: { kind: filing.kind, period: filing.period, version, ...(scope ? { scope } : {}), files: files.map(({ name, sha256: hash }) => ({ name, sha256: hash })) },
       });
       return this.toRecord(row);
     } catch (error) {
@@ -105,27 +119,25 @@ export class ComplianceFilingsService {
   }
 
   async markSubmitted(user: AuthUser, id: string, submissionRef: string, submittedAt: Date) {
-    const row = await this.find(user.companyId, id);
+    const row = await this.row(user.companyId, id);
     const updated = await this.prisma.complianceFiling.update({
       where: { id: row.id },
       data: { submissionRef, submittedAt, submittedByName: user.name || user.email },
     });
-    await this.prisma.activityLog.create({
-      data: {
-        companyId: user.companyId,
-        userId: user.id,
-        entityType: 'ComplianceFiling',
-        entityId: row.id,
-        action: 'SUBMITTED',
-        metadata: { submissionRef, submittedAt: submittedAt.toISOString() },
-      },
+    await recordActivity(this.prisma, user, {
+      entityType: 'ComplianceFiling',
+      entityId: row.id,
+      label: `${row.kind} ${row.period}`,
+      action: 'SUBMITTED',
+      before: { submissionRef: row.submissionRef, submittedAt: row.submittedAt },
+      after: { submissionRef, submittedAt },
     });
     return this.toRecord(updated);
   }
 
   /** The archived files, re-checked against their stored SHA-256. */
   async files(companyId: string, id: string) {
-    const row = await this.find(companyId, id);
+    const row = await this.row(companyId, id);
     const files = row.files as unknown as ComplianceFilingFile[];
     const out: { name: string; data: Buffer }[] = [];
     for (const file of files) {
@@ -137,12 +149,18 @@ export class ComplianceFilingsService {
     return { filing: this.toRecord(row), files: out };
   }
 
+  async find(companyId: string, id: string, kind: ComplianceFilingKind) {
+    const row = await this.row(companyId, id);
+    if (row.kind !== kind) throw new NotFoundException('Filing not found');
+    return this.toRecord(row);
+  }
+
   async zip(companyId: string, id: string) {
     const { filing, files } = await this.files(companyId, id);
     return { filing, body: await zipToBuffer(files) };
   }
 
-  private async find(companyId: string, id: string) {
+  private async row(companyId: string, id: string) {
     const row = await this.prisma.complianceFiling.findFirst({ where: { id, companyId } });
     if (!row) throw new NotFoundException('Filing not found');
     return row;
@@ -153,6 +171,7 @@ export class ComplianceFilingsService {
       id: row.id,
       kind: row.kind as ComplianceFilingKind,
       period: row.period,
+      scope: row.scope,
       version: row.version,
       sourceHash: row.sourceHash,
       summary: row.summary as Record<string, number | string>,

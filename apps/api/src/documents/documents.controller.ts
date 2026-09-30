@@ -22,8 +22,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import {
   CreateDocumentDto,
   CreateDocumentLineDto,
+  CreateProductFromLineDto,
   ListDocumentsQueryDto,
   PostDocumentDto,
+  ReverseDocumentDto,
   ScanDocumentDto,
   StocktakeCountsDto,
   UpdateDocumentDto,
@@ -32,7 +34,12 @@ import {
 import { DocumentsService } from './documents.service';
 import { isImageUpload, isPdfUpload } from './pdf-to-images';
 
-const WRITE_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'] as const;
+/** Draft create/edit/submit — Staff included; service enforces type + own-draft rules. */
+const DRAFT_WRITE_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER', 'STAFF'] as const;
+/** Post (Staff: write-offs only), cancel, reverse, stocktake, create-product — managers; service re-checks Staff. */
+const MANAGER_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'] as const;
+/** Post allowed for Staff write-offs (recommended default: no approval threshold). */
+const POST_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER', 'STAFF'] as const;
 
 const captureUpload = () =>
   FileInterceptor('file', {
@@ -57,13 +64,13 @@ export class DocumentsController {
   }
 
   @Post()
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateDocumentDto) {
     return this.documents.create(user, dto);
   }
 
   @Post('scan')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   @UseInterceptors(captureUpload())
   scan(@CurrentUser() user: AuthUser, @Body() dto: ScanDocumentDto, @UploadedFile() file?: Express.Multer.File) {
     if (!file) {
@@ -78,7 +85,7 @@ export class DocumentsController {
   }
 
   @Patch(':id')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   update(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -88,7 +95,7 @@ export class DocumentsController {
   }
 
   @Post(':id/lines')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   addLine(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -98,7 +105,7 @@ export class DocumentsController {
   }
 
   @Patch(':id/lines/:lineId')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   updateLine(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -108,8 +115,19 @@ export class DocumentsController {
     return this.documents.updateLine(user, id, lineId, dto);
   }
 
+  @Post(':id/lines/:lineId/create-product')
+  @Roles(...MANAGER_ROLES)
+  createProductFromLine(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('lineId', ParseUUIDPipe) lineId: string,
+    @Body() dto: CreateProductFromLineDto,
+  ) {
+    return this.documents.createProductFromLine(user, id, lineId, dto);
+  }
+
   @Delete(':id/lines/:lineId')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   removeLine(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -119,25 +137,25 @@ export class DocumentsController {
   }
 
   @Post(':id/submit-for-review')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   submitForReview(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.documents.submitForReview(user, id);
   }
 
   @Post(':id/post')
-  @Roles(...WRITE_ROLES)
+  @Roles(...POST_ROLES)
   post(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PostDocumentDto) {
-    return this.documents.post(user, id, { confirmExpired: dto.confirmExpired });
+    return this.documents.post(user, id, { confirmExpired: dto.confirmExpired, confirmDate: dto.confirmDate });
   }
 
   @Post(':id/stocktake/fill')
-  @Roles(...WRITE_ROLES)
+  @Roles(...MANAGER_ROLES)
   fillStocktake(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.documents.fillStocktake(user, id);
   }
 
   @Patch(':id/stocktake/counts')
-  @Roles(...WRITE_ROLES)
+  @Roles(...MANAGER_ROLES)
   setCounts(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -147,13 +165,19 @@ export class DocumentsController {
   }
 
   @Post(':id/cancel')
-  @Roles(...WRITE_ROLES)
+  @Roles(...MANAGER_ROLES)
   cancel(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.documents.cancel(user, id);
   }
 
+  @Post(':id/reverse')
+  @Roles(...MANAGER_ROLES)
+  reverse(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReverseDocumentDto) {
+    return this.documents.reverse(user, id, dto);
+  }
+
   @Post(':id/captures')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   @UseInterceptors(captureUpload())
   addCapture(
     @CurrentUser() user: AuthUser,
@@ -167,7 +191,7 @@ export class DocumentsController {
   }
 
   @Post(':id/captures/:captureId/retry-extraction')
-  @Roles(...WRITE_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   retryExtraction(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

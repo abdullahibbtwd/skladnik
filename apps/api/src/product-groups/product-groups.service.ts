@@ -4,8 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import type { AuthUser } from '@skladnik/shared';
+import { changes, recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductGroupDto } from './dto/create-product-group.dto';
 import { UpdateProductGroupDto } from './dto/update-product-group.dto';
@@ -55,7 +55,7 @@ export class ProductGroupsService {
       },
       include: { _count: { select: { children: true, products: true } } },
     });
-    await this.log(user, group.id, 'CREATE', { name: group.name, parentId });
+    await this.log(user, { id: group.id, label: group.name }, 'CREATE', { after: { name: group.name, parentId } });
     return { group: this.serialize(group) };
   }
 
@@ -79,7 +79,8 @@ export class ProductGroupsService {
       },
       include: { _count: { select: { children: true, products: true } } },
     });
-    await this.log(user, group.id, 'UPDATE', { fields: Object.keys(dto) });
+    const diff = changes(existing, group, ['name', 'parentId']);
+    if (diff) await this.log(user, { id: group.id, label: group.name }, 'UPDATE', diff);
     return { group: this.serialize(group) };
   }
 
@@ -92,7 +93,7 @@ export class ProductGroupsService {
       throw new ConflictException('Move products out of this group first');
     }
     await this.prisma.productGroup.delete({ where: { id: existing.id } });
-    await this.log(user, existing.id, 'DELETE', { name: existing.name });
+    await this.log(user, { id: existing.id, label: existing.name }, 'DELETE', { before: { name: existing.name, parentId: existing.parentId } });
     return { ok: true };
   }
 
@@ -176,16 +177,12 @@ export class ProductGroupsService {
     };
   }
 
-  private async log(user: AuthUser, entityId: string, action: string, metadata: Prisma.InputJsonValue) {
-    await this.prisma.activityLog.create({
-      data: {
-        companyId: user.companyId,
-        userId: user.id,
-        entityType: 'ProductGroup',
-        entityId,
-        action,
-        metadata,
-      },
-    });
+  private async log(
+    user: AuthUser,
+    entity: { id: string; label: string },
+    action: string,
+    diff: { before?: Record<string, unknown>; after?: Record<string, unknown> },
+  ) {
+    await recordActivity(this.prisma, user, { entityType: 'ProductGroup', entityId: entity.id, label: entity.label, action, ...diff });
   }
 }

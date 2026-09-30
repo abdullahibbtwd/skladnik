@@ -1,5 +1,6 @@
-import type { DocumentStatus, DocumentType, UnitOfMeasure, WriteOffReason } from '@skladnik/shared';
+import { DEFAULT_EXPIRY_WINDOWS, expiryBucketCounts, expiryLevel, type DocumentStatus, type DocumentType, type UnitOfMeasure, type WriteOffReason } from '@skladnik/shared';
 import i18n from '../i18n';
+import { formatEuro as formatEuroValue, formatShortDay } from './format';
 import type { DocumentListItem, StockLevel } from './workspace-api';
 
 /** One batch with stock left at the active site. */
@@ -40,20 +41,17 @@ export type PendingInvoice = {
   number: string;
   total: string;
   reason: string;
+  createdById?: string | null;
 };
 
 /** Bulgaria has used the euro since 1 Jan 2026; "12,50 €" in Bulgarian, "€12.50" in English. */
 export function formatEuro(value: number) {
-  const locale = i18n.language?.startsWith('bg') ? 'bg-BG' : 'en-IE';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(value);
+  return formatEuroValue(value, i18n.language);
 }
 
-export function expiryTone(days: number) {
-  if (days <= 3) return 'critical' as const;
-  if (days <= 7) return 'urgent' as const;
-  if (days <= 14) return 'warning' as const;
-  if (days <= 30) return 'watch' as const;
-  return 'safe' as const;
+/** Colour level of a batch `days` from expiry, by the company's thresholds (Settings → Stock rules). */
+export function expiryTone(days: number, windows: readonly number[] = DEFAULT_EXPIRY_WINDOWS) {
+  return expiryLevel(days, windows);
 }
 
 /** Whole days from `today` (local) to a YYYY-MM-DD date; negative once expired. */
@@ -70,14 +68,17 @@ function formatOpDate(isoDate: string, today: Date) {
   if (daysUntil(day, today) === 0) return { today: true, label: '' };
   return {
     today: false,
-    label: new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    label: formatShortDay(day, i18n.language),
   };
 }
 
-export const EXPIRY_WINDOWS = [30, 14, 7, 3] as const;
-
 /** `stock` is undefined until the site's stock has loaded, so screens can show "—" instead of zeros. */
-export function buildDashboardState(documents: DocumentListItem[] = [], stock?: StockLevel[], today = new Date()) {
+export function buildDashboardState(
+  documents: DocumentListItem[] = [],
+  stock?: StockLevel[],
+  windows: readonly number[] = DEFAULT_EXPIRY_WINDOWS,
+  today = new Date(),
+) {
   const pendingDocs = documents.filter((doc) => doc.status === 'DRAFT' || doc.status === 'REVIEW');
   const operations: StockOperation[] = [...documents]
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
@@ -105,21 +106,25 @@ export function buildDashboardState(documents: DocumentListItem[] = [], stock?: 
           batch: batch.batchNumber,
           expiryDate: batch.expiryDate!,
           qty: batch.onHand,
-          unitPrice: batch.unitCost,
+          unitPrice: batch.unitCost ?? 0,
           daysLeft: daysUntil(batch.expiryDate!, today),
         })),
     )
     .sort((a, b) => a.daysLeft - b.daysLeft || a.name.localeCompare(b.name));
 
-  const expiring = Object.fromEntries(
-    EXPIRY_WINDOWS.map((days) => [days, fefoBoard.filter((line) => line.daysLeft <= days).length]),
-  ) as Record<(typeof EXPIRY_WINDOWS)[number], number>;
+  /** Non-cumulative bands from Settings → Stock rules; expired batches are counted separately. */
+  const expiring = expiryBucketCounts(
+    fefoBoard.map((line) => line.daysLeft),
+    windows,
+  );
 
   const lowStock: LowStockLine[] = items
     .filter((item) => item.status !== 'OK')
     .map((item) => ({ productId: item.productId, name: item.name, qty: item.onHand, minStock: item.minStock }));
 
   const inStock = items.filter((item) => item.onHand > 0);
+  const expiredLines = fefoBoard.filter((line) => line.daysLeft < 0);
+  const useFirst = fefoBoard.filter((line) => line.daysLeft >= 0 && line.daysLeft <= (windows[0] ?? 30));
 
   return {
     stockReady: stock !== undefined,
@@ -130,14 +135,17 @@ export function buildDashboardState(documents: DocumentListItem[] = [], stock?: 
       number: doc.documentNumber,
       total: '',
       reason: doc.status,
+      createdById: doc.createdBy?.id ?? null,
     })),
-    stockValue: inStock.reduce((sum, item) => sum + item.value, 0),
+    stockValue: inStock.reduce((sum, item) => sum + (item.value ?? 0), 0),
     reorderCount: items.filter((item) => item.suggestedOrder !== null).length,
     inStockCount: inStock.length,
     expiring,
-    expired: fefoBoard.filter((line) => line.daysLeft < 0).length,
+    expired: expiredLines.length,
     lowStock,
     fefoBoard,
+    expiredBoard: expiredLines,
+    useFirstBoard: useFirst,
     notifications: [] as Notice[],
   };
 }

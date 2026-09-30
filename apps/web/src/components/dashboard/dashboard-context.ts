@@ -6,7 +6,7 @@ export type DashboardContextValue = {
   setSiteId: (id: string) => void;
   data: DashboardState;
   onScan: () => void;
-  startDocument: (type: 'RECEIPT' | 'PROTOCOL') => void;
+  startDocument: (type: 'RECEIPT' | 'WRITE_OFF') => void;
   /** Opens a write-off draft prefilled with the whole remaining batch. */
   writeOff: (line: StockLine) => void;
   markReviewed: (id: string) => void;

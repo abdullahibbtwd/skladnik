@@ -47,8 +47,8 @@ const PRIMARY_NAV: NavItem[] = [
   { to: '/app', labelKey: 'app.overview', icon: LayoutDashboard, end: true },
   { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList },
   { to: '/app/stock', labelKey: 'app.stock', icon: Package },
-  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'createDocuments' },
-  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'createDocuments' },
+  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'stockOps' },
+  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'stockOps' },
   { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
   { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags },
   { to: '/app/expiry', labelKey: 'app.expiry', icon: Timer },
@@ -68,10 +68,10 @@ const SYSTEM_NAV: NavItem[] = [
 const MOBILE_MENU: NavItem[] = [
   { to: '/app', labelKey: 'app.overview', icon: LayoutDashboard },
   { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList },
-  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'createDocuments' },
-  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'createDocuments' },
+  { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'stockOps' },
+  { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'stockOps' },
   { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
-  { to: '/app/opening-stock', labelKey: 'app.openingStock', icon: PackageOpen, requires: 'createDocuments' },
+  { to: '/app/opening-stock', labelKey: 'app.openingStock', icon: PackageOpen, requires: 'openingStock' },
   { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags },
   { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart },
   { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
@@ -81,7 +81,7 @@ const MOBILE_MENU: NavItem[] = [
   { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2, requires: 'audit' },
 ];
 
-type StartableDocument = 'RECEIPT' | 'PROTOCOL';
+type StartableDocument = 'RECEIPT' | 'WRITE_OFF';
 
 type DockItem =
   | { kind: 'link'; to: string; labelKey: string; icon: LucideIcon }
@@ -92,18 +92,12 @@ const DOCK: DockItem[] = [
   { kind: 'link', to: '/app/stock', labelKey: 'app.stock', icon: Package },
   { kind: 'start', type: 'RECEIPT', labelKey: 'app.receive', icon: PackagePlus },
   { kind: 'center', action: 'scan' },
-  { kind: 'start', type: 'PROTOCOL', labelKey: 'app.writeOff', icon: PackageMinus },
+  { kind: 'start', type: 'WRITE_OFF', labelKey: 'app.writeOff', icon: PackageMinus },
   { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
 ];
 
-/** Staff can't create documents, so their dock leads to the screens they work in instead. */
-const STAFF_DOCK: DockItem[] = [
-  { kind: 'link', to: '/app/stock', labelKey: 'app.stock', icon: Package },
-  { kind: 'link', to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
-  { kind: 'center', action: 'till' },
-  { kind: 'link', to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
-  { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
-];
+/** Same layout as managers: stock / receive / scan / write-off / expiry. Till stays in nav (§5). */
+const STAFF_DOCK: DockItem[] = DOCK;
 
 interface DashboardShellProps {
   siteId: string;
@@ -316,7 +310,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                         setProfileOpen(false);
                         navigate(item.to);
                       }}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 font-display text-[0.82rem] text-slate-600 transition-colors hover:bg-ops-canvas hover:text-ops-ink lg:hidden"
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 font-display text-[0.82rem] text-slate-600 transition-colors hover:bg-ops-canvas hover:text-ops-ink md:hidden"
                     >
                       <item.icon size={15} />
                       {t(item.labelKey)}
@@ -360,7 +354,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
         </div>
       </header>
 
-      <aside className="fixed top-16 bottom-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200/80 bg-white px-3 py-5 lg:flex print:hidden">
+      <aside className="fixed top-16 bottom-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200/80 bg-white px-3 py-5 md:flex print:hidden">
         <p className="px-3 pb-2 font-display text-[0.68rem] font-medium tracking-wider text-slate-400 uppercase">{t('app.workspace')}</p>
         <nav className="flex flex-col gap-0.5">
           {PRIMARY_NAV.filter(allowed).map((item) => (
@@ -399,7 +393,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
         )}
       </aside>
 
-      <main className="min-h-dvh pt-16 pb-32 lg:pb-8 lg:pl-60 print:p-0">
+      <main className="min-h-dvh pt-16 pb-32 md:pb-8 md:pl-60 print:p-0">
         <div className="mx-auto max-w-[1220px] px-3.5 py-5 sm:px-6 sm:py-7">
           {!reachable && (
             <div
@@ -414,7 +408,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
         </div>
       </main>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] lg:hidden print:hidden">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] md:hidden print:hidden">
         <nav className="pointer-events-auto relative mx-auto max-w-md rounded-[1.6rem] border border-slate-200/90 bg-white/90 px-2 py-1.5 shadow-[0_16px_40px_rgba(30,27,75,0.14)] backdrop-blur-xl">
           <div className="grid grid-cols-5 items-center">
             {dock.map((item) => {

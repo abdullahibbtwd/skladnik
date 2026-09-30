@@ -1,8 +1,24 @@
 import { useEffect, useMemo } from 'react';
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from '@tanstack/react-query';
 import { useAuthUser } from './auth-store';
 import { readOfflineSites, saveOfflineSites, type OfflineSite } from './offline-session';
 import {
+  fetchActivity,
+  fetchCompanySettings,
+  saveCompanyProfile,
+  saveDocumentSeries,
+  saveExpiryWindows,
+  savePriceOverrideRoles,
+  savePrintTemplate,
+  type ActivityFilters,
   createExportProfile,
   deleteExportProfile,
   fetchArchivePreview,
@@ -12,6 +28,12 @@ import {
   type ExportProfileInput,
   type ReportParams,
   deleteVatEntry,
+  fetchAnnex38Archive,
+  fetchAnnex38Period,
+  fetchAnnex38Sites,
+  generateAnnex38,
+  markAnnex38Submitted,
+  saveEShopSettings,
   fetchVatPeriod,
   fetchVatSettings,
   generateVatFiling,
@@ -24,10 +46,12 @@ import {
   addSupplierCode,
   archiveProduct,
   cancelDocument,
+  reverseDocument,
   createDocument,
   createInvite,
   createPartner,
   createProduct,
+  createProductFromLine,
   createProductGroup,
   createSite,
   createUnitAlias,
@@ -43,6 +67,7 @@ import {
   fetchInvites,
   fetchMovements,
   fetchPartners,
+  fetchPartnerLookup,
   fetchProductGroups,
   fetchProducts,
   fetchReorder,
@@ -80,13 +105,21 @@ import {
   updateUser,
   uploadDocumentCapture,
   workspaceKeys,
+  type CreateProductFromLineInput,
   type DocumentLineWriteInput,
   type DocumentUpdateInput,
   type DocumentWriteInput,
+  type PostDocumentOptions,
+  type ReverseDocumentInput,
   type ProductWriteInput,
   type SaleInput,
 } from './workspace-api';
+import { DEFAULT_EXPIRY_WINDOWS } from '@skladnik/shared';
 import type {
+  CompanyProfile,
+  EShopSettings,
+  DocumentSeriesKey,
+  PrintTemplate,
   DocumentStatus,
   DocumentType,
   PartnerKind,
@@ -102,13 +135,84 @@ import type {
 } from '@skladnik/shared';
 
 const VAT_ROOT = ['workspace', 'vat'] as const;
+const ANNEX38_ROOT = ['workspace', 'annex38'] as const;
+
+/** Company profile and rules; every role reads them (expiry colours, till price rights, print header). */
+export function useCompanySettingsQuery(enabled = true) {
+  return useQuery({ queryKey: workspaceKeys.company, queryFn: fetchCompanySettings, enabled, staleTime: 5 * 60_000 });
+}
+
+/** The company's VAT number feeds the VAT module and every change is logged, so those caches refresh too. */
+function useCompanyMutation<TInput>(mutationFn: (input: TInput) => ReturnType<typeof fetchCompanySettings>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (settings) => {
+      queryClient.setQueryData(workspaceKeys.company, settings);
+      void queryClient.invalidateQueries({ queryKey: VAT_ROOT });
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'activity'] });
+    },
+  });
+}
+
+/** The company's expiry thresholds; the defaults until settings load (or when offline without a copy). */
+export function useExpiryWindows(): readonly number[] {
+  return useCompanySettingsQuery().data?.expiryWindows ?? DEFAULT_EXPIRY_WINDOWS;
+}
+
+export function useSaveCompanyProfile() {
+  return useCompanyMutation((input: CompanyProfile) => saveCompanyProfile(input));
+}
+
+export function useSaveExpiryWindows() {
+  return useCompanyMutation((windows: number[]) => saveExpiryWindows(windows));
+}
+
+export function useSavePrintTemplate() {
+  return useCompanyMutation((input: PrintTemplate) => savePrintTemplate(input));
+}
+
+export function useSavePriceOverrideRoles() {
+  return useCompanyMutation((roles: UserRole[]) => savePriceOverrideRoles(roles));
+}
+
+export function useSaveDocumentSeries() {
+  return useCompanyMutation(
+    ({
+      key,
+      ...input
+    }: {
+      key: DocumentSeriesKey;
+      prefix: string;
+      padding: number;
+      nextNumber: number;
+      resetYearly: boolean;
+    }) => saveDocumentSeries(key, input),
+  );
+}
+
+export function useActivityQuery(filters: ActivityFilters) {
+  return useInfiniteQuery({
+    queryKey: workspaceKeys.activity(filters),
+    queryFn: ({ pageParam }) => fetchActivity(filters, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.nextCursor,
+    placeholderData: keepPreviousData,
+  });
+}
 
 export function useVatSettingsQuery(enabled = true) {
   return useQuery({ queryKey: workspaceKeys.vatSettings, queryFn: fetchVatSettings, enabled });
 }
 
 export function useVatPeriodQuery(period: string, enabled = true) {
-  return useQuery({ queryKey: workspaceKeys.vatPeriod(period), queryFn: () => fetchVatPeriod(period), enabled, placeholderData: keepPreviousData });
+  return useQuery({
+    queryKey: workspaceKeys.vatPeriod(period),
+    queryFn: ({ signal }) => fetchVatPeriod(period, { signal }),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
 }
 
 /** Every VAT change can move totals, issues and drift, so the whole VAT cache is refreshed. */
@@ -145,22 +249,66 @@ export function useMarkVatFilingSubmitted() {
   return useVatMutation(({ id, ...input }: { id: string; submissionRef: string; submittedAt?: string }) => markVatFilingSubmitted(id, input));
 }
 
-/** Keeps the last table on screen while a changed filter loads. */
+export function useAnnex38SitesQuery(enabled = true) {
+  return useQuery({ queryKey: [...ANNEX38_ROOT, 'sites'], queryFn: fetchAnnex38Sites, enabled });
+}
+
+export function useAnnex38PeriodQuery(siteId: string | null, period: string, enabled = true) {
+  return useQuery({
+    queryKey: [...ANNEX38_ROOT, 'period', siteId, period],
+    queryFn: () => fetchAnnex38Period(siteId!, period),
+    enabled: enabled && Boolean(siteId),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAnnex38ArchiveQuery(enabled = true) {
+  return useQuery({ queryKey: [...ANNEX38_ROOT, 'archive'], queryFn: fetchAnnex38Archive, enabled });
+}
+
+/** Settings change the file and the till's reference field (sites list), filings change the archive. */
+function useAnnex38Mutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>, alsoSites = false) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ANNEX38_ROOT });
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'activity'] });
+      if (alsoSites) void queryClient.invalidateQueries({ queryKey: workspaceKeys.sites });
+    },
+  });
+}
+
+export function useSaveEShopSettings() {
+  return useAnnex38Mutation(({ siteId, ...input }: EShopSettings & { siteId: string }) => saveEShopSettings(siteId, input), true);
+}
+
+export function useGenerateAnnex38() {
+  return useAnnex38Mutation(({ siteId, period }: { siteId: string; period: string }) => generateAnnex38(siteId, period));
+}
+
+export function useMarkAnnex38Submitted() {
+  return useAnnex38Mutation(({ id, ...input }: { id: string; submissionRef: string; submittedAt?: string }) => markAnnex38Submitted(id, input));
+}
+
+/** Keeps the last table on screen while a changed filter loads. Cancels in-flight work on route/param change. */
 export function useReportQuery(kind: ReportKind, params: ReportParams, enabled = true) {
   return useQuery({
     queryKey: workspaceKeys.report(kind, params),
-    queryFn: () => fetchReport(kind, params),
+    queryFn: ({ signal }) => fetchReport(kind, params, { signal }),
     enabled,
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 }
 
 export function useArchivePreviewQuery(params: ReportParams, enabled = true) {
   return useQuery({
     queryKey: workspaceKeys.archivePreview(params),
-    queryFn: () => fetchArchivePreview(params),
+    queryFn: ({ signal }) => fetchArchivePreview(params, { signal }),
     enabled,
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 }
 
@@ -362,6 +510,13 @@ export function usePartnersQuery() {
   });
 }
 
+export function usePartnerLookupQuery(filters?: { kind?: PartnerKind; q?: string }) {
+  return useQuery({
+    queryKey: workspaceKeys.partnerLookup(filters),
+    queryFn: () => fetchPartnerLookup(filters?.kind, filters?.q),
+  });
+}
+
 export function useCreatePartner() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -380,7 +535,8 @@ export function useUpdatePartner() {
       id: string;
       name?: string;
       kind?: PartnerKind;
-      taxId?: string | null;
+      eik?: string | null;
+      vatNumber?: string | null;
       address?: string | null;
       mol?: string | null;
       phone?: string | null;
@@ -493,12 +649,20 @@ export function useDocumentsQuery(filters?: { status?: DocumentStatus; siteId?: 
   });
 }
 
+/** How often an open document is re-read while its photos are being read. */
+export const DOCUMENT_READING_POLL_MS = 3000;
+
 export function useDocumentQuery(id: string | undefined) {
+  const queryClient = useQueryClient();
+  const queryKey = workspaceKeys.document(id ?? '');
   return useQuery({
-    queryKey: workspaceKeys.document(id ?? ''),
-    queryFn: () => fetchDocument(id!),
+    queryKey,
+    // A refetch asks for a fresh copy: the service worker's saved one would still say "reading".
+    queryFn: () => fetchDocument(id!, { fresh: hasData(queryClient, queryKey) }),
     enabled: Boolean(id),
-    refetchInterval: (query) => (query.state.data?.document.extraction.reading ? 2000 : false),
+    refetchInterval: (query) => (query.state.data?.document.extraction.reading ? DOCUMENT_READING_POLL_MS : false),
+    // Keep polling in a background tab, so switching back shows the finished reading straight away.
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -535,6 +699,29 @@ export function useUpdateDocumentLine(id: string) {
   });
 }
 
+export function useCreateProductFromLine(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId, ...input }: { lineId: string } & CreateProductFromLineInput) => createProductFromLine(id, lineId, input),
+    onSuccess: () => {
+      invalidateDocuments(queryClient, id);
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'products'] });
+    },
+  });
+}
+
+/** "Confirm as new product" for one a scan created: makes it a normal catalog product. */
+export function useConfirmPendingProduct(documentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (productId: string) => updateProduct(productId, { status: 'ACTIVE' }),
+    onSuccess: () => {
+      invalidateDocuments(queryClient, documentId);
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'products'] });
+    },
+  });
+}
+
 export function useDeleteDocumentLine(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -554,7 +741,7 @@ export function useSubmitDocument(id: string) {
 export function usePostDocument(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (options: { confirmExpired?: boolean } = {}) => postDocument(id, options),
+    mutationFn: (options: PostDocumentOptions = {}) => postDocument(id, options),
     onSuccess: () => {
       invalidateDocuments(queryClient, id);
       queryClient.invalidateQueries({ queryKey: ['workspace', 'stock'] });
@@ -700,6 +887,19 @@ export function useCancelDocument(id: string) {
   return useMutation({
     mutationFn: () => cancelDocument(id),
     onSuccess: () => invalidateDocuments(queryClient, id),
+  });
+}
+
+export function useReverseDocument(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ReverseDocumentInput) => reverseDocument(id, input),
+    onSuccess: () => {
+      invalidateDocuments(queryClient, id);
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'stock'] });
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'vat'] });
+      queryClient.invalidateQueries({ queryKey: ['workspace', 'activity'] });
+    },
   });
 }
 

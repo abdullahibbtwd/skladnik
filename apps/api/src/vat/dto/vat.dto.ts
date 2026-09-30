@@ -21,14 +21,8 @@ const trimOrNull = ({ value }: { value: unknown }) => (typeof value === 'string'
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 const MAX_AMOUNT = 999_999_999_999;
 
+/** The VAT number itself is part of the company profile (PUT /company/profile). */
 export class VatSettingsDto {
-  /** BG + 9 or 10 digits; checked in the service. */
-  @Transform(trimOrNull)
-  @IsOptional()
-  @IsString()
-  @MaxLength(15)
-  vatNumber!: string | null;
-
   /** Name as registered for VAT; the company name is used when empty. */
   @Transform(trimOrNull)
   @IsOptional()

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
@@ -8,6 +8,7 @@ import { PricingSection } from './components/PricingSection';
 import { Footer } from './components/Footer';
 import { AuthModal } from './components/AuthModal';
 import { AuthPage } from './pages/AuthPage';
+import { PasswordResetPage } from './pages/PasswordResetPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { OverviewPanel } from './components/dashboard/OverviewPanel';
 import { InventoryPanel } from './components/dashboard/InventoryPanel';
@@ -25,23 +26,51 @@ import { PosPanel } from './components/dashboard/PosPanel';
 import { SalesPanel } from './components/dashboard/SalesPanel';
 import { SaleReceiptPanel } from './components/dashboard/SaleReceiptPanel';
 import { MarginsPanel } from './components/dashboard/MarginsPanel';
-import { RecipeEditorPanel, RecipeNewPanel, RecipesPanel } from './components/dashboard/RecipesPanel';
-import { ReportPanel, ReportsHubPanel } from './components/dashboard/ReportsPanel';
-import { ArchivePanel } from './components/dashboard/ArchivePanel';
-import { VatPanel } from './components/dashboard/VatPanel';
 import { PhotoQueuePanel } from './components/dashboard/PhotoQueuePanel';
-import { ExportLayoutEditorPanel, ExportLayoutsPanel } from './components/dashboard/ExportLayoutsPanel';
-import { AuditPanel, ExpiryPanel, SettingsAccountPanel } from './components/dashboard/WorkspacePanels';
+import { ExpiryPanel, SettingsAccountPanel } from './components/dashboard/WorkspacePanels';
+import { Annex38Panel } from './components/dashboard/Annex38Panel';
 import { SettingsLayout } from './components/dashboard/SettingsLayout';
 import { SitesSettings } from './components/dashboard/SitesSettings';
 import { UsersSettings } from './components/dashboard/UsersSettings';
 import { ProductGroupsSettings } from './components/dashboard/ProductGroupsSettings';
 import { PartnersSettings } from './components/dashboard/PartnersSettings';
 import { UnitsSettings } from './components/dashboard/UnitsSettings';
+import { CompanySettings } from './components/dashboard/CompanySettings';
+import { DocumentSettings } from './components/dashboard/DocumentSettings';
+import { StockRulesSettings } from './components/dashboard/StockRulesSettings';
+import { ActivityLogPanel } from './components/dashboard/ActivityLogPanel';
 import { RequirePermission } from './components/dashboard/RequirePermission';
 import { appReturnPath, useMeQuery } from './lib/auth-session';
 import { useIsAuthenticated } from './lib/auth-store';
 import { useTranslation } from 'react-i18next';
+
+const RecipesPanel = lazy(() =>
+  import('./components/dashboard/RecipesPanel').then((m) => ({ default: m.RecipesPanel })),
+);
+const RecipeNewPanel = lazy(() =>
+  import('./components/dashboard/RecipesPanel').then((m) => ({ default: m.RecipeNewPanel })),
+);
+const RecipeEditorPanel = lazy(() =>
+  import('./components/dashboard/RecipesPanel').then((m) => ({ default: m.RecipeEditorPanel })),
+);
+const ReportsHubPanel = lazy(() =>
+  import('./components/dashboard/ReportsPanel').then((m) => ({ default: m.ReportsHubPanel })),
+);
+const ReportPanel = lazy(() =>
+  import('./components/dashboard/ReportsPanel').then((m) => ({ default: m.ReportPanel })),
+);
+const ArchivePanel = lazy(() =>
+  import('./components/dashboard/ArchivePanel').then((m) => ({ default: m.ArchivePanel })),
+);
+const ExportLayoutsPanel = lazy(() =>
+  import('./components/dashboard/ExportLayoutsPanel').then((m) => ({ default: m.ExportLayoutsPanel })),
+);
+const ExportLayoutEditorPanel = lazy(() =>
+  import('./components/dashboard/ExportLayoutsPanel').then((m) => ({ default: m.ExportLayoutEditorPanel })),
+);
+const VatPanel = lazy(() =>
+  import('./components/dashboard/VatPanel').then((m) => ({ default: m.VatPanel })),
+);
 
 function SessionSplash() {
   const { t } = useTranslation();
@@ -50,6 +79,19 @@ function SessionSplash() {
       {t('session.restoring')}
     </div>
   );
+}
+
+function RouteFallback() {
+  const { t } = useTranslation();
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center font-display text-sm text-slate-500">
+      {t('session.loadingPanel')}
+    </div>
+  );
+}
+
+function LazyRoute({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
 }
 
 export default function App() {
@@ -125,6 +167,8 @@ export default function App() {
           )
         }
       />
+      <Route path="/forgot-password" element={<PasswordResetPage mode="forgot" />} />
+      <Route path="/reset-password" element={<PasswordResetPage mode="reset" />} />
       <Route path="/app" element={<DashboardPage />}>
         <Route index element={<OverviewPanel />} />
         <Route path="invoices">
@@ -139,10 +183,14 @@ export default function App() {
         <Route path="stocktake/:id" element={<StocktakeSheetPanel />} />
         <Route element={<RequirePermission permission="createDocuments" />}>
           <Route path="write-off" element={<WriteOffPanel />} />
+          <Route path="photo-queue" element={<PhotoQueuePanel />} />
+        </Route>
+        <Route element={<RequirePermission permission="stockOps" />}>
           <Route path="transfer" element={<TransferPanel />} />
           <Route path="stocktake" element={<StocktakeListPanel />} />
+        </Route>
+        <Route element={<RequirePermission permission="openingStock" fallback="/app/stock" />}>
           <Route path="opening-stock" element={<OpeningStockPanel />} />
-          <Route path="photo-queue" element={<PhotoQueuePanel />} />
         </Route>
         <Route path="reorder" element={<ReorderPanel />} />
         <Route path="inventory" element={<InventoryPanel />} />
@@ -156,28 +204,105 @@ export default function App() {
           <Route path=":id" element={<SaleReceiptPanel />} />
         </Route>
         <Route path="recipes" element={<RequirePermission permission="manage" />}>
-          <Route index element={<RecipesPanel />} />
-          <Route path="new" element={<RecipeNewPanel />} />
-          <Route path=":productId" element={<RecipeEditorPanel />} />
+          <Route
+            index
+            element={
+              <LazyRoute>
+                <RecipesPanel />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path="new"
+            element={
+              <LazyRoute>
+                <RecipeNewPanel />
+              </LazyRoute>
+            }
+          />
+          <Route
+            path=":productId"
+            element={
+              <LazyRoute>
+                <RecipeEditorPanel />
+              </LazyRoute>
+            }
+          />
         </Route>
         <Route path="reports" element={<RequirePermission permission="manage" />}>
-          <Route index element={<ReportsHubPanel />} />
-          <Route path="archive" element={<ArchivePanel />} />
-          <Route path="layouts" element={<ExportLayoutsPanel />} />
-          <Route element={<RequirePermission permission="editLayouts" fallback="/app/reports/layouts" />}>
-            <Route path="layouts/new" element={<ExportLayoutEditorPanel />} />
-            <Route path="layouts/:id" element={<ExportLayoutEditorPanel />} />
+          <Route
+            index
+            element={
+              <LazyRoute>
+                <ReportsHubPanel />
+              </LazyRoute>
+            }
+          />
+          <Route element={<RequirePermission permission="documentArchive" fallback="/app/reports" />}>
+            <Route
+              path="archive"
+              element={
+                <LazyRoute>
+                  <ArchivePanel />
+                </LazyRoute>
+              }
+            />
           </Route>
-          <Route path=":kind" element={<ReportPanel />} />
+          <Route
+            path="layouts"
+            element={
+              <LazyRoute>
+                <ExportLayoutsPanel />
+              </LazyRoute>
+            }
+          />
+          <Route element={<RequirePermission permission="editLayouts" fallback="/app/reports/layouts" />}>
+            <Route
+              path="layouts/new"
+              element={
+                <LazyRoute>
+                  <ExportLayoutEditorPanel />
+                </LazyRoute>
+              }
+            />
+            <Route
+              path="layouts/:id"
+              element={
+                <LazyRoute>
+                  <ExportLayoutEditorPanel />
+                </LazyRoute>
+              }
+            />
+          </Route>
+          <Route
+            path=":kind"
+            element={
+              <LazyRoute>
+                <ReportPanel />
+              </LazyRoute>
+            }
+          />
         </Route>
         <Route element={<RequirePermission permission="vat" />}>
-          <Route path="vat" element={<VatPanel />} />
+          <Route
+            path="vat"
+            element={
+              <LazyRoute>
+                <VatPanel />
+              </LazyRoute>
+            }
+          />
         </Route>
         <Route element={<RequirePermission permission="audit" />}>
-          <Route path="audit" element={<AuditPanel />} />
+          <Route path="audit" element={<Annex38Panel />} />
         </Route>
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<SettingsAccountPanel />} />
+          <Route element={<RequirePermission permission="companySettings" fallback="/app/settings" />}>
+            <Route path="company" element={<CompanySettings />} />
+            <Route path="documents" element={<DocumentSettings />} />
+            <Route path="stock-rules" element={<StockRulesSettings />} />
+          </Route>
           <Route path="sites" element={<SitesSettings />} />
           <Route element={<RequirePermission permission="users" fallback="/app/settings" />}>
             <Route path="users" element={<UsersSettings />} />
@@ -187,8 +312,12 @@ export default function App() {
             <Route path="partners" element={<PartnersSettings />} />
             <Route path="units" element={<UnitsSettings />} />
           </Route>
+          <Route element={<RequirePermission permission="audit" fallback="/app/settings" />}>
+            <Route path="activity" element={<ActivityLogPanel />} />
+          </Route>
         </Route>
       </Route>
+      <Route path="/" element={landing} />
       <Route path="*" element={landing} />
     </Routes>
   );

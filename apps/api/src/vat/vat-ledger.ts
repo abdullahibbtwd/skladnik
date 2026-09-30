@@ -16,7 +16,7 @@ import {
   type VatSettingsRecord,
 } from '@skladnik/shared';
 import { FieldOverflowError, isShortened } from '../compliance/fixed-width';
-import { isValidBgVatNumber, ledgerTaxId, normaliseTaxId } from '../compliance/identifiers';
+import { isValidBgVatNumber, ledgerTaxId, normaliseTaxId } from '@skladnik/shared';
 import { round2, splitGross } from '../reports/report-math';
 import { POKUPKI_FIELDS, PRODAGBI_FIELDS, nraFiles, salesTotals, type DeklarHeader } from './nra-format';
 

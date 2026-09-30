@@ -63,6 +63,28 @@ export async function seedDevTenants(prisma: PrismaClient, passwordHash: string)
     create: { userId: managerA.id, siteId: mainStore.id },
   });
 
+  const staffA = await upsertUser(prisma, {
+    email: 'staff-a@skladnik.dev',
+    name: 'Casey Cashier',
+    role: UserRole.STAFF,
+    companyId: metro.id,
+    passwordHash,
+  });
+
+  await prisma.userSite.upsert({
+    where: { userId_siteId: { userId: staffA.id, siteId: mainStore.id } },
+    update: {},
+    create: { userId: staffA.id, siteId: mainStore.id },
+  });
+
+  await upsertUser(prisma, {
+    email: 'accountant-a@skladnik.dev',
+    name: 'Alex Accountant',
+    role: UserRole.ACCOUNTANT,
+    companyId: metro.id,
+    passwordHash,
+  });
+
   await upsertUser(prisma, {
     email: 'owner-b@skladnik.dev',
     name: 'Ben Owner',
@@ -77,6 +99,8 @@ export async function seedDevTenants(prisma: PrismaClient, passwordHash: string)
   return [
     { email: 'owner-a@skladnik.dev', company: metro.name, role: 'OWNER, all sites' },
     { email: 'manager-a@skladnik.dev', company: metro.name, role: 'SITE_MANAGER, Main Store only' },
+    { email: 'staff-a@skladnik.dev', company: metro.name, role: 'STAFF, Main Store only' },
+    { email: 'accountant-a@skladnik.dev', company: metro.name, role: 'ACCOUNTANT, all sites' },
     { email: 'owner-b@skladnik.dev', company: riverside.name, role: 'OWNER, all sites' },
   ];
 }

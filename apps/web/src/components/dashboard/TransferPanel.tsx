@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuthRole } from '../../lib/auth-store';
-import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
 import { addDocumentLine, createDocument, postDocument, submitDocument } from '../../lib/workspace-api';
 import { useSitesQuery, useStockQuery, useTransferTargetsQuery } from '../../lib/workspace-session';
@@ -35,13 +34,10 @@ export const TransferPanel: React.FC = () => {
 
   const [targetSiteId, setTargetSiteId] = useState('');
   const [items, setItems] = useState<PickedItem[]>([]);
-  const [searching, setSearching] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const prefilled = useRef(false);
-
-  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
 
   useEffect(() => {
     if (!targets.some((site) => site.id === targetSiteId)) setTargetSiteId(targets.length === 1 ? targets[0].id : '');
@@ -59,7 +55,7 @@ export const TransferPanel: React.FC = () => {
     ]);
   }, [levels]);
 
-  const rows = pickedRows(items, levelById, t, qtyFormat);
+  const rows = pickedRows(items, levelById, t, i18n.language);
   const total = rows.reduce((sum, row) => sum + (row.level && row.qty > 0 ? row.qty * row.unitCost : 0), 0);
   const expiredRows = rows.filter((row) => row.expired);
   const targetName = targets.find((site) => site.id === targetSiteId)?.name ?? '';
@@ -88,7 +84,6 @@ export const TransferPanel: React.FC = () => {
         type: 'TRANSFER',
         siteId,
         targetSiteId,
-        documentNumber: `TR-${Date.now()}`,
         issuedOn: new Date().toISOString().slice(0, 10),
         notes: note.trim() || undefined,
       });
@@ -121,7 +116,7 @@ export const TransferPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-4 pb-28 sm:gap-5 lg:pb-0">
+    <div className="flex flex-col gap-4 sm:gap-5">
       <PageHeader eyebrow={siteName || undefined} title={t('transfer.title')} description={t('transfer.desc')} />
 
       {!canWrite && <FieldError>{t('app.docStaffBlocked')}</FieldError>}
@@ -164,7 +159,6 @@ export const TransferPanel: React.FC = () => {
         disabled={!siteId}
         nothingInStock={t('transfer.nothingInStock')}
         preferUnexpired
-        onSearchingChange={setSearching}
       />
 
       <GlassPanel>
@@ -182,12 +176,7 @@ export const TransferPanel: React.FC = () => {
 
       {error && <FieldError>{error}</FieldError>}
 
-      <div
-        className={cn(
-          'bottom-24 z-20 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] backdrop-blur lg:bottom-4',
-          searching ? 'static' : 'sticky',
-        )}
-      >
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)]">
         <div className="min-w-0">
           <p className="font-display text-[0.84rem] font-medium text-ops-ink">
             {t('writeOff.summary', { count: rows.length })} · {formatEuro(total)}

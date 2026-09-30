@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Camera, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { WRITE_OFF_REASONS, type WriteOffReason } from '@skladnik/shared';
+import { WRITE_OFF_REASONS, canSeeFinancials, type WriteOffReason } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
@@ -27,7 +27,8 @@ export const WriteOffPanel: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER' || role === 'STAFF';
+  const seeFinancials = canSeeFinancials(role);
   const { siteId } = useDashboard();
   const sitesQuery = useSitesQuery();
   const stockQuery = useStockQuery(siteId);
@@ -39,15 +40,12 @@ export const WriteOffPanel: React.FC = () => {
   const requestedReason = searchParams.get('reason');
   const [reason, setReason] = useState<WriteOffReason | null>(isReason(requestedReason) ? requestedReason : null);
   const [items, setItems] = useState<PickedItem[]>([]);
-  const [searching, setSearching] = useState(false);
   const [note, setNote] = useState('');
   const [photos, setPhotos] = useState<{ file: File; url: string }[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const prefilled = useRef(false);
-
-  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
 
   useEffect(() => {
     if (prefilled.current || levels.length === 0) return;
@@ -63,7 +61,7 @@ export const WriteOffPanel: React.FC = () => {
   photosRef.current = photos;
   useEffect(() => () => photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.url)), []);
 
-  const rows = pickedRows(items, levelById, t, qtyFormat);
+  const rows = pickedRows(items, levelById, t, i18n.language);
   const total = rows.reduce((sum, row) => sum + (row.level && row.qty > 0 ? row.qty * row.unitCost : 0), 0);
   const ready = canWrite && Boolean(siteId) && reason !== null && rows.length > 0 && rows.every((row) => !row.problem);
 
@@ -72,11 +70,16 @@ export const WriteOffPanel: React.FC = () => {
     setError(null);
     const ok = await confirm({
       title: t('writeOff.confirmTitle', { count: rows.length }),
-      description: t('writeOff.confirmBody', {
-        reason: t(`labels.writeOffReason.${reason}`),
-        site: siteName,
-        total: formatEuro(total),
-      }),
+      description: seeFinancials
+        ? t('writeOff.confirmBody', {
+            reason: t(`labels.writeOffReason.${reason}`),
+            site: siteName,
+            total: formatEuro(total),
+          })
+        : t('writeOff.confirmBodyNoCost', {
+            reason: t(`labels.writeOffReason.${reason}`),
+            site: siteName,
+          }),
       confirmLabel: t('writeOff.submit'),
       danger: true,
     });
@@ -86,10 +89,8 @@ export const WriteOffPanel: React.FC = () => {
     let documentId: string | null = null;
     try {
       const created = await createDocument({
-        type: 'PROTOCOL',
+        type: 'WRITE_OFF',
         siteId,
-        direction: 'OUT',
-        documentNumber: `WO-${Date.now()}`,
         issuedOn: new Date().toISOString().slice(0, 10),
         writeOffReason: reason,
         notes: note.trim() || undefined,
@@ -99,7 +100,7 @@ export const WriteOffPanel: React.FC = () => {
         await addDocumentLine(documentId, {
           productId: row.item.productId,
           quantity: row.qty,
-          unitPrice: row.unitCost,
+          unitPrice: seeFinancials ? row.unitCost : 0,
           ...(row.batch ? { batchNumber: row.batch.batchNumber, expiryDate: row.batch.expiryDate ?? undefined } : {}),
         });
       }
@@ -124,7 +125,7 @@ export const WriteOffPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-4 pb-28 sm:gap-5 lg:pb-0">
+    <div className="flex flex-col gap-4 sm:gap-5">
       <PageHeader eyebrow={siteName || undefined} title={t('pages.writeOffTitle')} description={t('pages.writeOffDesc')} />
 
       {!canWrite && <FieldError>{t('app.docStaffBlocked')}</FieldError>}
@@ -158,7 +159,6 @@ export const WriteOffPanel: React.FC = () => {
         loading={stockQuery.isLoading}
         disabled={!siteId}
         nothingInStock={t('writeOff.nothingInStock')}
-        onSearchingChange={setSearching}
       />
 
       <GlassPanel title={t('writeOff.evidenceTitle')}>
@@ -209,15 +209,12 @@ export const WriteOffPanel: React.FC = () => {
 
       {error && <FieldError>{error}</FieldError>}
 
-      <div
-        className={cn(
-          'bottom-24 z-20 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)] backdrop-blur lg:bottom-4',
-          searching ? 'static' : 'sticky',
-        )}
-      >
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.25)]">
         <div className="min-w-0">
           <p className="font-display text-[0.84rem] font-medium text-ops-ink">
-            {t('writeOff.summary', { count: rows.length })} · {formatEuro(total)}
+            {seeFinancials
+              ? `${t('writeOff.summary', { count: rows.length })} · ${formatEuro(total)}`
+              : t('writeOff.summary', { count: rows.length })}
           </p>
           <p className="truncate font-sans text-[0.72rem] text-slate-500">
             {reason ? t(`labels.writeOffReason.${reason}`) : t('writeOff.pickReason')}

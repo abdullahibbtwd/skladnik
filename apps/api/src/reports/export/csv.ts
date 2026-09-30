@@ -12,6 +12,10 @@ const CP1251_HIGH = [
 ];
 const CP1251_BY_CODE = new Map(CP1251_HIGH.flatMap((code, index) => (code < 0 ? [] : [[code, 0x80 + index] as const])));
 
+export function inWindows1251(codePoint: number) {
+  return codePoint < 0x80 || (codePoint >= 0x0410 && codePoint <= 0x044f) || CP1251_BY_CODE.has(codePoint);
+}
+
 /** Characters Windows-1251 can't hold become `?`, as Windows itself does. */
 export function encodeWindows1251(text: string) {
   const bytes = Buffer.alloc(text.length);

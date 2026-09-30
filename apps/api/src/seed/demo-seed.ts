@@ -1,4 +1,4 @@
-import { SiteType, UserRole, type UnitOfMeasure } from '@prisma/client';
+import { ContentUnit, SiteType, UserRole, type UnitOfMeasure } from '@prisma/client';
 import type { Queue } from 'bullmq';
 import type { AuthUser, DocumentType, PaymentMethod, WriteOffReason } from '@skladnik/shared';
 import { DocumentsService } from '../documents/documents.service';
@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RecipesService } from '../recipes/recipes.service';
 import { addDays, businessDate, dayStart } from '../sales/business-day';
 import { SalesService } from '../sales/sales.service';
+import { siteLedger } from '../stock/ledger';
 import type { StorageService } from '../storage/storage.service';
 import { seedUnitAliases } from '../units/seed-unit-aliases';
 
@@ -26,9 +27,13 @@ type ProductSeed = {
   batch?: boolean;
   minStock?: number;
   barcode?: string;
+  /** Net weight/volume of one stock unit for recipes (F-32). */
+  netContent?: number;
+  netContentUnit?: ContentUnit;
 };
 
-type PartnerSeed = { name: string; taxId: string; kind: 'SUPPLIER' | 'CUSTOMER'; address: string; mol: string; phone: string };
+/** `eik` is a valid ЕИК; every demo partner is VAT-registered, so its VAT number is BG + ЕИК. */
+type PartnerSeed = { name: string; eik: string; kind: 'SUPPLIER' | 'CUSTOMER'; address: string; mol: string; phone: string };
 
 type LineSeed = { code: string; qty: number; price?: number; batch?: string; expiresInDays?: number };
 
@@ -38,17 +43,21 @@ type DocSeed = {
   type: DocumentType;
   number: string;
   status: 'POSTED' | 'REVIEW' | 'DRAFT';
-  partnerTaxId?: string;
+  partnerEik?: string;
   targetSite?: string;
   writeOffReason?: WriteOffReason;
   notes?: string;
   lines: LineSeed[];
 };
 
-type RecipeSeed = { dish: string; ingredients: { code: string; qty: number; wastagePercent?: number }[] };
+type RecipeSeed = {
+  dish: string;
+  ingredients: { code: string; qty: number; unit?: ContentUnit; wastagePercent?: number }[];
+};
 
 type TenantSeed = {
   company: string;
+  profile: { eik: string; address: string; city: string; mol: string };
   sites: { name: string; type: SiteType; address: string }[];
   users: UserSeed[];
   groups: string[];
@@ -80,53 +89,54 @@ function mulberry32(seed: number) {
 
 const MARKET: TenantSeed = {
   company: 'Demo Mini Market',
+  profile: { eik: '206400170', address: 'ул. Витоша 12', city: 'София', mol: 'Maria Petrova' },
   sites: [
-    { name: 'Main Store', type: SiteType.STORE, address: 'Sofia, bul. Vitosha 112' },
-    { name: 'Warehouse', type: SiteType.WAREHOUSE, address: 'Sofia, Iliyantsi industrial zone, sklad 7' },
+    { name: 'Основен магазин', type: SiteType.STORE, address: 'София, бул. Витоша 112' },
+    { name: 'Склад', type: SiteType.WAREHOUSE, address: 'София, промишлена зона Илиянци, склад 7' },
   ],
   users: [
     { email: 'demo-owner@skladnik.dev', name: 'Maria Petrova', role: UserRole.OWNER },
-    { email: 'demo-manager@skladnik.dev', name: 'Georgi Ivanov', role: UserRole.SITE_MANAGER, sites: ['Main Store'] },
-    { email: 'demo-cashier@skladnik.dev', name: 'Elena Dimitrova', role: UserRole.STAFF, sites: ['Main Store'] },
-    { email: 'demo-storekeeper@skladnik.dev', name: 'Nikolay Stoyanov', role: UserRole.STAFF, sites: ['Warehouse'] },
+    { email: 'demo-manager@skladnik.dev', name: 'Georgi Ivanov', role: UserRole.SITE_MANAGER, sites: ['Основен магазин'] },
+    { email: 'demo-cashier@skladnik.dev', name: 'Elena Dimitrova', role: UserRole.STAFF, sites: ['Основен магазин'] },
+    { email: 'demo-storekeeper@skladnik.dev', name: 'Nikolay Stoyanov', role: UserRole.STAFF, sites: ['Склад'] },
     { email: 'demo-accountant@skladnik.dev', name: 'Vesela Koleva', role: UserRole.ACCOUNTANT },
   ],
-  groups: ['Dairy', 'Meat & deli', 'Drinks', 'Bakery', 'Groceries', 'Household'],
+  groups: ['Млечни', 'Месо и колбаси', 'Напитки', 'Хлебни', 'Бакалия', 'Домакински'],
   products: [
-    { code: 'M-001', name: 'Прясно мляко 3% 1 л', group: 'Dairy', unit: 'L', cost: 0.95, price: 1.49, batch: true, barcode: ean13('380100000001') },
-    { code: 'M-002', name: 'Кисело мляко 3.6% 400 г', group: 'Dairy', unit: 'PCS', cost: 0.55, price: 0.89, batch: true, barcode: ean13('380100000002') },
-    { code: 'M-003', name: 'Сирене краве', group: 'Dairy', unit: 'KG', cost: 5.1, price: 7.99, batch: true },
-    { code: 'M-004', name: 'Кашкавал Витоша 400 г', group: 'Dairy', unit: 'PCS', cost: 3.1, price: 4.79, batch: true, barcode: ean13('380100000004') },
-    { code: 'M-005', name: 'Масло 82% 125 г', group: 'Dairy', unit: 'PCS', cost: 1.05, price: 1.69, batch: true, minStock: 30, barcode: ean13('380100000005') },
-    { code: 'M-010', name: 'Луканка Смядовска 250 г', group: 'Meat & deli', unit: 'PCS', cost: 2.6, price: 3.99, batch: true, barcode: ean13('380100000010') },
-    { code: 'M-011', name: 'Кренвирши 400 г', group: 'Meat & deli', unit: 'PCS', cost: 1.4, price: 2.29, batch: true, barcode: ean13('380100000011') },
-    { code: 'M-012', name: 'Пилешко филе', group: 'Meat & deli', unit: 'KG', cost: 4.2, price: 6.49, batch: true },
-    { code: 'M-020', name: 'Минерална вода 1.5 л', group: 'Drinks', unit: 'PCS', cost: 0.25, price: 0.49, minStock: 48, barcode: ean13('380100000020') },
-    { code: 'M-021', name: 'Кока-Кола 0.5 л', group: 'Drinks', unit: 'PCS', cost: 0.5, price: 0.95, barcode: ean13('380100000021') },
-    { code: 'M-022', name: 'Бира Загорка 0.5 л', group: 'Drinks', unit: 'PCS', cost: 0.55, price: 0.99, barcode: ean13('380100000022') },
-    { code: 'M-023', name: 'Портокалов сок 1 л', group: 'Drinks', unit: 'PCS', cost: 0.85, price: 1.45, barcode: ean13('380100000023') },
-    { code: 'M-024', name: 'Кафе мляно 250 г', group: 'Drinks', unit: 'PCS', cost: 2.2, price: 3.49, barcode: ean13('380100000024') },
-    { code: 'M-030', name: 'Хляб Добруджа 650 г', group: 'Bakery', unit: 'PCS', cost: 0.6, price: 0.99, minStock: 25, barcode: ean13('380100000030') },
-    { code: 'M-031', name: 'Кроасан с шоколад', group: 'Bakery', unit: 'PCS', cost: 0.3, price: 0.59 },
-    { code: 'M-040', name: 'Ориз 1 кг', group: 'Groceries', unit: 'PCS', cost: 1.05, price: 1.69, barcode: ean13('380100000040') },
-    { code: 'M-041', name: 'Олио слънчогледово 1 л', group: 'Groceries', unit: 'PCS', cost: 1.15, price: 1.89, barcode: ean13('380100000041') },
-    { code: 'M-042', name: 'Захар 1 кг', group: 'Groceries', unit: 'PCS', cost: 0.65, price: 1.09, barcode: ean13('380100000042') },
-    { code: 'M-043', name: 'Брашно 1 кг', group: 'Groceries', unit: 'PCS', cost: 0.48, price: 0.79, barcode: ean13('380100000043') },
-    { code: 'M-044', name: 'Спагети 500 г', group: 'Groceries', unit: 'PCS', cost: 0.55, price: 0.89, barcode: ean13('380100000044') },
-    { code: 'M-050', name: 'Препарат за съдове 500 мл', group: 'Household', unit: 'PCS', cost: 0.9, price: 1.49, barcode: ean13('380100000050') },
-    { code: 'M-051', name: 'Тоалетна хартия 8 бр.', group: 'Household', unit: 'PACK', cost: 1.8, price: 2.89, barcode: ean13('380100000051') },
-    { code: 'M-052', name: 'Прах за пране 2 кг', group: 'Household', unit: 'PCS', cost: 4.4, price: 6.99, minStock: 6, barcode: ean13('380100000052') },
+    { code: 'M-001', name: 'Прясно мляко 3% 1 л', group: 'Млечни', unit: 'L', cost: 0.95, price: 1.49, batch: true, barcode: ean13('380100000001') },
+    { code: 'M-002', name: 'Кисело мляко 3.6% 400 г', group: 'Млечни', unit: 'PCS', cost: 0.55, price: 0.89, batch: true, barcode: ean13('380100000002'), netContent: 400, netContentUnit: ContentUnit.G },
+    { code: 'M-003', name: 'Сирене краве', group: 'Млечни', unit: 'KG', cost: 5.1, price: 7.99, batch: true },
+    { code: 'M-004', name: 'Кашкавал Витоша 400 г', group: 'Млечни', unit: 'PCS', cost: 3.1, price: 4.79, batch: true, barcode: ean13('380100000004'), netContent: 400, netContentUnit: ContentUnit.G },
+    { code: 'M-005', name: 'Масло 82% 125 г', group: 'Млечни', unit: 'PCS', cost: 1.05, price: 1.69, batch: true, minStock: 30, barcode: ean13('380100000005'), netContent: 125, netContentUnit: ContentUnit.G },
+    { code: 'M-010', name: 'Луканка Смядовска 250 г', group: 'Месо и колбаси', unit: 'PCS', cost: 2.6, price: 3.99, batch: true, barcode: ean13('380100000010'), netContent: 250, netContentUnit: ContentUnit.G },
+    { code: 'M-011', name: 'Кренвирши 400 г', group: 'Месо и колбаси', unit: 'PCS', cost: 1.4, price: 2.29, batch: true, barcode: ean13('380100000011'), netContent: 400, netContentUnit: ContentUnit.G },
+    { code: 'M-012', name: 'Пилешко филе', group: 'Месо и колбаси', unit: 'KG', cost: 4.2, price: 6.49, batch: true },
+    { code: 'M-020', name: 'Минерална вода 1.5 л', group: 'Напитки', unit: 'PCS', cost: 0.25, price: 0.49, minStock: 48, barcode: ean13('380100000020'), netContent: 1500, netContentUnit: ContentUnit.ML },
+    { code: 'M-021', name: 'Кока-Кола 0.5 л', group: 'Напитки', unit: 'PCS', cost: 0.5, price: 0.95, barcode: ean13('380100000021'), netContent: 500, netContentUnit: ContentUnit.ML },
+    { code: 'M-022', name: 'Бира Загорка 0.5 л', group: 'Напитки', unit: 'PCS', cost: 0.55, price: 0.99, barcode: ean13('380100000022'), netContent: 500, netContentUnit: ContentUnit.ML },
+    { code: 'M-023', name: 'Портокалов сок 1 л', group: 'Напитки', unit: 'PCS', cost: 0.85, price: 1.45, barcode: ean13('380100000023'), netContent: 1000, netContentUnit: ContentUnit.ML },
+    { code: 'M-024', name: 'Кафе мляно 250 г', group: 'Напитки', unit: 'PCS', cost: 2.2, price: 3.49, barcode: ean13('380100000024'), netContent: 250, netContentUnit: ContentUnit.G },
+    { code: 'M-030', name: 'Хляб Добруджа 650 г', group: 'Хлебни', unit: 'PCS', cost: 0.6, price: 0.99, minStock: 25, barcode: ean13('380100000030'), netContent: 650, netContentUnit: ContentUnit.G },
+    { code: 'M-031', name: 'Кроасан с шоколад', group: 'Хлебни', unit: 'PCS', cost: 0.3, price: 0.59 },
+    { code: 'M-040', name: 'Ориз 1 кг', group: 'Бакалия', unit: 'PCS', cost: 1.05, price: 1.69, barcode: ean13('380100000040'), netContent: 1000, netContentUnit: ContentUnit.G },
+    { code: 'M-041', name: 'Олио слънчогледово 1 л', group: 'Бакалия', unit: 'PCS', cost: 1.15, price: 1.89, barcode: ean13('380100000041'), netContent: 1000, netContentUnit: ContentUnit.ML },
+    { code: 'M-042', name: 'Захар 1 кг', group: 'Бакалия', unit: 'PCS', cost: 0.65, price: 1.09, barcode: ean13('380100000042'), netContent: 1000, netContentUnit: ContentUnit.G },
+    { code: 'M-043', name: 'Брашно 1 кг', group: 'Бакалия', unit: 'PCS', cost: 0.48, price: 0.79, barcode: ean13('380100000043'), netContent: 1000, netContentUnit: ContentUnit.G },
+    { code: 'M-044', name: 'Спагети 500 г', group: 'Бакалия', unit: 'PCS', cost: 0.55, price: 0.89, barcode: ean13('380100000044'), netContent: 500, netContentUnit: ContentUnit.G },
+    { code: 'M-050', name: 'Препарат за съдове 500 мл', group: 'Домакински', unit: 'PCS', cost: 0.9, price: 1.49, barcode: ean13('380100000050'), netContent: 500, netContentUnit: ContentUnit.ML },
+    { code: 'M-051', name: 'Тоалетна хартия 8 бр.', group: 'Домакински', unit: 'PACK', cost: 1.8, price: 2.89, barcode: ean13('380100000051') },
+    { code: 'M-052', name: 'Прах за пране 2 кг', group: 'Домакински', unit: 'PCS', cost: 4.4, price: 6.99, minStock: 6, barcode: ean13('380100000052'), netContent: 2000, netContentUnit: ContentUnit.G },
   ],
   partners: [
-    { name: 'Балкан Дистрибуция ООД', taxId: '204512873', kind: 'SUPPLIER', address: 'София, ул. Околовръстен път 251', mol: 'Иван Георгиев', phone: '0888123456' },
-    { name: 'Млечен път ЕООД', taxId: '203998412', kind: 'SUPPLIER', address: 'Троян, ул. Васил Левски 14', mol: 'Петя Маринова', phone: '0877654321' },
-    { name: 'Родопски деликатеси АД', taxId: '175632904', kind: 'SUPPLIER', address: 'Смолян, бул. България 3', mol: 'Христо Ангелов', phone: '0899111222' },
-    { name: 'Хлебозавод Изгрев ЕООД', taxId: '131245780', kind: 'SUPPLIER', address: 'София, ж.к. Изгрев, ул. Сланина 5', mol: 'Стоян Колев', phone: '0887333444' },
-    { name: 'Хотел Панорама ООД', taxId: '205331472', kind: 'CUSTOMER', address: 'Банско, ул. Пирин 40', mol: 'Анна Тодорова', phone: '0898555666' },
+    { name: 'Балкан Дистрибуция ООД', eik: '204512879', kind: 'SUPPLIER', address: 'София, ул. Околовръстен път 251', mol: 'Иван Георгиев', phone: '0888123456' },
+    { name: 'Млечен път ЕООД', eik: '203998410', kind: 'SUPPLIER', address: 'Троян, ул. Васил Левски 14', mol: 'Петя Маринова', phone: '0877654321' },
+    { name: 'Родопски деликатеси АД', eik: '175632901', kind: 'SUPPLIER', address: 'Смолян, бул. България 3', mol: 'Христо Ангелов', phone: '0899111222' },
+    { name: 'Хлебозавод Изгрев ЕООД', eik: '131245785', kind: 'SUPPLIER', address: 'София, ж.к. Изгрев, ул. Сланина 5', mol: 'Стоян Колев', phone: '0887333444' },
+    { name: 'Хотел Панорама ООД', eik: '205331472', kind: 'CUSTOMER', address: 'Банско, ул. Пирин 40', mol: 'Анна Тодорова', phone: '0898555666' },
   ],
   documents: [
     {
-      daysAgo: 30, site: 'Warehouse', type: 'INVOICE', number: '0000451201', status: 'POSTED', partnerTaxId: '204512873',
+      daysAgo: 30, site: 'Склад', type: 'INVOICE', number: '0000451201', status: 'POSTED', partnerEik: '204512879',
       lines: [
         { code: 'M-020', qty: 480 }, { code: 'M-021', qty: 240 }, { code: 'M-022', qty: 240 }, { code: 'M-023', qty: 120 },
         { code: 'M-024', qty: 60 }, { code: 'M-040', qty: 100 }, { code: 'M-041', qty: 100 }, { code: 'M-042', qty: 100 },
@@ -134,7 +144,7 @@ const MARKET: TenantSeed = {
       ],
     },
     {
-      daysAgo: 25, site: 'Warehouse', type: 'TRANSFER', number: 'TR-0001', status: 'POSTED', targetSite: 'Main Store',
+      daysAgo: 25, site: 'Склад', type: 'TRANSFER', number: 'TR-0001', status: 'POSTED', targetSite: 'Основен магазин',
       notes: 'Weekly shelf refill',
       lines: [
         { code: 'M-020', qty: 120 }, { code: 'M-021', qty: 96 }, { code: 'M-022', qty: 96 }, { code: 'M-023', qty: 48 },
@@ -143,7 +153,7 @@ const MARKET: TenantSeed = {
       ],
     },
     {
-      daysAgo: 24, site: 'Main Store', type: 'INVOICE', number: '2000038814', status: 'POSTED', partnerTaxId: '203998412',
+      daysAgo: 24, site: 'Основен магазин', type: 'INVOICE', number: '2000038814', status: 'POSTED', partnerEik: '203998410',
       lines: [
         { code: 'M-001', qty: 48, batch: 'MP-2409', expiresInDays: 3 },
         { code: 'M-002', qty: 60, batch: 'MP-2410', expiresInDays: 9 },
@@ -154,7 +164,7 @@ const MARKET: TenantSeed = {
       ],
     },
     {
-      daysAgo: 22, site: 'Main Store', type: 'INVOICE', number: '0000093127', status: 'POSTED', partnerTaxId: '175632904',
+      daysAgo: 22, site: 'Основен магазин', type: 'INVOICE', number: '0000093127', status: 'POSTED', partnerEik: '175632901',
       lines: [
         { code: 'M-010', qty: 30, batch: 'LK-5501', expiresInDays: 90 },
         { code: 'M-011', qty: 40, batch: 'KR-7730', expiresInDays: 12 },
@@ -162,43 +172,43 @@ const MARKET: TenantSeed = {
       ],
     },
     {
-      daysAgo: 20, site: 'Main Store', type: 'RECEIPT', number: 'СР-004417', status: 'POSTED', partnerTaxId: '131245780',
+      daysAgo: 20, site: 'Основен магазин', type: 'RECEIPT', number: 'СР-004417', status: 'POSTED', partnerEik: '131245785',
       lines: [{ code: 'M-030', qty: 40 }, { code: 'M-031', qty: 60 }],
     },
     {
-      daysAgo: 7, site: 'Main Store', type: 'INVOICE', number: '2000039102', status: 'POSTED', partnerTaxId: '203998412',
+      daysAgo: 7, site: 'Основен магазин', type: 'INVOICE', number: '2000039102', status: 'POSTED', partnerEik: '203998410',
       lines: [
         { code: 'M-001', qty: 36, batch: 'MP-2415', expiresInDays: 10 },
         { code: 'M-002', qty: 24, batch: 'MP-2416', expiresInDays: 14 },
       ],
     },
     {
-      daysAgo: 6, site: 'Warehouse', type: 'PROTOCOL', number: 'ИЗ-000112', status: 'POSTED', partnerTaxId: '205331472',
+      daysAgo: 6, site: 'Склад', type: 'PROTOCOL', number: 'ИЗ-000112', status: 'POSTED', partnerEik: '205331472',
       notes: 'Delivery to the hotel bar',
       lines: [{ code: 'M-020', qty: 48, price: 0.35 }, { code: 'M-021', qty: 24, price: 0.7 }],
     },
     {
-      daysAgo: 3, site: 'Main Store', type: 'PROTOCOL', number: 'ПБ-0001', status: 'POSTED', writeOffReason: 'EXPIRED',
+      daysAgo: 3, site: 'Основен магазин', type: 'WRITE_OFF', number: 'ПБ-0001', status: 'POSTED', writeOffReason: 'EXPIRED',
       notes: 'Expired yoghurt removed from the fridge',
       lines: [{ code: 'M-002', qty: 6, batch: 'MP-0815', expiresInDays: -1 }],
     },
     {
-      daysAgo: 2, site: 'Main Store', type: 'PROTOCOL', number: 'ПБ-0002', status: 'POSTED', writeOffReason: 'DAMAGED',
+      daysAgo: 2, site: 'Основен магазин', type: 'WRITE_OFF', number: 'ПБ-0002', status: 'POSTED', writeOffReason: 'DAMAGED',
       notes: 'Bottles broken while unloading',
       lines: [{ code: 'M-041', qty: 2 }],
     },
     {
-      daysAgo: 1, site: 'Main Store', type: 'INVOICE', number: '0000452877', status: 'REVIEW', partnerTaxId: '204512873',
+      daysAgo: 1, site: 'Основен магазин', type: 'INVOICE', number: '0000452877', status: 'REVIEW', partnerEik: '204512879',
       notes: 'Ready to post — check the lines and press Post',
       lines: [{ code: 'M-052', qty: 12 }, { code: 'M-042', qty: 20 }, { code: 'M-043', qty: 20 }],
     },
     {
-      daysAgo: 0, site: 'Main Store', type: 'RECEIPT', number: 'СР-004533', status: 'DRAFT', partnerTaxId: '131245780',
+      daysAgo: 0, site: 'Основен магазин', type: 'RECEIPT', number: 'СР-004533', status: 'DRAFT', partnerEik: '131245785',
       lines: [{ code: 'M-030', qty: 30 }, { code: 'M-031', qty: 40 }],
     },
   ],
   sales: {
-    site: 'Main Store',
+    site: 'Основен магазин',
     cashier: 'demo-cashier@skladnik.dev',
     days: 13,
     perDay: [4, 9],
@@ -209,34 +219,42 @@ const MARKET: TenantSeed = {
 
 const CAFE: TenantSeed = {
   company: 'Demo Café',
-  sites: [{ name: 'Café Bar', type: SiteType.BAR, address: 'Plovdiv, ul. Knyaz Alexander I 21' }],
+  profile: { eik: '207188457', address: 'ул. Княз Александър I 21', city: 'Пловдив', mol: 'Dimitar Nikolov' },
+  sites: [{ name: 'Кафе-бар', type: SiteType.BAR, address: 'Пловдив, ул. Княз Александър I 21' }],
   users: [
     { email: 'cafe-owner@skladnik.dev', name: 'Dimitar Nikolov', role: UserRole.OWNER },
-    { email: 'cafe-barista@skladnik.dev', name: 'Iva Hristova', role: UserRole.STAFF, sites: ['Café Bar'] },
+    { email: 'cafe-barista@skladnik.dev', name: 'Iva Hristova', role: UserRole.STAFF, sites: ['Кафе-бар'] },
   ],
-  groups: ['Ingredients', 'Coffee drinks', 'Pastry & drinks'],
+  groups: ['Съставки', 'Кафе напитки', 'Печива и напитки'],
   products: [
-    { code: 'C-001', name: 'Кафе на зърна Арабика', group: 'Ingredients', unit: 'KG', cost: 16, price: 0, minStock: 2 },
-    { code: 'C-002', name: 'Прясно мляко 3.5%', group: 'Ingredients', unit: 'L', cost: 0.95, price: 0, minStock: 10 },
-    { code: 'C-003', name: 'Захар', group: 'Ingredients', unit: 'KG', cost: 0.65, price: 0 },
-    { code: 'C-004', name: 'Сироп ванилия', group: 'Ingredients', unit: 'L', cost: 7.5, price: 0 },
-    { code: 'C-010', name: 'Еспресо', group: 'Coffee drinks', unit: 'PCS', cost: 0, price: 1.5 },
-    { code: 'C-011', name: 'Капучино', group: 'Coffee drinks', unit: 'PCS', cost: 0, price: 2.2 },
-    { code: 'C-012', name: 'Лате с ванилия', group: 'Coffee drinks', unit: 'PCS', cost: 0, price: 2.8 },
-    { code: 'C-020', name: 'Кроасан с масло', group: 'Pastry & drinks', unit: 'PCS', cost: 0.35, price: 1.2 },
-    { code: 'C-021', name: 'Минерална вода 0.5 л', group: 'Pastry & drinks', unit: 'PCS', cost: 0.22, price: 1, barcode: ean13('380200000021') },
+    { code: 'C-001', name: 'Кафе на зърна Арабика', group: 'Съставки', unit: 'KG', cost: 16, price: 0, minStock: 2 },
+    { code: 'C-002', name: 'Прясно мляко 3.5%', group: 'Съставки', unit: 'L', cost: 0.95, price: 0, minStock: 10 },
+    { code: 'C-003', name: 'Захар', group: 'Съставки', unit: 'KG', cost: 0.65, price: 0 },
+    { code: 'C-004', name: 'Сироп ванилия', group: 'Съставки', unit: 'L', cost: 7.5, price: 0 },
+    { code: 'C-010', name: 'Еспресо', group: 'Кафе напитки', unit: 'PCS', cost: 0, price: 1.5 },
+    { code: 'C-011', name: 'Капучино', group: 'Кафе напитки', unit: 'PCS', cost: 0, price: 2.2 },
+    { code: 'C-012', name: 'Лате с ванилия', group: 'Кафе напитки', unit: 'PCS', cost: 0, price: 2.8 },
+    { code: 'C-020', name: 'Кроасан с масло', group: 'Печива и напитки', unit: 'PCS', cost: 0.35, price: 1.2 },
+    { code: 'C-021', name: 'Минерална вода 0.5 л', group: 'Печива и напитки', unit: 'PCS', cost: 0.22, price: 1, barcode: ean13('380200000021') },
   ],
   partners: [
-    { name: 'Кафе Импорт ООД', taxId: '206117345', kind: 'SUPPLIER', address: 'Пловдив, ул. Брезовско шосе 120', mol: 'Росен Динев', phone: '0886777888' },
+    { name: 'Кафе Импорт ООД', eik: '206117343', kind: 'SUPPLIER', address: 'Пловдив, ул. Брезовско шосе 120', mol: 'Росен Динев', phone: '0886777888' },
   ],
   recipes: [
-    { dish: 'C-010', ingredients: [{ code: 'C-001', qty: 0.008 }, { code: 'C-003', qty: 0.005 }] },
-    { dish: 'C-011', ingredients: [{ code: 'C-001', qty: 0.008 }, { code: 'C-002', qty: 0.12, wastagePercent: 5 }] },
-    { dish: 'C-012', ingredients: [{ code: 'C-001', qty: 0.008 }, { code: 'C-002', qty: 0.2, wastagePercent: 5 }, { code: 'C-004', qty: 0.015 }] },
+    { dish: 'C-010', ingredients: [{ code: 'C-001', qty: 8, unit: ContentUnit.G }, { code: 'C-003', qty: 5, unit: ContentUnit.G }] },
+    { dish: 'C-011', ingredients: [{ code: 'C-001', qty: 8, unit: ContentUnit.G }, { code: 'C-002', qty: 120, unit: ContentUnit.ML, wastagePercent: 5 }] },
+    {
+      dish: 'C-012',
+      ingredients: [
+        { code: 'C-001', qty: 8, unit: ContentUnit.G },
+        { code: 'C-002', qty: 200, unit: ContentUnit.ML, wastagePercent: 5 },
+        { code: 'C-004', qty: 15, unit: ContentUnit.ML },
+      ],
+    },
   ],
   documents: [
     {
-      daysAgo: 12, site: 'Café Bar', type: 'INVOICE', number: '0000007731', status: 'POSTED', partnerTaxId: '206117345',
+      daysAgo: 12, site: 'Кафе-бар', type: 'INVOICE', number: '0000007731', status: 'POSTED', partnerEik: '206117343',
       lines: [
         { code: 'C-001', qty: 5 }, { code: 'C-002', qty: 40 }, { code: 'C-003', qty: 5 }, { code: 'C-004', qty: 3 },
         { code: 'C-020', qty: 80 }, { code: 'C-021', qty: 96 },
@@ -244,7 +262,7 @@ const CAFE: TenantSeed = {
     },
   ],
   sales: {
-    site: 'Café Bar',
+    site: 'Кафе-бар',
     cashier: 'cafe-barista@skladnik.dev',
     days: 10,
     perDay: [8, 14],
@@ -289,6 +307,9 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
   const company =
     (await prisma.company.findFirst({ where: { name: tenant.company } })) ??
     (await prisma.company.create({ data: { name: tenant.company } }));
+  if (!company.eik) {
+    await prisma.company.update({ where: { id: company.id }, data: { ...tenant.profile, vatNumber: `BG${tenant.profile.eik}` } });
+  }
   await seedUnitAliases(prisma, company.id);
 
   const siteIds = new Map<string, string>();
@@ -359,6 +380,8 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
       minStock: seed.minStock ?? 0,
       batchTracking: seed.batch ?? false,
       status: 'ACTIVE' as const,
+      netContent: seed.netContent ?? null,
+      netContentUnit: seed.netContentUnit ?? null,
     };
     const product = await prisma.product.upsert({
       where: { companyId_code: { companyId: company.id, code: seed.code } },
@@ -376,13 +399,16 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
 
   const partnerIds = new Map<string, string>();
   for (const seed of tenant.partners) {
-    const { taxId, ...rest } = seed;
-    const partner = await prisma.partner.upsert({
-      where: { companyId_taxId: { companyId: company.id, taxId } },
-      update: rest,
-      create: { companyId: company.id, taxId, ...rest },
+    const data = { ...seed, vatNumber: `BG${seed.eik}` };
+    // Matched by name too, so a database seeded before the ЕИК fix is corrected rather than duplicated.
+    const existing = await prisma.partner.findFirst({
+      where: { companyId: company.id, OR: [{ eik: seed.eik }, { name: seed.name }] },
+      orderBy: { createdAt: 'asc' },
     });
-    partnerIds.set(taxId, partner.id);
+    const partner = existing
+      ? await prisma.partner.update({ where: { id: existing.id }, data })
+      : await prisma.partner.create({ data: { companyId: company.id, ...data } });
+    partnerIds.set(seed.eik, partner.id);
   }
 
   const owner = [...authUsers.values()].find((user) => user.role === UserRole.OWNER)!;
@@ -395,18 +421,24 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
       ingredients: recipe.ingredients.map((row) => ({
         productId: products.get(row.code)!.id,
         quantity: row.qty,
+        quantityUnit: row.unit ?? null,
         wastagePercent: row.wastagePercent,
       })),
     });
   }
 
   const documents = documentsService(prisma);
-  for (const seed of [...tenant.documents].sort((a, b) => b.daysAgo - a.daysAgo)) {
+  const seedDocs = [...tenant.documents].sort((a, b) => b.daysAgo - a.daysAgo);
+  // Expired write-offs run after till sales so historical FEFO can still see those batches (F-14).
+  const earlyDocs = seedDocs.filter((seed) => !(seed.type === 'WRITE_OFF' && seed.writeOffReason === 'EXPIRED'));
+  const expiredWriteOffs = seedDocs.filter((seed) => seed.type === 'WRITE_OFF' && seed.writeOffReason === 'EXPIRED');
+
+  async function postSeedDoc(seed: (typeof seedDocs)[number], lineQtys?: Map<string, number>) {
     const issuedOn = addDays(today, -seed.daysAgo);
     const { document: created } = await documents.create(owner, {
       type: seed.type,
       siteId: siteIds.get(seed.site)!,
-      partnerId: seed.partnerTaxId ? partnerIds.get(seed.partnerTaxId) : undefined,
+      partnerId: seed.partnerEik ? partnerIds.get(seed.partnerEik) : undefined,
       targetSiteId: seed.targetSite ? siteIds.get(seed.targetSite) : undefined,
       documentNumber: seed.number,
       issuedOn,
@@ -415,17 +447,32 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
     });
     for (const line of seed.lines) {
       const product = products.get(line.code)!;
+      const qty = lineQtys?.get(`${line.code}\0${line.batch ?? ''}`) ?? line.qty;
+      if (qty <= 0) continue;
       await documents.addLine(owner, created.id, {
         productId: product.id,
-        quantity: line.qty,
+        quantity: qty,
         unitPrice: line.price ?? product.seed.cost,
         batchNumber: line.batch,
         expiryDate: line.expiresInDays === undefined ? undefined : addDays(today, line.expiresInDays),
       });
     }
-    if (seed.status === 'DRAFT') continue;
+    const { document: filled } = await documents.get(owner, created.id);
+    if (filled.lines.length === 0) {
+      await documents.cancel(owner, created.id);
+      return;
+    }
+    if (filled.totals?.required) {
+      await documents.update(owner, created.id, {
+        printedTaxableBase: filled.totals.calculated.taxableBase,
+        printedVatAmount: filled.totals.calculated.vat,
+        printedTotal: filled.totals.calculated.total,
+        paymentMethod: 'BANK_TRANSFER',
+      });
+    }
+    if (seed.status === 'DRAFT') return;
     await documents.submitForReview(owner, created.id);
-    if (seed.status !== 'POSTED') continue;
+    if (seed.status !== 'POSTED') return;
     await documents.post(owner, created.id);
     await prisma.document.update({
       where: { id: created.id },
@@ -433,18 +480,43 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
     });
   }
 
+  for (const seed of earlyDocs) await postSeedDoc(seed);
+
   const { made, skipped } = await seedSales(prisma, tenant, today, {
     cashier: authUsers.get(tenant.sales.cashier)!,
     siteId: siteIds.get(tenant.sales.site)!,
     products,
   });
+
+  for (const seed of expiredWriteOffs) {
+    const siteId = siteIds.get(seed.site)!;
+    const lineQtys = new Map<string, number>();
+    for (const line of seed.lines) {
+      const product = products.get(line.code)!;
+      if (!line.batch) {
+        lineQtys.set(`${line.code}\0`, line.qty);
+        continue;
+      }
+      const batch = await prisma.batch.findFirst({
+        where: { companyId: company.id, productId: product.id, batchNumber: line.batch },
+        select: { id: true },
+      });
+      if (!batch) continue;
+      const ledger = await siteLedger(prisma, company.id, siteId, [product.id]);
+      const onHand = ledger.find((row) => row.batchId === batch.id)?.onHand ?? 0;
+      lineQtys.set(`${line.code}\0${line.batch}`, Math.min(line.qty, Math.max(0, onHand)));
+    }
+    await postSeedDoc(seed, lineQtys);
+  }
+
   console.log(`${tenant.company}: ${tenant.documents.length} documents, ${made} till sales${skipped ? ` (${skipped} skipped for stock)` : ''}.`);
   return users;
 }
 
 /**
- * Till sales go through SalesService so FEFO, costs and stock checks are the real ones. It stamps every
- * sale with the current time, so each one is then moved back to its day and given that day's number.
+ * Till sales go through SalesService so FEFO, costs and stock checks are the real ones.
+ * Each sale is created `at` its historical time so FEFO uses that day's expiry, then renumbered
+ * to the day's sequence.
  */
 async function seedSales(
   prisma: PrismaService,
@@ -474,7 +546,7 @@ async function seedSales(
       while (codes.size < lines) codes.add(tenant.sales.items[Math.floor(rand() * tenant.sales.items.length)]);
       const items = [...codes].map((code) => {
         const product = ctx.products.get(code)!;
-        const loose = product.seed.unit === 'KG';
+        const loose = product.seed.unit === 'KG' || product.seed.unit === 'L';
         return {
           productId: product.id,
           quantity: loose ? round3(0.25 + rand() * 0.9) : 1 + Math.floor(rand() * (rand() < 0.8 ? 2 : 4)),
@@ -483,21 +555,14 @@ async function seedSales(
       const paymentMethod: PaymentMethod = rand() < 0.6 ? 'CASH' : 'CARD';
 
       try {
-        const { sale } = await sales.create(ctx.cashier, { siteId: ctx.siteId, paymentMethod, items });
+        const { sale } = await sales.create(ctx.cashier, { siteId: ctx.siteId, paymentMethod, items }, { at });
         sequence += 1;
-        await prisma.$transaction([
-          prisma.document.update({
-            where: { id: sale.id },
-            data: {
-              number: `S${date.replaceAll('-', '')}-${String(sequence).padStart(4, '0')}`,
-              issuedOn: new Date(`${date}T00:00:00Z`),
-              postedAt: at,
-              createdAt: at,
-            },
-          }),
-          prisma.stockMovement.updateMany({ where: { documentId: sale.id }, data: { occurredAt: at, createdAt: at } }),
-          prisma.activityLog.updateMany({ where: { entityId: sale.id }, data: { createdAt: at } }),
-        ]);
+        await prisma.document.update({
+          where: { id: sale.id },
+          data: {
+            number: `S${date.replaceAll('-', '')}-${String(sequence).padStart(4, '0')}`,
+          },
+        });
         made += 1;
       } catch {
         skipped += 1;

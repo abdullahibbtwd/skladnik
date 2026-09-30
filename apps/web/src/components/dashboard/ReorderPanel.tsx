@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { Copy, Mail, Printer } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatEuro } from '../../lib/dashboard-data';
+import { usePermissions } from '../../lib/permissions';
 import type { ReorderSupplier } from '../../lib/workspace-api';
 import { useReorderQuery, useSitesQuery } from '../../lib/workspace-session';
 import { toast } from '../ui/Toaster';
 import { useDashboard } from './dashboard-context';
-import { GhostButton, GlassPanel, LiveBadge, PageHeader, tableHeadRowClass, tableRowClass } from './dashboard-ui';
+import { GhostButton, GlassPanel, LiveBadge, PageHeader, desktopTableWrapClass, mobileCardClass, mobileCardListClass, tableHeadRowClass, tableRowClass } from './dashboard-ui';
 
 export const ReorderPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const { seeFinancials } = usePermissions();
   const { siteId } = useDashboard();
   const sitesQuery = useSitesQuery();
   const reorderQuery = useReorderQuery(siteId);
@@ -91,32 +93,76 @@ export const ReorderPanel: React.FC = () => {
       ) : (
         suppliers.map((supplier) => {
           const lines = orderLines(supplier);
-          const total = lines.reduce((sum, line) => sum + line.qty * line.unitPrice, 0);
+          const total = seeFinancials
+            ? lines.reduce((sum, line) => sum + line.qty * (line.unitPrice ?? 0), 0)
+            : null;
           return (
             <GlassPanel
               key={supplier.partner?.id ?? 'none'}
               padded={false}
               title={supplier.partner?.name ?? t('reorder.noSupplier')}
-              action={<LiveBadge>{formatEuro(total)}</LiveBadge>}
+              action={total !== null ? <LiveBadge>{formatEuro(total)}</LiveBadge> : undefined}
             >
-              {supplier.partner && (supplier.partner.phone || supplier.partner.email) && (
+              {seeFinancials && supplier.partner && (supplier.partner.phone || supplier.partner.email) && (
                 <p className="border-b border-slate-100 px-4 py-2 font-mono text-[0.7rem] text-slate-500 sm:px-5">
                   {[supplier.partner.phone, supplier.partner.email].filter(Boolean).join(' · ')}
                 </p>
               )}
-              <div className="overflow-x-auto">
+              <ul className={mobileCardListClass()}>
+                {supplier.lines.map((line) => {
+                  const qty = qtyOf(line.productId, line.suggestedQty);
+                  const unitPrice = line.unitPrice ?? 0;
+                  return (
+                    <li key={line.productId} className={mobileCardClass()}>
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/app/stock/${line.productId}`)}
+                          className="text-left font-display text-[0.86rem] font-medium text-ops-ink hover:text-ops-accent"
+                        >
+                          {line.name}
+                        </button>
+                        <p className="font-mono text-[0.66rem] text-slate-400">
+                          {line.code}
+                          {line.supplierCode ? ` · ${t('reorder.supplierCode')} ${line.supplierCode}` : ''}
+                          {seeFinancials ? ` · ${formatEuro(unitPrice)}` : ''}
+                        </p>
+                        <p className="mt-1 font-mono text-[0.74rem] tabular-nums text-slate-500">
+                          <span className={line.onHand <= 0 ? 'text-ops-danger' : 'text-ops-warn'}>{qtyFormat.format(line.onHand)}</span>
+                          <span className="text-slate-400"> / {qtyFormat.format(line.minStock)}</span>
+                          {seeFinancials && <span className="ml-2 text-ops-ink">{formatEuro(qty * unitPrice)}</span>}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          inputMode="decimal"
+                          value={quantities[line.productId] ?? String(line.suggestedQty)}
+                          onChange={(event) => setQuantities((current) => ({ ...current, [line.productId]: event.target.value }))}
+                          aria-label={t('reorder.qtyFor', { name: line.name })}
+                          className="h-9 w-20 rounded-lg border border-slate-200 bg-white px-2 text-center font-mono text-[0.86rem] outline-none focus:border-ops-teal/50"
+                        />
+                        <span className="font-sans text-[0.7rem] text-slate-400">{t(`labels.unit.${line.unit}`)}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className={desktopTableWrapClass()}>
                 <table className="w-full min-w-[32rem] text-left">
                   <thead>
                     <tr className={tableHeadRowClass()}>
                       <th className="px-4 py-2.5 font-display font-medium sm:px-5">{t('stocktake.item')}</th>
                       <th className="px-3 py-2.5 text-right font-display font-medium">{t('reorder.onHandMin')}</th>
                       <th className="px-3 py-2.5 text-right font-display font-medium">{t('reorder.order')}</th>
-                      <th className="px-4 py-2.5 text-right font-display font-medium sm:px-5">{t('reorder.lineTotal')}</th>
+                      {seeFinancials && (
+                        <th className="px-4 py-2.5 text-right font-display font-medium sm:px-5">{t('reorder.lineTotal')}</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
                     {supplier.lines.map((line) => {
                       const qty = qtyOf(line.productId, line.suggestedQty);
+                      const unitPrice = line.unitPrice ?? 0;
                       return (
                         <tr key={line.productId} className={tableRowClass()}>
                           <td className="px-4 py-2.5 sm:px-5">
@@ -129,7 +175,8 @@ export const ReorderPanel: React.FC = () => {
                             </button>
                             <p className="font-mono text-[0.66rem] text-slate-400">
                               {line.code}
-                              {line.supplierCode ? ` · ${t('reorder.supplierCode')} ${line.supplierCode}` : ''} · {formatEuro(line.unitPrice)}
+                              {line.supplierCode ? ` · ${t('reorder.supplierCode')} ${line.supplierCode}` : ''}
+                              {seeFinancials ? ` · ${formatEuro(unitPrice)}` : ''}
                             </p>
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono text-[0.8rem] whitespace-nowrap">
@@ -146,9 +193,11 @@ export const ReorderPanel: React.FC = () => {
                             />
                             <span className="ml-1 font-sans text-[0.7rem] text-slate-400">{t(`labels.unit.${line.unit}`)}</span>
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-[0.8rem] whitespace-nowrap text-ops-ink sm:px-5">
-                            {formatEuro(qty * line.unitPrice)}
-                          </td>
+                          {seeFinancials && (
+                            <td className="px-4 py-2.5 text-right font-mono text-[0.8rem] whitespace-nowrap text-ops-ink sm:px-5">
+                              {formatEuro(qty * unitPrice)}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -161,7 +210,7 @@ export const ReorderPanel: React.FC = () => {
                     <Copy size={13} /> {t('reorder.copy')}
                   </span>
                 </GhostButton>
-                {supplier.partner?.email && lines.length > 0 && (
+                {seeFinancials && supplier.partner?.email && lines.length > 0 && (
                   <a
                     href={mailto(supplier)}
                     className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 font-display text-[0.78rem] font-medium text-ops-ink hover:border-ops-accent/30"

@@ -9,16 +9,20 @@ import {
   type DocumentType,
 } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
+import { formatDate } from '../../lib/format';
 import { documentPath } from '../../lib/workspace-api';
 import { useDocumentsQuery, useSitesQuery } from '../../lib/workspace-session';
 import { Select } from '../ui/Select';
 import { useDashboard } from './dashboard-context';
 import {
   ActionButton,
+  desktopTableWrapClass,
   GlassPanel,
   LiveBadge,
   MetricCard,
   MetricGrid,
+  mobileCardClass,
+  mobileCardListClass,
   PageHeader,
   StatusPill,
   tableHeadRowClass,
@@ -26,7 +30,7 @@ import {
 } from './dashboard-ui';
 
 export const InvoicesPanel: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const role = useAuthRole();
   const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
@@ -64,7 +68,7 @@ export const InvoicesPanel: React.FC = () => {
       />
 
       {canWrite && (
-        <div className="lg:hidden">
+        <div className="md:hidden">
           <ActionButton icon={Plus} label={t('pages.newDocument')} onClick={() => navigate('/app/invoices/new')} primary />
         </div>
       )}
@@ -135,53 +139,90 @@ export const InvoicesPanel: React.FC = () => {
             <p className="mt-1 font-sans text-[0.76rem] text-slate-400">{t('invoices.emptyHint')}</p>
           </div>
         ) : (
-          <div className="-mx-4 overflow-x-auto sm:-mx-5">
-            <table className="w-full min-w-[36rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-4 py-2.5 font-display font-medium sm:px-5">{t('invoices.document')}</th>
-                  <th className="px-3 py-2.5 font-display font-medium">{t('invoices.partner')}</th>
-                  <th className="px-3 py-2.5 font-display font-medium">{t('invoices.site')}</th>
-                  <th className="px-3 py-2.5 font-display font-medium">{t('invoices.date')}</th>
-                  <th className="px-4 py-2.5 text-right font-display font-medium sm:px-5">{t('invoices.status')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents.map((doc) => (
-                  <tr
-                    key={doc.id}
-                    className={`${tableRowClass()} cursor-pointer`}
+          <>
+            <ul className={`${mobileCardListClass()} -mx-4 sm:-mx-5`}>
+              {documents.map((doc) => (
+                <li key={doc.id}>
+                  <button
+                    type="button"
                     onClick={() => navigate(documentPath(doc))}
+                    className={`${mobileCardClass()} w-full cursor-pointer text-left transition-colors hover:bg-ops-canvas/70`}
                   >
-                    <td className="px-4 py-3 sm:px-5">
-                      <p className="font-display text-[0.82rem] font-medium text-ops-ink">
-                        {doc.writeOffReason
-                          ? `${t('writeOff.eyebrow')} · ${t(`labels.writeOffReason.${doc.writeOffReason}`)}`
-                          : t(`labels.documentType.${doc.type}`)}
-                      </p>
-                      <p className="font-mono text-[0.66rem] text-slate-400">
-                        {doc.documentNumber} ·{' '}
-                        {doc.type === 'STOCKTAKE'
-                          ? t('stocktake.adjustment')
-                          : doc.direction === 'IN'
-                            ? t('labels.stockIn')
-                            : t('labels.stockOut')}{' '}
-                        · {t('invoices.lines', { count: doc.lineCount })}
-                      </p>
-                    </td>
-                    <td className="px-3 py-3 font-sans text-[0.8rem] text-slate-600">{doc.partner?.name ?? '—'}</td>
-                    <td className="px-3 py-3 font-sans text-[0.8rem] text-slate-600">
-                      {doc.targetSite ? `${doc.site.name} → ${doc.targetSite.name}` : doc.site.name}
-                    </td>
-                    <td className="px-3 py-3 font-mono text-[0.74rem] text-slate-500">{doc.issuedOn}</td>
-                    <td className="px-4 py-3 text-right sm:px-5">
-                      <StatusPill status={doc.status} />
-                    </td>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-display text-[0.86rem] font-medium text-ops-ink">
+                          {doc.reversalOf && `${t('reversal.eyebrow')} · `}
+                          {t(`labels.documentType.${doc.type}`)}
+                          {doc.writeOffReason && ` · ${t(`labels.writeOffReason.${doc.writeOffReason}`)}`}
+                        </p>
+                        <p className="font-mono text-[0.66rem] text-slate-400">
+                          {doc.documentNumber} ·{' '}
+                          {doc.type === 'STOCKTAKE'
+                            ? t('stocktake.adjustment')
+                            : doc.direction === 'IN'
+                              ? t('labels.stockIn')
+                              : t('labels.stockOut')}{' '}
+                          · {t('invoices.lines', { count: doc.lineCount })}
+                        </p>
+                        <p className="mt-1 font-sans text-[0.74rem] text-slate-500">
+                          {doc.partner?.name ?? '—'} · {doc.targetSite ? `${doc.site.name} → ${doc.targetSite.name}` : doc.site.name} · {formatDate(doc.issuedOn, i18n.language)}
+                          {doc.createdBy?.name ? ` · ${t('invoices.createdBy', { name: doc.createdBy.name })}` : ''}
+                        </p>
+                      </div>
+                      <StatusPill status={doc.reversedBy ? 'REVERSED' : doc.status} />
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className={`${desktopTableWrapClass()} -mx-4 sm:-mx-5`}>
+              <table className="w-full min-w-[36rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-4 py-2.5 font-display font-medium sm:px-5">{t('invoices.document')}</th>
+                    <th className="px-3 py-2.5 font-display font-medium">{t('invoices.partner')}</th>
+                    <th className="px-3 py-2.5 font-display font-medium">{t('invoices.site')}</th>
+                    <th className="px-3 py-2.5 font-display font-medium">{t('invoices.date')}</th>
+                    <th className="px-4 py-2.5 text-right font-display font-medium sm:px-5">{t('invoices.status')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {documents.map((doc) => (
+                    <tr
+                      key={doc.id}
+                      className={`${tableRowClass()} cursor-pointer`}
+                      onClick={() => navigate(documentPath(doc))}
+                    >
+                      <td className="px-4 py-3 sm:px-5">
+                        <p className="font-display text-[0.82rem] font-medium text-ops-ink">
+                          {doc.reversalOf && `${t('reversal.eyebrow')} · `}
+                          {t(`labels.documentType.${doc.type}`)}
+                          {doc.writeOffReason && ` · ${t(`labels.writeOffReason.${doc.writeOffReason}`)}`}
+                        </p>
+                        <p className="font-mono text-[0.66rem] text-slate-400">
+                          {doc.documentNumber} ·{' '}
+                          {doc.type === 'STOCKTAKE'
+                            ? t('stocktake.adjustment')
+                            : doc.direction === 'IN'
+                              ? t('labels.stockIn')
+                              : t('labels.stockOut')}{' '}
+                          · {t('invoices.lines', { count: doc.lineCount })}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3 font-sans text-[0.8rem] text-slate-600">{doc.partner?.name ?? '—'}</td>
+                      <td className="px-3 py-3 font-sans text-[0.8rem] text-slate-600">
+                        {doc.targetSite ? `${doc.site.name} → ${doc.targetSite.name}` : doc.site.name}
+                      </td>
+                      <td className="px-3 py-3 font-mono text-[0.74rem] text-slate-500">{formatDate(doc.issuedOn, i18n.language)}</td>
+                      <td className="px-4 py-3 text-right sm:px-5">
+                        <StatusPill status={doc.reversedBy ? 'REVERSED' : doc.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
     </div>

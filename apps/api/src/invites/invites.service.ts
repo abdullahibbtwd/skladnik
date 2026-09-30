@@ -6,11 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Invitation, Prisma, User, UserRole } from '@prisma/client';
+import { Invitation, User, UserRole } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { isCompanyWideRole, ROLE_LABELS, type AuthUser, type UserRole as SharedRole } from '@skladnik/shared';
 import { MailService } from '../mail/mail.service';
+import { recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { SignupWithInviteDto } from '../auth/dto/signup-with-invite.dto';
@@ -116,7 +117,7 @@ export class InvitesService {
     const inviteUrl = this.inviteUrl(token);
     const delivered = await this.send(invite, inviteUrl);
 
-    await this.log(actor, invite.id, 'CREATE', { email, role: dto.role });
+    await this.log(actor, invite, 'CREATE', { after: { email, role: dto.role } });
     return { invite: this.serialize(invite), inviteUrl, delivered };
   }
 
@@ -137,7 +138,7 @@ export class InvitesService {
 
     const inviteUrl = this.inviteUrl(token);
     const delivered = await this.send(invite, inviteUrl);
-    await this.log(actor, invite.id, 'RESEND', { email: invite.email });
+    await this.log(actor, invite, 'RESEND', {});
     return { invite: this.serialize(invite), inviteUrl, delivered };
   }
 
@@ -155,7 +156,7 @@ export class InvitesService {
       },
     });
 
-    await this.log(actor, invite.id, 'REVOKE', { email: invite.email });
+    await this.log(actor, invite, 'REVOKE', {});
     return { invite: this.serialize(invite) };
   }
 
@@ -198,14 +199,12 @@ export class InvitesService {
         data: { acceptedAt: new Date(), revokedAt: null },
       });
 
-      await tx.activityLog.create({
-        data: {
-          companyId: invite.companyId,
-          userId: created.id,
-          entityType: 'Invitation',
-          entityId: invite.id,
-          action: 'ACCEPT',
-        },
+      await recordActivity(tx, created, {
+        entityType: 'Invitation',
+        entityId: invite.id,
+        label: invite.email,
+        action: 'ACCEPT',
+        after: { role: invite.role },
       });
 
       return created;
@@ -341,17 +340,13 @@ export class InvitesService {
     return 'PENDING' as const;
   }
 
-  private async log(actor: AuthUser, entityId: string, action: string, metadata: Prisma.InputJsonValue) {
-    await this.prisma.activityLog.create({
-      data: {
-        companyId: actor.companyId,
-        userId: actor.id,
-        entityType: 'Invitation',
-        entityId,
-        action,
-        metadata,
-      },
-    });
+  private async log(
+    actor: AuthUser,
+    invite: { id: string; email: string },
+    action: string,
+    diff: { before?: Record<string, unknown>; after?: Record<string, unknown> },
+  ) {
+    await recordActivity(this.prisma, actor, { entityType: 'Invitation', entityId: invite.id, label: invite.email, action, ...diff });
   }
 }
 

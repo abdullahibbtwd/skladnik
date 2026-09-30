@@ -120,8 +120,14 @@ export const VAT_RETURN_CELL_LABELS: Record<string, Record<ReportLang, string>> 
 };
 
 export const VAT_ISSUE_TEXT: Record<string, Record<ReportLang, string>> = {
-  SETTINGS_VAT_NUMBER: { en: "Add the company's VAT number (BG followed by 9 or 10 digits).", bg: 'Добавете ДДС номера на фирмата (BG и 9 или 10 цифри).' },
-  SETTINGS_VAT_NUMBER_INVALID: { en: "The company's VAT number {{value}} is not valid.", bg: 'ДДС номерът на фирмата {{value}} не е валиден.' },
+  SETTINGS_VAT_NUMBER: {
+    en: "Add the company's VAT number (BG followed by 9 or 10 digits) in Settings → Company.",
+    bg: 'Добавете ДДС номера на фирмата (BG и 9 или 10 цифри) в Настройки → Фирма.',
+  },
+  SETTINGS_VAT_NUMBER_INVALID: {
+    en: "The company's VAT number {{value}} is not valid. Correct it in Settings → Company.",
+    bg: 'ДДС номерът на фирмата {{value}} не е валиден. Поправете го в Настройки → Фирма.',
+  },
   SETTINGS_DECLARANT: { en: 'Add the person submitting the return (EGN or name).', bg: 'Добавете лицето, подаващо декларацията (ЕГН или име).' },
   PERIOD_FUTURE: { en: 'This period has not started yet.', bg: 'Този период още не е започнал.' },
   PERIOD_OPEN: { en: 'The period is not over yet; more documents may arrive.', bg: 'Периодът още не е приключил; може да има още документи.' },
@@ -151,6 +157,7 @@ export const VAT_ISSUE_TEXT: Record<string, Record<ReportLang, string>> = {
   UNPOSTED_DOCUMENTS: { en: 'Invoices and notes dated in this period that are not posted, so not in the ledger: {{count}}.', bg: 'Фактури и известия с дата в периода, които не са осчетоводени и не са в дневника: {{count}}.' },
   ZERO_VAT_EXCLUDED: { en: 'Posted invoices without VAT left out of the purchase ledger: {{count}}. Include them as "No credit" if the supplier is VAT-registered.', bg: 'Осчетоводени фактури без ДДС извън дневника за покупките: {{count}}. Включете ги като „Без право на кредит“, ако доставчикът е регистриран по ДДС.' },
   RECEIPTS_NOT_TAX_DOCUMENTS: { en: 'Receipt notes in this period: {{count}}. They are not tax documents; post the supplier invoice to claim the VAT.', bg: 'Стокови разписки в периода: {{count}}. Те не са данъчни документи; осчетоводете фактурата, за да ползвате данъчен кредит.' },
+  REVERSED_DOCUMENTS: { en: 'Reversed invoices and notes left out of the purchase ledger: {{count}}. A reversal is an internal correction, not a tax document.', bg: 'Сторнирани фактури и известия извън дневника за покупките: {{count}}. Сторното е вътрешна корекция, а не данъчен документ.' },
   LATE_DOCUMENT: { en: '{{document}} dated {{date}} was posted after {{period}} was filed. Move it into this period to claim the VAT.', bg: '{{document}} от {{date}} е осчетоводен след подаването за {{period}}. Преместете го в този период, за да ползвате данъчния кредит.' },
   ZERO_RATE_SALES: { en: 'Till sales at 0% ({{amount}}) are declared as exempt supplies (cell 19).', bg: 'Касовите продажби с 0 % ({{amount}}) се декларират като освободени доставки (клетка 19).' },
   CHANGED_SINCE_FILING: { en: 'The books changed after version {{version}} was generated. Generate a new version as a correction.', bg: 'Данните са променени след версия {{version}}. Генерирайте нова версия като корекция.' },
@@ -185,6 +192,7 @@ export function vatPeriodRange(period: string) {
 // ─── API shapes ─────────────────────────────────────────────────────────────
 
 export type VatSettingsRecord = {
+  /** From the company profile; edited in Settings → Company. */
   vatNumber: string | null;
   legalName: string | null;
   declarant: string | null;
@@ -194,7 +202,7 @@ export type VatSettingsRecord = {
   companyName: string;
 };
 
-export type VatSettingsInput = Omit<VatSettingsRecord, 'companyName'>;
+export type VatSettingsInput = Omit<VatSettingsRecord, 'companyName' | 'vatNumber'>;
 
 export type VatReturnInputs = {
   coefficient: number | null;

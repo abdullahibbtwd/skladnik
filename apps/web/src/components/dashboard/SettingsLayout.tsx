@@ -10,6 +10,13 @@ export const SettingsLayout: React.FC = () => {
 
   const tabs = [
     { to: '/app/settings', label: t('settingsNav.account'), end: true },
+    ...(permissions.companySettings
+      ? [
+          { to: '/app/settings/company', label: t('settingsNav.company'), end: false },
+          { to: '/app/settings/documents', label: t('settingsNav.documents'), end: false },
+          { to: '/app/settings/stock-rules', label: t('settingsNav.stockRules'), end: false },
+        ]
+      : []),
     { to: '/app/settings/sites', label: t('settingsNav.sites'), end: false },
     ...(permissions.users ? [{ to: '/app/settings/users', label: t('settingsNav.users'), end: false }] : []),
     ...(permissions.masterData
@@ -19,6 +26,7 @@ export const SettingsLayout: React.FC = () => {
           { to: '/app/settings/units', label: t('settingsNav.units'), end: false },
         ]
       : []),
+    ...(permissions.audit ? [{ to: '/app/settings/activity', label: t('settingsNav.activity'), end: false }] : []),
   ];
 
   return (

@@ -19,10 +19,18 @@ export type SaleRequestLine = {
 
 export type Allocation = { batchId: string | null; quantity: number; expired: boolean };
 
+export type StockShortfall = {
+  code: 'INSUFFICIENT_STOCK';
+  product: string;
+  available: number;
+  requested: number;
+  action: 'sell';
+};
+
 export type AllocationResult = {
   allocations: Allocation[];
   /** Set when the site can't cover the quantity; nothing should be sold then. */
-  shortfall: string | null;
+  shortfall: StockShortfall | null;
   /** One message per expired batch the allocation takes from. */
   expired: string[];
 };
@@ -32,6 +40,10 @@ const round3 = (value: number) => Math.round(value * 1000) / 1000;
 /** Expiring today is still sellable; the day after is not. */
 export function isExpiredOn(expiryDate: string | null, today: string) {
   return expiryDate !== null && expiryDate < today;
+}
+
+export function shortfallMessage(shortfall: StockShortfall) {
+  return `Not enough stock of ${shortfall.product}: ${shortfall.available} on hand, ${shortfall.requested} to sell`;
 }
 
 function byExpiry(a: SellableBatch, b: SellableBatch) {
@@ -56,8 +68,13 @@ function expiredMessage(productName: string, batch: SellableBatch) {
  */
 export function allocateSaleLine(line: SaleRequestLine, today: string): AllocationResult {
   const quantity = round3(line.quantity);
-  const short = (available: number, what: string) =>
-    `Not enough stock of ${what}: ${round3(Math.max(0, available))} on hand, ${quantity} to sell`;
+  const short = (available: number, product: string): StockShortfall => ({
+    code: 'INSUFFICIENT_STOCK',
+    product,
+    available: round3(Math.max(0, available)),
+    requested: quantity,
+    action: 'sell',
+  });
 
   if (!line.batchTracking) {
     if (quantity > round3(line.onHand)) return { allocations: [], shortfall: short(line.onHand, line.productName), expired: [] };

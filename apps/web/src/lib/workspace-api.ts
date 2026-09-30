@@ -1,5 +1,13 @@
 import type {
+  ActivityPage,
+  Annex38View,
+  EShopSettings,
+  CompanyProfile,
+  CompanySettingsRecord,
+  DocumentSeriesKey,
+  PrintTemplate,
   CaptureExtractionStatus,
+  DocumentPaymentMethod,
   DocumentStatus,
   DocumentType,
   ExportDateFormat,
@@ -16,6 +24,7 @@ import type {
   SiteType,
   StockDirection,
   UnitOfMeasure,
+  ContentUnit,
   UserRole,
   VatCredit,
   VatEntryInput,
@@ -25,8 +34,10 @@ import type {
   VatSettingsInput,
   VatSettingsRecord,
   ComplianceFilingRecord,
+  TotalsCheck,
   WriteOffReason,
 } from '@skladnik/shared';
+import i18n from '../i18n';
 import { refreshSession } from './auth-api';
 
 export type SiteRecord = {
@@ -37,6 +48,8 @@ export type SiteRecord = {
   isActive: boolean;
   deactivatedAt: string | null;
   manager: { id: string; name: string; email: string; isActive: boolean } | null;
+  /** Registered as an e-shop (Annex 38). */
+  eShop: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -88,7 +101,8 @@ export type PartnerRecord = {
   id: string;
   name: string;
   kind: PartnerKind;
-  taxId: string | null;
+  eik: string | null;
+  vatNumber: string | null;
   address: string | null;
   mol: string | null;
   phone: string | null;
@@ -104,8 +118,11 @@ export type ProductRecord = {
   code: string;
   unit: UnitOfMeasure;
   packSize: number;
+  netContent: number | null;
+  netContentUnit: ContentUnit | null;
   vatRate: number;
-  purchasePrice: number;
+  /** Omitted for Staff (CASHIER F-04). */
+  purchasePrice?: number;
   sellingPrice: number;
   minStock: number;
   maxStock: number | null;
@@ -136,6 +153,8 @@ export type ProductWriteInput = {
   groupId?: string | null;
   unit: UnitOfMeasure;
   packSize?: number;
+  netContent?: number | null;
+  netContentUnit?: ContentUnit | null;
   vatRate: number;
   purchasePrice: number;
   sellingPrice: number;
@@ -154,6 +173,8 @@ export const workspaceKeys = {
   invite: (token: string) => ['workspace', 'invite', token] as const,
   productGroups: ['workspace', 'product-groups'] as const,
   partners: ['workspace', 'partners'] as const,
+  partnerLookup: (filters?: { kind?: string; q?: string }) =>
+    ['workspace', 'partners', 'lookup', filters ?? {}] as const,
   products: (filters?: { groupId?: string; status?: string; q?: string }) =>
     ['workspace', 'products', filters ?? {}] as const,
   unitAliases: ['workspace', 'unit-aliases'] as const,
@@ -175,21 +196,44 @@ export const workspaceKeys = {
   archivePreview: (params: Record<string, unknown>) => ['workspace', 'reports', 'archive', params] as const,
   exportProfiles: ['workspace', 'export-profiles'] as const,
   vatSettings: ['workspace', 'vat', 'settings'] as const,
+  company: ['workspace', 'company'] as const,
+  activity: (filters: ActivityFilters) => ['workspace', 'activity', filters] as const,
   vatPeriod: (period: string) => ['workspace', 'vat', 'period', period] as const,
+};
+
+/** The document that already has this partner + type + number (409 DUPLICATE_DOCUMENT). */
+export type DuplicateDocumentRef = {
+  id: string;
+  number: string;
+  type: DocumentType;
+  status: DocumentStatus;
+  issuedOn: string;
+  partnerName: string | null;
 };
 
 /** Keeps the API's machine-readable `code` (e.g. EXPIRED_CONFIRM) and `warnings` next to the message. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
+  readonly params: Record<string, string | number | boolean | null>;
   readonly warnings: string[];
+  readonly existingDocument: DuplicateDocumentRef | null;
 
-  constructor(message: string, status: number, code: string | null, warnings: string[]) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null,
+    warnings: string[],
+    existingDocument: DuplicateDocumentRef | null = null,
+    params: Record<string, string | number | boolean | null> = {},
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.params = params;
     this.warnings = warnings;
+    this.existingDocument = existingDocument;
   }
 }
 
@@ -200,6 +244,32 @@ function errorMessage(payload: unknown, fallback: string) {
     if (Array.isArray(message)) return message.filter((item) => typeof item === 'string').join('. ');
   }
   return fallback;
+}
+
+function errorParams(payload: unknown): Record<string, string | number | boolean | null> {
+  if (!payload || typeof payload !== 'object' || !('params' in payload)) return {};
+  const raw = (payload as { params: unknown }).params;
+  if (!raw || typeof raw !== 'object') return {};
+  const result: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/** Prefer a localised string when the API returned a machine code the client knows. */
+function localisedErrorMessage(payload: unknown, fallback: string) {
+  const code =
+    payload && typeof payload === 'object' && typeof (payload as { code?: unknown }).code === 'string'
+      ? (payload as { code: string }).code
+      : null;
+  if (code) {
+    const key = `errors.${code}`;
+    if (i18n.exists(key)) return String(i18n.t(key, errorParams(payload)));
+  }
+  return errorMessage(payload, fallback);
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -218,27 +288,67 @@ const servedAt = (response: Response) => {
   return date && !Number.isNaN(Date.parse(date)) ? new Date(date).toISOString() : null;
 };
 
-async function requestWithResponse<T>(path: string, init?: RequestInit): Promise<{ payload: T; response: Response }> {
-  const { headers: initHeaders, ...rest } = init ?? {};
+async function requestWithResponse<T>(
+  path: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<{ payload: T; response: Response }> {
+  const { headers: initHeaders, timeoutMs = 30_000, signal: outerSignal, ...rest } = init ?? {};
   const isFormData = typeof FormData !== 'undefined' && rest.body instanceof FormData;
   const headers = new Headers(initHeaders);
   if (!isFormData && rest.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const send = () => fetch(path, { credentials: 'include', ...rest, headers });
-  let response = await send();
-  if (response.status === 401 && (await refreshSession())) response = await send();
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const body = payload as { code?: unknown; warnings?: unknown };
-    throw new ApiError(
-      errorMessage(payload, 'Something went wrong. Please try again.'),
-      response.status,
-      typeof body.code === 'string' ? body.code : null,
-      Array.isArray(body.warnings) ? body.warnings.filter((item): item is string => typeof item === 'string') : [],
-    );
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const onOuterAbort = () => controller.abort();
+  if (outerSignal) {
+    if (outerSignal.aborted) controller.abort();
+    else outerSignal.addEventListener('abort', onOuterAbort, { once: true });
   }
-  return { payload: payload as T, response };
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  const send = () => fetch(path, { credentials: 'include', ...rest, headers, signal: controller.signal });
+  try {
+    let response = await send();
+    if (response.status === 401 && (await refreshSession())) response = await send();
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const body = payload as { code?: unknown; warnings?: unknown; existingDocument?: unknown };
+      const existing = body.existingDocument;
+      throw new ApiError(
+        localisedErrorMessage(payload, 'Something went wrong. Please try again.'),
+        response.status,
+        typeof body.code === 'string' ? body.code : null,
+        Array.isArray(body.warnings) ? body.warnings.filter((item): item is string => typeof item === 'string') : [],
+        existing && typeof existing === 'object' && typeof (existing as { id?: unknown }).id === 'string'
+          ? (existing as DuplicateDocumentRef)
+          : null,
+        errorParams(payload),
+      );
+    }
+    return { payload: payload as T, response };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      if (timedOut) {
+        throw new ApiError(
+          localisedErrorMessage({ code: 'REQUEST_TIMEOUT' }, 'The request took too long. Please try again.'),
+          408,
+          'REQUEST_TIMEOUT',
+          [],
+        );
+      }
+      // Route change / query cancel — let React Query treat it as cancellation.
+      throw error;
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+    outerSignal?.removeEventListener('abort', onOuterAbort);
+  }
 }
 
 export function fetchSites(options?: { fresh?: boolean }) {
@@ -338,10 +448,22 @@ export function fetchPartners(kind?: PartnerKind) {
   return requestJson<{ partners: PartnerRecord[] }>(`/partners${query}`);
 }
 
+/** Id + name (+ kind) for document partner pickers; Staff-safe. */
+export type PartnerLookupItem = { id: string; name: string; kind: PartnerKind };
+
+export function fetchPartnerLookup(kind?: PartnerKind, q?: string) {
+  const params = new URLSearchParams();
+  if (kind) params.set('kind', kind);
+  if (q?.trim()) params.set('q', q.trim());
+  const query = params.toString();
+  return requestJson<{ partners: PartnerLookupItem[] }>(`/partners/lookup${query ? `?${query}` : ''}`);
+}
+
 export function createPartner(input: {
   name: string;
   kind: PartnerKind;
-  taxId?: string;
+  eik?: string;
+  vatNumber?: string;
   address?: string;
   mol?: string;
   phone?: string;
@@ -356,7 +478,8 @@ export function updatePartner(
   input: {
     name?: string;
     kind?: PartnerKind;
-    taxId?: string | null;
+    eik?: string | null;
+    vatNumber?: string | null;
     address?: string | null;
     mol?: string | null;
     phone?: string | null;
@@ -427,7 +550,7 @@ export type DocumentListItem = {
   documentNumber: string;
   issuedOn: string;
   writeOffReason: WriteOffReason | null;
-  partner: { id: string; name: string; kind: PartnerKind; taxId: string | null } | null;
+  partner: { id: string; name: string; kind: PartnerKind; eik: string | null; vatNumber: string | null } | null;
   site: { id: string; name: string; type: SiteType; isActive: boolean };
   /** Receiving site of a transfer. */
   targetSite: { id: string; name: string; type: SiteType; isActive: boolean } | null;
@@ -435,13 +558,46 @@ export type DocumentListItem = {
   captureCount: number;
   createdAt: string;
   postedAt: string | null;
+  /** Who opened the draft (Staff overview: my pending docs). */
+  createdBy?: { id: string; name: string } | null;
+  /** Set on a reversal: the posted document it undoes. */
+  reversalOf: { id: string; documentNumber: string; issuedOn: string } | null;
+  /** Set on a reversed document. */
+  reversedBy: { id: string; documentNumber: string; issuedOn: string; reason: string | null; by: string | null } | null;
+  /** Posted, not a reversal and not reversed yet. */
+  reversible: boolean;
+};
+
+export type ProductSuggestion = {
+  id: string;
+  name: string;
+  code: string;
+  unit: UnitOfMeasure;
+  vatRate: number;
+  batchTracking: boolean;
+  score: number;
+};
+
+export type CreateProductFromLineInput = {
+  name: string;
+  code?: string;
+  unit: UnitOfMeasure;
+  vatRate: number;
+  batchTracking?: boolean;
 };
 
 export type DocumentLineRecord = {
   id: string;
   position: number;
   sourceCaptureId: string | null;
-  printed: { description: string | null; supplierCode: string | null; unit: string | null };
+  printed: {
+    description: string | null;
+    supplierCode: string | null;
+    barcode: string | null;
+    unit: string | null;
+    /** The printed name without batch, expiry or codes. */
+    name: string | null;
+  };
   productId: string | null;
   product: {
     id: string;
@@ -452,11 +608,19 @@ export type DocumentLineRecord = {
     batchTracking: boolean;
     status: ProductStatus;
   } | null;
+  /** Likely catalog products for a line with no product (or one a scan made up), best first. */
+  suggestions: ProductSuggestion[];
   quantity: number;
-  unitPrice: number;
+  /** Omitted for Staff (CASHIER F-04). */
+  unitPrice?: number;
   discountPercent: number;
-  finalUnitPrice: number | null;
-  lineTotal: number | null;
+  /** Always quantity × price × (1 − discount), worked out by the server. */
+  finalUnitPrice?: number | null;
+  lineTotal?: number | null;
+  /** What OCR read as the line total, only for comparison. */
+  printedLineTotal: number | null;
+  /** The batch expires before the document date on a document that needs confirmation for it. */
+  expired: boolean;
   vatRate: number;
   unit: UnitOfMeasure | null;
   batchNumber: string | null;
@@ -496,6 +660,11 @@ export type DocumentCaptureRecord = {
 export type DocumentDetail = Omit<DocumentListItem, 'lineCount' | 'captureCount'> & {
   deliveryAddress: string | null;
   notes: string | null;
+  /** Who entered the document ("Съставил"). */
+  createdBy: { id: string; name: string } | null;
+  paymentMethod: DocumentPaymentMethod | null;
+  /** Printed vs calculated totals; null on internal documents. */
+  totals: TotalsCheck | null;
   extraction: {
     confidence: 'high' | 'medium' | 'low' | null;
     reading: boolean;
@@ -507,8 +676,26 @@ export type DocumentDetail = Omit<DocumentListItem, 'lineCount' | 'captureCount'
 
 export type DocumentDetailResponse = {
   document: DocumentDetail;
-  /** `confirmExpired` means posting needs `{ confirmExpired: true }` because of the warnings. */
-  posting: { ok: boolean; errors: string[]; warnings: string[]; confirmExpired: boolean };
+  /** `confirmExpired` / `confirmDate` mean posting needs that flag because of `expired` / `dateWarning`. */
+  posting: {
+    ok: boolean;
+    errors: string[];
+    warnings: string[];
+    expired: string[];
+    dateWarning: string | null;
+    confirmExpired: boolean;
+    confirmDate: boolean;
+    duplicateOf: DuplicateDocumentRef | null;
+  };
+};
+
+export type PostDocumentOptions = { confirmExpired?: boolean; confirmDate?: boolean };
+
+export type PrintedTotalsInput = {
+  printedTaxableBase?: number | null;
+  printedVatAmount?: number | null;
+  printedTotal?: number | null;
+  paymentMethod?: DocumentPaymentMethod | null;
 };
 
 export type DocumentWriteInput = {
@@ -516,7 +703,8 @@ export type DocumentWriteInput = {
   siteId: string;
   targetSiteId?: string;
   partnerId?: string;
-  documentNumber: string;
+  /** Left out for documents the company numbers itself; the server takes the next number of the series. */
+  documentNumber?: string;
   issuedOn: string;
   direction?: StockDirection;
   deliveryAddress?: string;
@@ -524,11 +712,12 @@ export type DocumentWriteInput = {
   writeOffReason?: WriteOffReason;
 };
 
-export type DocumentUpdateInput = Partial<Omit<DocumentWriteInput, 'partnerId' | 'writeOffReason' | 'targetSiteId'>> & {
-  partnerId?: string | null;
-  targetSiteId?: string | null;
-  writeOffReason?: WriteOffReason | null;
-};
+export type DocumentUpdateInput = Partial<Omit<DocumentWriteInput, 'partnerId' | 'writeOffReason' | 'targetSiteId'>> &
+  PrintedTotalsInput & {
+    partnerId?: string | null;
+    targetSiteId?: string | null;
+    writeOffReason?: WriteOffReason | null;
+  };
 
 export type DocumentLineWriteInput = {
   productId: string;
@@ -559,8 +748,8 @@ export function fetchDocuments(filters?: { status?: DocumentStatus; siteId?: str
   return requestJson<{ documents: DocumentListItem[] }>(`/documents${query ? `?${query}` : ''}`);
 }
 
-export function fetchDocument(id: string) {
-  return requestJson<DocumentDetailResponse>(`/documents/${id}`);
+export function fetchDocument(id: string, options?: { fresh?: boolean }) {
+  return requestJson<DocumentDetailResponse>(`/documents/${id}`, freshInit(options?.fresh));
 }
 
 export function createDocument(input: DocumentWriteInput) {
@@ -573,6 +762,13 @@ export function updateDocument(id: string, input: DocumentUpdateInput) {
 
 export function addDocumentLine(id: string, input: DocumentLineWriteInput) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/lines`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function createProductFromLine(id: string, lineId: string, input: CreateProductFromLineInput) {
+  return requestJson<DocumentDetailResponse>(`/documents/${id}/lines/${lineId}/create-product`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function updateDocumentLine(id: string, lineId: string, input: Partial<DocumentLineWriteInput>) {
@@ -590,7 +786,7 @@ export function submitDocument(id: string) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/submit-for-review`, { method: 'POST' });
 }
 
-export function postDocument(id: string, options: { confirmExpired?: boolean } = {}) {
+export function postDocument(id: string, options: PostDocumentOptions = {}) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/post`, {
     method: 'POST',
     body: JSON.stringify(options),
@@ -610,6 +806,13 @@ export function setStocktakeCounts(id: string, counts: { lineId: string; counted
 
 export function cancelDocument(id: string) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/cancel`, { method: 'POST' });
+}
+
+export type ReverseDocumentInput = { reason: string; confirmFiledPeriod?: boolean };
+
+/** Returns the new reversal document. */
+export function reverseDocument(id: string, input: ReverseDocumentInput) {
+  return requestJson<DocumentDetailResponse>(`/documents/${id}/reverse`, { method: 'POST', body: JSON.stringify(input) });
 }
 
 /** Creates the draft and stores the photo in one request; repeating it with the same clientRequestId returns the same document. */
@@ -658,14 +861,15 @@ export type StockLevel = {
   minStock: number;
   maxStock: number | null;
   batchTracking: boolean;
-  purchasePrice: number;
+  /** Omitted for Staff (CASHIER F-04). */
+  purchasePrice?: number;
   /** Shelf price per unit, VAT included. */
   sellingPrice: number;
   vatRate: number;
-  /** Weighted-average cost per unit at this site. */
-  avgCost: number | null;
-  /** On-hand value at cost (batches at their own cost). */
-  value: number;
+  /** Weighted-average cost per unit at this site. Omitted for Staff. */
+  avgCost?: number | null;
+  /** On-hand value at cost (batches at their own cost). Omitted for Staff. */
+  value?: number;
   onHand: number;
   status: StockLevelStatus;
   /** Quantity to order to get back to max (or 2× min); null when not below min. */
@@ -680,8 +884,9 @@ export type StockBatch = {
   batchNumber: string;
   expiryDate: string | null;
   onHand: number;
-  unitCost: number;
-  value: number;
+  /** Omitted for Staff (CASHIER F-04). */
+  unitCost?: number;
+  value?: number;
 };
 
 export async function fetchStock(siteId: string) {
@@ -736,14 +941,23 @@ export type ReorderLine = {
   minStock: number;
   maxStock: number | null;
   suggestedQty: number;
-  unitPrice: number;
-  lineTotal: number;
+  /** Omitted for Staff (CASHIER F-04). */
+  unitPrice?: number;
+  lineTotal?: number;
 };
 
 export type ReorderSupplier = {
-  partner: { id: string; name: string; phone: string | null; email: string | null; taxId: string | null } | null;
+  partner: {
+    id: string;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    eik?: string | null;
+    vatNumber?: string | null;
+  } | null;
   lines: ReorderLine[];
-  total: number;
+  /** Omitted for Staff (CASHIER F-04). */
+  total?: number;
 };
 
 export function fetchReorder(siteId: string) {
@@ -764,9 +978,12 @@ export type SaleItemInput = {
 export type SaleInput = {
   siteId: string;
   paymentMethod: PaymentMethod;
+  /** Card transaction reference, asked for at e-shop sites (Annex 38). */
+  paymentReference?: string;
   items: SaleItemInput[];
   clientRequestId: string;
   confirmExpired?: boolean;
+  confirmBelowCost?: boolean;
 };
 
 export type SaleLineRecord = {
@@ -790,6 +1007,7 @@ export type SaleRecord = {
   postedAt: string | null;
   businessDate: string;
   paymentMethod: PaymentMethod | null;
+  paymentReference: string | null;
   site: { id: string; name: string };
   cashier: { id: string; name: string } | null;
   note: string | null;
@@ -925,10 +1143,14 @@ export type RecipeIngredientRecord = {
   name: string;
   code: string;
   unit: UnitOfMeasure;
+  netContent: number | null;
+  netContentUnit: ContentUnit | null;
   status: ProductStatus;
-  /** Net quantity for the whole yield, in the ingredient's unit. */
+  /** Net quantity for the whole yield, in `quantityUnit` or the stock unit. */
   quantity: number;
+  quantityUnit: ContentUnit | null;
   wastagePercent: number;
+  /** Gross quantity in the product's stock unit (after wastage). */
   gross: number;
   unitCost: number;
   onHand: number;
@@ -946,7 +1168,7 @@ export type RecipeWriteInput = {
   yieldPortions: number;
   markupPercent: number;
   notes?: string | null;
-  ingredients: { productId: string; quantity: number; wastagePercent: number }[];
+  ingredients: { productId: string; quantity: number; quantityUnit?: ContentUnit | null; wastagePercent: number }[];
 };
 
 export type MenuDish = RecipeDish & {
@@ -1012,16 +1234,16 @@ function queryString(params: ReportParams) {
   return search.toString();
 }
 
-export function fetchReport(kind: ReportKind, params: ReportParams) {
-  return requestJson<ReportResult>(`/reports/${kind}?${queryString(params)}`);
+export function fetchReport(kind: ReportKind, params: ReportParams, init?: RequestInit) {
+  return requestJson<ReportResult>(`/reports/${kind}?${queryString(params)}`, init);
 }
 
 export function reportExportPath(kind: ReportKind, params: ReportParams & { format: 'csv' | 'xlsx'; profileId?: string }) {
   return `/reports/${kind}/export?${queryString(params)}`;
 }
 
-export function fetchArchivePreview(params: ReportParams) {
-  return requestJson<ArchivePreview>(`/reports/archive/preview?${queryString(params)}`);
+export function fetchArchivePreview(params: ReportParams, init?: RequestInit) {
+  return requestJson<ArchivePreview>(`/reports/archive/preview?${queryString(params)}`, init);
 }
 
 export function archivePath(params: ReportParams) {
@@ -1044,6 +1266,51 @@ export function deleteExportProfile(id: string) {
   return requestJson<{ ok: true }>(`/export-profiles/${id}`, { method: 'DELETE' });
 }
 
+export function fetchCompanySettings() {
+  return requestJson<CompanySettingsRecord>('/company');
+}
+
+export function saveCompanyProfile(input: CompanyProfile) {
+  return requestJson<CompanySettingsRecord>('/company/profile', { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function saveExpiryWindows(windows: number[]) {
+  return requestJson<CompanySettingsRecord>('/company/expiry-windows', { method: 'PUT', body: JSON.stringify({ windows }) });
+}
+
+export function savePrintTemplate(input: PrintTemplate) {
+  return requestJson<CompanySettingsRecord>('/company/print-template', { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function savePriceOverrideRoles(roles: UserRole[]) {
+  return requestJson<CompanySettingsRecord>('/company/price-override-roles', { method: 'PUT', body: JSON.stringify({ roles }) });
+}
+
+export function saveDocumentSeries(
+  key: DocumentSeriesKey,
+  input: { prefix: string; padding: number; nextNumber: number; resetYearly: boolean },
+) {
+  return requestJson<CompanySettingsRecord>(`/company/series/${key}`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export type ActivityFilters = {
+  userId?: string;
+  entityType?: string;
+  entityId?: string;
+  action?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+};
+
+export function fetchActivity(filters: ActivityFilters, cursor?: string | null) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+  if (cursor) params.set('cursor', cursor);
+  const query = params.toString();
+  return requestJson<ActivityPage>(`/activity${query ? `?${query}` : ''}`);
+}
+
 export function fetchVatSettings() {
   return requestJson<VatSettingsRecord>('/vat/settings');
 }
@@ -1052,8 +1319,8 @@ export function saveVatSettings(input: VatSettingsInput) {
   return requestJson<VatSettingsRecord>('/vat/settings', { method: 'PUT', body: JSON.stringify(input) });
 }
 
-export function fetchVatPeriod(period: string) {
-  return requestJson<VatPeriodView>(`/vat/periods/${period}`);
+export function fetchVatPeriod(period: string, init?: RequestInit) {
+  return requestJson<VatPeriodView>(`/vat/periods/${period}`, init);
 }
 
 export function saveVatReturnInputs(period: string, input: VatReturnInputs) {
@@ -1082,6 +1349,36 @@ export function markVatFilingSubmitted(id: string, input: { submissionRef: strin
 
 export function vatFilingDownloadPath(id: string) {
   return `/vat/filings/${id}/download`;
+}
+
+export type Annex38Site = { id: string; name: string; isActive: boolean; settings: EShopSettings | null };
+
+export function fetchAnnex38Sites() {
+  return requestJson<{ sites: Annex38Site[] }>('/annex38/sites');
+}
+
+export function saveEShopSettings(siteId: string, input: EShopSettings) {
+  return requestJson<{ siteId: string; settings: EShopSettings }>(`/annex38/sites/${siteId}`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+export function fetchAnnex38Period(siteId: string, period: string) {
+  return requestJson<Annex38View>(`/annex38/sites/${siteId}/periods/${period}`);
+}
+
+export function generateAnnex38(siteId: string, period: string) {
+  return requestJson<ComplianceFilingRecord>(`/annex38/sites/${siteId}/periods/${period}/filings`, { method: 'POST' });
+}
+
+export function fetchAnnex38Archive() {
+  return requestJson<{ filings: ComplianceFilingRecord[] }>('/annex38/filings');
+}
+
+export function markAnnex38Submitted(id: string, input: { submissionRef: string; submittedAt?: string }) {
+  return requestJson<ComplianceFilingRecord>(`/annex38/filings/${id}/submitted`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function annex38DownloadPath(id: string) {
+  return `/annex38/filings/${id}/download`;
 }
 
 export function vatExportPath(period: string, ledger: 'purchases' | 'sales' | 'return', lang: string) {

@@ -6,8 +6,13 @@ import {
 } from '@nestjs/common';
 import { UserRole, type User } from '@prisma/client';
 import { isCompanyWideRole, type AuthUser } from '@skladnik/shared';
+import { changes, recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+
+function userSnapshot(user: { role: string; isActive: boolean; sites: { site: { name: string } }[] }) {
+  return { role: user.role, isActive: user.isActive, sites: user.sites.map((row) => row.site.name).sort() };
+}
 
 @Injectable()
 export class UsersService {
@@ -75,16 +80,16 @@ export class UsersService {
       });
     });
 
-    await this.prisma.activityLog.create({
-      data: {
-        companyId: actor.companyId,
-        userId: actor.id,
+    const diff = changes(userSnapshot(target), userSnapshot(user));
+    if (diff) {
+      await recordActivity(this.prisma, actor, {
         entityType: 'User',
         entityId: user.id,
+        label: user.name || user.email,
         action: 'UPDATE',
-        metadata: { fields: Object.keys(dto) },
-      },
-    });
+        ...diff,
+      });
+    }
 
     return { user: this.serialize(user) };
   }

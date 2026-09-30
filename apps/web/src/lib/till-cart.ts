@@ -138,6 +138,7 @@ export function planCart(
         if ('available' in result) {
           return {
             ...plan,
+            total: round2(qty * unitPrice),
             problem: plan.problem ?? {
               kind: 'ingredientShort',
               name: stock?.name ?? '—',
@@ -154,7 +155,14 @@ export function planCart(
     }
 
     const result = allocate(level, qty, line.batchId);
-    if ('available' in result) return { ...plan, problem: plan.problem ?? { kind: 'short', available: result.available } };
+    if ('available' in result) {
+      // Keep the typed total visible so the cashier sees why the line is blocked (F-28).
+      return {
+        ...plan,
+        total: round2(qty * unitPrice),
+        problem: plan.problem ?? { kind: 'short', available: result.available },
+      };
+    }
     plan.takes = result.takes;
     plan.expired = plan.takes.some((row) => row.expired);
     plan.total = round2(plan.takes.reduce((sum, row) => sum + round2(row.qty * unitPrice), 0));

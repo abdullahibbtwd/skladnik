@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   VAT_CREDITS,
@@ -23,6 +24,7 @@ import {
 } from '@skladnik/shared';
 import { cn } from '../../lib/cn';
 import { useSaveVatEntry, useSaveVatSettings, useSetVatDocumentTreatment } from '../../lib/workspace-session';
+import { DateField } from '../ui/DateField';
 import { Select } from '../ui/Select';
 import { toast } from '../ui/Toaster';
 import { FilterField } from './report-ui';
@@ -74,7 +76,6 @@ function VatSettingsForm({ settings, onClose }: { settings: VatSettingsRecord; o
   const { t } = useTranslation();
   const save = useSaveVatSettings();
   const [form, setForm] = useState({
-    vatNumber: settings.vatNumber ?? '',
     legalName: settings.legalName ?? '',
     declarant: settings.declarant ?? '',
     branch: String(settings.branch),
@@ -90,7 +91,6 @@ function VatSettingsForm({ settings, onClose }: { settings: VatSettingsRecord; o
     event.preventDefault();
     try {
       await save.mutateAsync({
-        vatNumber: form.vatNumber.trim() || null,
         legalName: form.legalName.trim() || null,
         declarant: form.declarant.trim() || null,
         branch,
@@ -108,7 +108,12 @@ function VatSettingsForm({ settings, onClose }: { settings: VatSettingsRecord; o
     <form onSubmit={submit} className="flex flex-col gap-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <FilterField label={t('vat.settings.vatNumber')}>
-          <input value={form.vatNumber} onChange={(event) => set('vatNumber', event.target.value)} placeholder="BG123456789" maxLength={15} className={cn(inputClass, 'font-mono')} />
+          <p className="flex h-10 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-[0.84rem] text-ops-ink">
+            {settings.vatNumber ?? '—'}
+            <Link to="/app/settings/company" onClick={onClose} className="font-sans text-[0.74rem] text-ops-accent hover:underline">
+              {t('vat.settings.editInCompany')}
+            </Link>
+          </p>
         </FilterField>
         <FilterField label={t('vat.settings.legalName')}>
           <input value={form.legalName} onChange={(event) => set('legalName', event.target.value)} placeholder={settings.companyName} maxLength={50} className={inputClass} />
@@ -228,7 +233,7 @@ function VatEntryForm({ draft, lang, onClose }: { draft: EntryDraft; lang: Repor
           <input value={form.number} onChange={(event) => set('number', event.target.value)} maxLength={20} className={cn(inputClass, 'font-mono')} />
         </FilterField>
         <FilterField label={t('vat.cols.date')}>
-          <input type="date" value={form.issuedOn} onChange={(event) => set('issuedOn', event.target.value)} className={cn(inputClass, 'font-mono')} />
+          <DateField value={form.issuedOn} onChange={(value) => set('issuedOn', value)} className="w-full" />
         </FilterField>
         <FilterField label={t('vat.cols.partnerTaxId')}>
           <input value={form.partnerTaxId} onChange={(event) => set('partnerTaxId', event.target.value)} maxLength={20} className={cn(inputClass, 'font-mono')} />

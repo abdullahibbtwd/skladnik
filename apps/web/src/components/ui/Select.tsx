@@ -20,6 +20,12 @@ type SelectProps<T extends string> = {
   className?: string;
 };
 
+/** Leave room for the mobile dock + fixed action bars so menus open upward when needed. */
+function bottomReserve() {
+  if (typeof window === 'undefined') return 12;
+  return window.matchMedia('(max-width: 767px)').matches ? 120 : 12;
+}
+
 export function Select<T extends string>({
   id,
   value,
@@ -44,7 +50,7 @@ export function Select<T extends string>({
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
     const width = rect.width;
-    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const spaceBelow = window.innerHeight - rect.bottom - bottomReserve();
     const openUp = spaceBelow < 240 && rect.top > spaceBelow;
     setMenuStyle({
       position: 'fixed',

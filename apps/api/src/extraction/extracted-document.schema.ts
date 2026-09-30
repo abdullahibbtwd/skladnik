@@ -32,6 +32,7 @@ const requiredNumber = z.preprocess((value) => {
 
 export const ExtractedLineSchema = z.object({
   supplierCode: nullableString,
+  barcode: nullableString,
   ocrDescription: z.preprocess((value) => (typeof value === 'string' ? value : ''), z.string()),
   ocrUnit: nullableString,
   qty: requiredNumber,
@@ -43,6 +44,22 @@ export const ExtractedLineSchema = z.object({
   ocrBatchNumber: nullableString,
   ocrExpiryDate: nullableString,
 });
+
+const PAYMENT_WORDS: [RegExp, 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER'][] = [
+  [/(cash|в брой|наличн)/i, 'CASH'],
+  [/(bank|transfer|банк|превод|по сметка)/i, 'BANK_TRANSFER'],
+  [/(card|карт|\bpos\b)/i, 'CARD'],
+];
+
+/** The model is asked for the enum, but a printed phrase ("По банков път") sometimes comes back instead. */
+const paymentMethod = z.preprocess((value) => {
+  const cleaned = emptyToNull(value);
+  if (typeof cleaned !== 'string') return null;
+  const text = cleaned.trim();
+  const upper = text.toUpperCase().replace(/[\s-]+/g, '_');
+  if (upper === 'CASH' || upper === 'CARD' || upper === 'BANK_TRANSFER' || upper === 'OTHER') return upper;
+  return PAYMENT_WORDS.find(([pattern]) => pattern.test(text))?.[1] ?? 'OTHER';
+}, z.enum(['CASH', 'CARD', 'BANK_TRANSFER', 'OTHER']).nullable());
 
 export const ExtractedDocumentSchema = z.object({
   documentNumber: nullableString,
@@ -65,7 +82,10 @@ export const ExtractedDocumentSchema = z.object({
   }).default({ name: null, taxId: null, address: null }),
   deliveryAddress: nullableString,
   lines: z.array(ExtractedLineSchema).default([]),
+  taxableBase: nullableNumber,
+  vatAmount: nullableNumber,
   grossTotal: nullableNumber,
+  paymentMethod,
   confidence: z.enum(['high', 'medium', 'low']).default('medium'),
 });
 

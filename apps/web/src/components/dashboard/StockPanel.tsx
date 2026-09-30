@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/cn';
 import type { StockLevel, StockLevelStatus } from '../../lib/workspace-api';
 import { formatBusinessDateTime } from '../../lib/business-date';
+import { formatDate, formatQty } from '../../lib/format';
 import { usePermissions } from '../../lib/permissions';
 import { FRESH_DATA_MS } from '../../lib/pwa-constants';
 import { useSiteChoices, useStockQuery } from '../../lib/workspace-session';
@@ -30,7 +31,7 @@ export const StockPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { siteId, onScan } = useDashboard();
-  const { createDocuments } = usePermissions();
+  const { createDocuments, openingStock, stockOps, seeFinancials } = usePermissions();
   const { sites } = useSiteChoices();
   const stockQuery = useStockQuery(siteId);
   const [search, setSearch] = useState('');
@@ -50,13 +51,7 @@ export const StockPanel: React.FC = () => {
   );
   const query = search.trim();
   const visible = items.filter((item) => (filter === 'ALL' || item.status === filter) && matches(item, query));
-  const totalValue = visible.reduce((sum, item) => sum + item.value, 0);
-
-  const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
-  const dateFormat = useMemo(
-    () => new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short' }),
-    [i18n.language],
-  );
+  const totalValue = visible.reduce((sum, item) => sum + (item.value ?? 0), 0);
 
   const filters: { id: Filter; label: string }[] = [
     { id: 'ALL', label: t('stock.all') },
@@ -65,11 +60,11 @@ export const StockPanel: React.FC = () => {
   ];
 
   const actions = [
-    { to: '/app/transfer', label: t('app.transfer'), icon: ArrowLeftRight, requiresWrite: true },
-    { to: '/app/stocktake', label: t('app.stocktake'), icon: ClipboardCheck, requiresWrite: true },
-    { to: '/app/reorder', label: t('app.reorder'), icon: ShoppingBasket, requiresWrite: false },
-    { to: '/app/opening-stock', label: t('app.openingStock'), icon: PackageOpen, requiresWrite: true },
-  ].filter((action) => createDocuments || !action.requiresWrite);
+    { to: '/app/transfer', label: t('app.transfer'), icon: ArrowLeftRight, show: stockOps },
+    { to: '/app/stocktake', label: t('app.stocktake'), icon: ClipboardCheck, show: stockOps },
+    { to: '/app/reorder', label: t('app.reorder'), icon: ShoppingBasket, show: true },
+    { to: '/app/opening-stock', label: t('app.openingStock'), icon: PackageOpen, show: openingStock },
+  ].filter((action) => action.show);
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
@@ -144,7 +139,9 @@ export const StockPanel: React.FC = () => {
         title={t('stock.onHand')}
         action={
           <LiveBadge>
-            {t('stock.products', { count: visible.length })} · {formatEuro(totalValue)}
+            {seeFinancials
+              ? `${t('stock.products', { count: visible.length })} · ${formatEuro(totalValue)}`
+              : t('stock.products', { count: visible.length })}
           </LiveBadge>
         }
       >
@@ -160,8 +157,13 @@ export const StockPanel: React.FC = () => {
             {createDocuments && (
               <div className="flex flex-wrap gap-2">
                 <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
-                <ActionButton icon={PackageOpen} label={t('app.openingStock')} onClick={() => navigate('/app/opening-stock')} />
+                {openingStock && (
+                  <ActionButton icon={PackageOpen} label={t('app.openingStock')} onClick={() => navigate('/app/opening-stock')} />
+                )}
               </div>
+            )}
+            {!createDocuments && openingStock && (
+              <ActionButton icon={PackageOpen} label={t('app.openingStock')} onClick={() => navigate('/app/opening-stock')} />
             )}
           </div>
         ) : visible.length === 0 ? (
@@ -180,7 +182,7 @@ export const StockPanel: React.FC = () => {
                     <p className="mt-0.5 truncate font-mono text-[0.68rem] text-slate-400">
                       {item.code}
                       {item.lastMovementAt
-                        ? ` · ${t('stock.lastMoved', { date: dateFormat.format(new Date(item.lastMovementAt)) })}`
+                        ? ` · ${t('stock.lastMoved', { date: formatDate(item.lastMovementAt.slice(0, 10), i18n.language) })}`
                         : ''}
                     </p>
                     {item.status === 'OUT' && (
@@ -188,7 +190,7 @@ export const StockPanel: React.FC = () => {
                     )}
                     {item.status === 'LOW' && (
                       <p className="mt-1 font-display text-[0.7rem] font-medium text-ops-warn">
-                        {t('stock.belowMin', { min: qtyFormat.format(item.minStock) })}
+                        {t('stock.belowMin', { min: formatQty(item.minStock, i18n.language) })}
                       </p>
                     )}
                     {item.batches.length > 0 && (
@@ -200,7 +202,7 @@ export const StockPanel: React.FC = () => {
                           >
                             {batch.expiryDate && <DaysPill days={daysUntil(batch.expiryDate)} />}
                             <span>{batch.batchNumber}</span>
-                            <span className="text-ops-ink">{qtyFormat.format(batch.onHand)}</span>
+                            <span className="text-ops-ink">{formatQty(batch.onHand, i18n.language)}</span>
                           </li>
                         ))}
                         {item.batches.length > BATCHES_SHOWN && (
@@ -219,10 +221,12 @@ export const StockPanel: React.FC = () => {
                           item.status === 'OUT' ? 'text-ops-danger' : item.status === 'LOW' ? 'text-ops-warn' : 'text-ops-ink',
                         )}
                       >
-                        {qtyFormat.format(item.onHand)}
+                        {formatQty(item.onHand, i18n.language)}
                       </p>
                       <p className="mt-1 font-sans text-[0.72rem] text-slate-400">{t(`labels.unit.${item.unit}`)}</p>
-                      {item.value > 0 && <p className="font-mono text-[0.68rem] text-slate-500">{formatEuro(item.value)}</p>}
+                      {seeFinancials && (item.value ?? 0) > 0 && (
+                        <p className="font-mono text-[0.68rem] text-slate-500">{formatEuro(item.value ?? 0)}</p>
+                      )}
                     </div>
                     <ChevronRight size={16} className="text-slate-300" />
                   </div>

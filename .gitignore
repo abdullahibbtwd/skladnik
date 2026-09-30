@@ -12,6 +12,8 @@ coverage
 apps/web/dist
 packages/shared/dist
 *.tsbuildinfo
+# Scratch output (invoice photos, benchmark results)
+.tmp-*/
 
 # Personal work log — not for the repo
 PROGRESS.txt

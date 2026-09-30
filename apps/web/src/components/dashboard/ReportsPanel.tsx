@@ -48,11 +48,13 @@ import {
   type ReportRow,
 } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
+import { usePermissions } from '../../lib/permissions';
 import { businessToday, formatBusinessDateTime, shiftDate } from '../../lib/business-date';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
 import { documentPath, downloadFile, reportExportPath, type ReportParams } from '../../lib/workspace-api';
 import { useExportProfilesQuery, useReportQuery } from '../../lib/workspace-session';
+import { DateField } from '../ui/DateField';
 import { Select } from '../ui/Select';
 import { toast } from '../ui/Toaster';
 import { CatalogProductSearch } from './CatalogProductSearch';
@@ -119,6 +121,7 @@ function HubCard({ to, icon: IconComponent, title, description }: { to: string; 
 export const ReportsHubPanel: React.FC = () => {
   const { t } = useTranslation();
   const role = useAuthRole();
+  const permissions = usePermissions();
   if (!isSalesManager(role)) return <ManagersOnly />;
   return (
     <div className="flex flex-col gap-5">
@@ -132,9 +135,13 @@ export const ReportsHubPanel: React.FC = () => {
             ))}
             {section.key === 'accounting' && (
               <>
-                {(role === 'OWNER' || role === 'ACCOUNTANT') && <HubCard to="/app/vat" icon={Landmark} title={t('vat.title')} description={t('vat.hubDesc')} />}
-                <HubCard to="/app/reports/archive" icon={FileArchive} title={t('reports.archive.title')} description={t('reports.archive.desc')} />
-                <HubCard to="/app/reports/layouts" icon={SlidersHorizontal} title={t('reports.layouts.title')} description={t('reports.layouts.desc')} />
+                {permissions.vat && <HubCard to="/app/vat" icon={Landmark} title={t('vat.title')} description={t('vat.hubDesc')} />}
+                {permissions.documentArchive && (
+                  <HubCard to="/app/reports/archive" icon={FileArchive} title={t('reports.archive.title')} description={t('reports.archive.desc')} />
+                )}
+                {permissions.editLayouts && (
+                  <HubCard to="/app/reports/layouts" icon={SlidersHorizontal} title={t('reports.layouts.title')} description={t('reports.layouts.desc')} />
+                )}
               </>
             )}
           </div>
@@ -275,12 +282,11 @@ function ReportView({ kind }: { kind: ReportKind }) {
             )}
             {mode === 'date' && (
               <FilterField label={t('reports.asOf')}>
-                <input
-                  type="date"
+                <DateField
                   value={asOf}
                   max={today}
-                  onChange={(event) => setAsOf(event.target.value || today)}
-                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-mono text-[0.84rem] text-ops-ink outline-none focus:border-ops-teal/50"
+                  onChange={(value) => setAsOf(value || today)}
+                  className="w-40"
                 />
               </FilterField>
             )}
@@ -387,7 +393,18 @@ function ReportView({ kind }: { kind: ReportKind }) {
           )}
 
           {!validRange && <p className="font-sans text-[0.78rem] text-ops-danger">{t('reports.badRange')}</p>}
-          {reportQuery.isError && <p className="font-sans text-[0.78rem] text-ops-danger">{reportQuery.error.message}</p>}
+          {reportQuery.isError && (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-sans text-[0.78rem] text-ops-danger">{reportQuery.error.message}</p>
+              <button
+                type="button"
+                onClick={() => void reportQuery.refetch()}
+                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-display text-[0.72rem] font-medium text-ops-ink hover:border-ops-accent/40"
+              >
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
             <FilterField label={t('reports.layout')} className="sm:w-72">

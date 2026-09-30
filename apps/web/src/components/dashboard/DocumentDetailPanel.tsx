@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Camera, CheckCircle2, LifeBuoy, Loader2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Camera, CheckCircle2, LifeBuoy, Loader2, Printer, RotateCw, TriangleAlert } from 'lucide-react';
 import {
   PAPER_DOCUMENT_TYPES,
   WRITE_OFF_REASONS,
@@ -11,18 +11,21 @@ import {
   type WriteOffReason,
 } from '@skladnik/shared';
 import { useTranslation } from 'react-i18next';
-import { useAuthRole } from '../../lib/auth-store';
+import { useAuthRole, useRequiredUser } from '../../lib/auth-store';
 import { cn } from '../../lib/cn';
 import { useConnectivity } from '../../lib/connectivity';
 import { formatEuro } from '../../lib/dashboard-data';
 import { ocrFailureCopy } from '../../lib/ocr-failure';
-import { workspaceKeys } from '../../lib/workspace-api';
+import { usePermissions } from '../../lib/permissions';
+import { ApiError, workspaceKeys, type DuplicateDocumentRef, type PrintedTotalsInput } from '../../lib/workspace-api';
 import {
   useAddDocumentLine,
   useCancelDocument,
+  useConfirmPendingProduct,
+  useCreateProductFromLine,
   useDeleteDocumentLine,
   useDocumentQuery,
-  usePartnersQuery,
+  usePartnerLookupQuery,
   usePostDocument,
   useRetryDocumentExtraction,
   useSitesQuery,
@@ -33,6 +36,7 @@ import {
   useUploadDocumentCapture,
 } from '../../lib/workspace-session';
 import { FieldError, FieldLabel } from '../PasswordField';
+import { DateField } from '../ui/DateField';
 import { confirm } from '../ui/Dialog';
 import { Select } from '../ui/Select';
 import { toast } from '../ui/Toaster';
@@ -40,6 +44,11 @@ import { CameraCapture } from './CameraCapture';
 import { ActionButton, GhostButton, GlassPanel, LiveBadge, PageHeader, StatusPill, glassClass } from './dashboard-ui';
 import { DocumentLines, LineForm, lineIssues } from './DocumentLines';
 import { DocumentPhotoViewer } from './DocumentPhotoViewer';
+import { DocumentPrintView } from './DocumentPrintView';
+import { ReversalNotice, ReversePanel } from './DocumentReversal';
+import { DocumentTotalsPanel } from './DocumentTotalsPanel';
+import { DateSanityHint, DuplicateNotice } from './document-checks-ui';
+import { InlineCreateSupplier } from './InlineCreateSupplier';
 
 const fieldClass =
   'w-full rounded-lg border border-slate-200 bg-ops-canvas px-3 py-[0.65rem] font-sans text-[0.88rem] text-ops-ink outline-none placeholder:text-slate-400 focus:border-ops-teal/50 focus:bg-white focus:ring-1 focus:ring-ops-teal/30 disabled:opacity-60';
@@ -48,21 +57,60 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Past this, the reading panel says it is taking longer than usual (the page keeps checking). */
+const READING_SLOW_MS = 45_000;
+/** Past this while still "reading", offer retry — the job may be stuck or the server unreachable. */
+const READING_TIMEOUT_MS = 180_000;
+
+function useReadingWait(reading: boolean) {
+  const [slow, setSlow] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    setTimedOut(false);
+    if (!reading) return;
+    const slowTimer = window.setTimeout(() => setSlow(true), READING_SLOW_MS);
+    const giveUpTimer = window.setTimeout(() => setTimedOut(true), READING_TIMEOUT_MS);
+    return () => {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(giveUpTimer);
+    };
+  }, [reading]);
+  return { slow, timedOut };
+}
+
 export const DocumentDetailPanel: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  const user = useRequiredUser();
+  const { seeFinancials } = usePermissions();
+  const isManager = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
   const detailQuery = useDocumentQuery(id);
   const reachable = useConnectivity((state) => state.reachable);
   const document = detailQuery.data?.document;
   const posting = detailQuery.data?.posting;
   const writable = document?.status === 'DRAFT' || document?.status === 'REVIEW';
+  /** Staff may edit only their own drafts until submitted (CASHIER F-01). */
+  const ownStaffDraft =
+    role === 'STAFF' && document?.status === 'DRAFT' && document.createdBy?.id === user.id;
+  const canWrite = isManager || ownStaffDraft;
+  /** Staff posts write-offs only; paper receipts stay for manager review. */
+  const canPost =
+    isManager ||
+    (role === 'STAFF' &&
+      document?.type === 'WRITE_OFF' &&
+      document.createdBy?.id === user.id &&
+      (document.status === 'DRAFT' || document.status === 'REVIEW'));
+  const canCancel = isManager;
+  const canReverse = isManager;
   const updateDocument = useUpdateDocument(id ?? '');
   const addLine = useAddDocumentLine(id ?? '');
   const updateLine = useUpdateDocumentLine(id ?? '');
   const deleteLine = useDeleteDocumentLine(id ?? '');
+  const createProduct = useCreateProductFromLine(id ?? '');
+  const confirmProduct = useConfirmPendingProduct(id ?? '');
   const submitDocument = useSubmitDocument(id ?? '');
   const postDocument = usePostDocument(id ?? '');
   const cancelDocument = useCancelDocument(id ?? '');
@@ -71,7 +119,7 @@ export const DocumentDetailPanel: React.FC = () => {
   const queryClient = useQueryClient();
   const captureStatusRef = useRef<Record<string, string>>({});
   const sitesQuery = useSitesQuery();
-  const partnersQuery = usePartnersQuery();
+  const partnersQuery = usePartnerLookupQuery();
   const targetsQuery = useTransferTargetsQuery();
   const sites = (sitesQuery.data?.sites ?? []).filter((site) => site.isActive);
   const partners = partnersQuery.data?.partners ?? [];
@@ -80,6 +128,7 @@ export const DocumentDetailPanel: React.FC = () => {
   const [activeCaptureId, setActiveCaptureId] = useState<string | null>(null);
 
   const [headerError, setHeaderError] = useState<string | null>(null);
+  const [headerDuplicate, setHeaderDuplicate] = useState<DuplicateDocumentRef | null>(null);
   const [manualAdd, setManualAdd] = useState(false);
   const [header, setHeader] = useState({
     type: 'INVOICE' as DocumentType,
@@ -118,6 +167,7 @@ export const DocumentDetailPanel: React.FC = () => {
           toast.success(t('doc.invoiceRead'), t('doc.invoiceReadHint', { confidence: capture.confidence ?? 'medium' }));
           queryClient.invalidateQueries({ queryKey: ['workspace', 'products'] });
           queryClient.invalidateQueries({ queryKey: workspaceKeys.partners });
+          queryClient.invalidateQueries({ queryKey: ['workspace', 'partners', 'lookup'] });
         }
         if (capture.extractionStatus === 'FAILED') {
           const copy = ocrFailureCopy(capture.extractionError);
@@ -132,6 +182,8 @@ export const DocumentDetailPanel: React.FC = () => {
     setSelectedLineId(null);
     setActiveCaptureId(null);
   }, [id]);
+
+  const { slow: readingSlow, timedOut: readingTimedOut } = useReadingWait(Boolean(document?.extraction?.reading));
 
   const notSavedOffline = !document && !reachable && detailQuery.failureCount > 0;
   if (detailQuery.isPending && !notSavedOffline) {
@@ -158,11 +210,19 @@ export const DocumentDetailPanel: React.FC = () => {
   const ocrError = !reading && failedCapture ? ocrFailureCopy(failedCapture.extractionError) : null;
   const hasLines = lines.length > 0;
   const hasCaptures = document.captures.length > 0;
-  const isWriteOff = document.writeOffReason !== null;
+  const isWriteOff = document.type === 'WRITE_OFF';
   const stockOperation = isStockOperationType(document.type);
   const isTransfer = document.type === 'TRANSFER';
   const evidenceOnly = isWriteOff || stockOperation;
-  const warnings = posting?.warnings ?? [];
+  // Mirrors the API's expiryGuarded(): write-offs, supplier returns and opening stock may carry expired batches.
+  const expiryGuardDate =
+    !isWriteOff &&
+    document.type !== 'OPENING_BALANCE' &&
+    (document.direction === 'IN' || document.type === 'TRANSFER' || document.type === 'PROTOCOL')
+      ? document.issuedOn
+      : undefined;
+  const expiredWarnings = posting?.expired ?? [];
+  const dateWarning = posting?.dateWarning ?? null;
   const linesToFix = lines.filter((line) => lineIssues(line).length > 0).length;
   const busy = submitDocument.isPending || postDocument.isPending;
   const selectedIndex = lines.findIndex((line) => line.id === selectedLineId);
@@ -184,6 +244,7 @@ export const DocumentDetailPanel: React.FC = () => {
     event.preventDefault();
     if (!writable) return;
     setHeaderError(null);
+    setHeaderDuplicate(null);
     try {
       await updateDocument.mutateAsync({
         siteId: header.siteId,
@@ -192,17 +253,28 @@ export const DocumentDetailPanel: React.FC = () => {
         ...(stockOperation
           ? isTransfer
             ? { targetSiteId: header.targetSiteId || null }
-            : {}
+            : isWriteOff && header.writeOffReason
+              ? { writeOffReason: header.writeOffReason }
+              : {}
           : {
               type: header.type,
               partnerId: header.partnerId || null,
               direction: defaultStockDirection(header.type),
-              writeOffReason: header.type === 'PROTOCOL' ? header.writeOffReason || null : null,
             }),
       });
       toast.success(t('doc.headerSaved'));
     } catch (err) {
       setHeaderError(err instanceof Error ? err.message : t('doc.saveHeaderFailed'));
+      setHeaderDuplicate(err instanceof ApiError ? err.existingDocument : null);
+    }
+  };
+
+  const saveTotals = async (input: PrintedTotalsInput) => {
+    try {
+      await updateDocument.mutateAsync(input);
+      toast.success(t('doc.totals.saved'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('doc.saveHeaderFailed'));
     }
   };
 
@@ -217,30 +289,40 @@ export const DocumentDetailPanel: React.FC = () => {
 
   const runPost = async () => {
     const confirmExpired = Boolean(posting?.confirmExpired);
+    const confirmDate = Boolean(posting?.confirmDate);
+    const needsConfirmation = confirmExpired || confirmDate;
     const summary = isTransfer
       ? t('doc.postTransferSummary', {
           count: lines.length,
-          total: formatEuro(lineTotal),
+          total: seeFinancials ? formatEuro(lineTotal) : '—',
           from: document.site.name,
           to: document.targetSite?.name ?? '—',
         })
       : t('doc.postSummary', {
           count: lines.length,
-          total: formatEuro(lineTotal),
+          total: seeFinancials ? formatEuro(lineTotal) : '—',
           site: document.site.name,
           direction: document.direction === 'IN' ? t('labels.stockIn') : t('labels.stockOut'),
         });
     const ok = await confirm({
-      title: confirmExpired ? t('doc.postExpiredTitle', { count: warnings.length }) : t('doc.postTitle'),
-      description: [confirmExpired ? warnings.join('. ') + '.' : '', summary, t('doc.postBody')].filter(Boolean).join(' '),
-      confirmLabel: confirmExpired ? t('doc.postExpiredConfirm') : t('doc.postNow'),
-      danger: confirmExpired,
+      title: confirmExpired
+        ? t('doc.postExpiredTitle', { count: expiredWarnings.length })
+        : confirmDate
+          ? t('doc.postDateTitle')
+          : t('doc.postTitle'),
+      details: needsConfirmation ? [...expiredWarnings, ...(dateWarning ? [dateWarning] : [])] : undefined,
+      description: [summary, t('doc.postBody')].join(' '),
+      acknowledgeLabel: needsConfirmation
+        ? [confirmExpired ? t('doc.acknowledgeExpired') : '', confirmDate ? t('doc.acknowledgeDate') : ''].filter(Boolean).join(' ')
+        : undefined,
+      confirmLabel: confirmExpired ? t('doc.postExpiredConfirm') : confirmDate ? t('doc.postDateConfirm') : t('doc.postNow'),
+      danger: needsConfirmation,
     });
     if (!ok) return;
     try {
       // Walks DRAFT → REVIEW → POSTED so the activity log keeps both transitions.
       if (document.status === 'DRAFT') await submitDocument.mutateAsync();
-      await postDocument.mutateAsync({ confirmExpired });
+      await postDocument.mutateAsync({ confirmExpired, confirmDate });
       toast.success(t('doc.postedToStock'));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('doc.postFailed'));
@@ -252,6 +334,7 @@ export const DocumentDetailPanel: React.FC = () => {
       title: t('doc.cancelTitle'),
       description: t('doc.cancelBody'),
       confirmLabel: t('doc.cancelConfirm'),
+      cancelLabel: t('common.back'),
       danger: true,
     });
     if (!ok) return;
@@ -293,9 +376,11 @@ export const DocumentDetailPanel: React.FC = () => {
     }
   };
 
-  const postStatus = reading
+  const postStatus = reading && !readingTimedOut
     ? t('doc.reading')
-    : !hasLines
+    : readingTimedOut
+      ? t('doc.readingTimeout')
+      : !hasLines
       ? t('doc.addLineFirst')
       : linesToFix > 0
         ? t('doc.linesToFix', { count: linesToFix })
@@ -306,11 +391,13 @@ export const DocumentDetailPanel: React.FC = () => {
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
       <PageHeader
-        eyebrow={
-          document.writeOffReason
-            ? `${t('writeOff.eyebrow')} · ${t(`labels.writeOffReason.${document.writeOffReason}`)}`
-            : t(`labels.documentType.${document.type}`)
-        }
+        eyebrow={[
+          document.reversalOf ? t('reversal.eyebrow') : null,
+          t(`labels.documentType.${document.type}`),
+          isWriteOff && document.writeOffReason ? t(`labels.writeOffReason.${document.writeOffReason}`) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
         title={document.documentNumber}
         description={
           isTransfer
@@ -321,7 +408,12 @@ export const DocumentDetailPanel: React.FC = () => {
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill status={document.status} />
+            <StatusPill status={document.reversedBy ? 'REVERSED' : document.status} />
+            <GhostButton onClick={() => window.print()}>
+              <span className="inline-flex items-center gap-1">
+                <Printer size={13} /> {t('print.print')}
+              </span>
+            </GhostButton>
             <GhostButton onClick={() => navigate('/app/invoices')}>
               <span className="inline-flex items-center gap-1">
                 <ArrowLeft size={13} /> {t('doc.list')}
@@ -330,6 +422,8 @@ export const DocumentDetailPanel: React.FC = () => {
           </div>
         }
       />
+
+      <ReversalNotice document={document} />
 
       {document.extraction?.confidence === 'low' && !reading && hasLines && (
         <div className="rounded-xl border border-ops-warn/25 bg-orange-50 px-4 py-3">
@@ -346,6 +440,17 @@ export const DocumentDetailPanel: React.FC = () => {
               <p className="font-display text-[0.82rem] font-semibold text-ops-danger">{ocrError.title}</p>
               <p className="mt-1 font-sans text-[0.78rem] text-rose-800">{ocrError.what}</p>
               <p className="mt-1 font-sans text-[0.76rem] text-rose-700">{ocrError.action}</p>
+              {editable && !evidenceOnly && ocrError.retryable && failedCapture && (
+                <button
+                  type="button"
+                  disabled={retryExtraction.isPending}
+                  onClick={() => void retryCapture(failedCapture.id)}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ops-danger px-3 py-1.5 font-display text-[0.76rem] font-medium text-white disabled:opacity-60"
+                >
+                  {retryExtraction.isPending ? <Loader2 size={13} className="animate-spin" /> : <RotateCw size={13} />}
+                  {t('doc.retry')}
+                </button>
+              )}
               {ocrError.contactSupport && (
                 <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-ops-danger/20 bg-white px-2.5 py-1.5 font-display text-[0.74rem] font-medium text-ops-danger">
                   <LifeBuoy size={13} />
@@ -357,9 +462,9 @@ export const DocumentDetailPanel: React.FC = () => {
         </div>
       )}
 
-      <div className={cn('grid gap-5 sm:gap-6', hasCaptures && 'lg:grid-cols-2 lg:items-start')}>
+      <div className={cn('grid gap-5 sm:gap-6', hasCaptures && 'md:grid-cols-2 md:items-start')}>
         {hasCaptures && (
-          <aside className="sticky top-16 z-20 max-lg:bg-ops-canvas max-lg:pt-2 lg:top-20 lg:h-[calc(100dvh-6.5rem)]">
+          <aside className="sticky top-16 z-20 max-md:bg-ops-canvas max-md:pt-2 md:top-20 md:h-[calc(100dvh-6.5rem)]">
             <DocumentPhotoViewer
               documentId={document.id}
               captures={document.captures}
@@ -399,7 +504,7 @@ export const DocumentDetailPanel: React.FC = () => {
           )}
 
           <GlassPanel title={t('doc.header')}>
-            <form className={cn('grid gap-3 sm:grid-cols-2', !hasCaptures && 'lg:grid-cols-3')} onSubmit={saveHeader}>
+            <form className={cn('grid gap-3 sm:grid-cols-2', !hasCaptures && 'md:grid-cols-3')} onSubmit={saveHeader}>
               <div>
                 <FieldLabel htmlFor="hdr-type">{t('doc.type')}</FieldLabel>
                 <Select<DocumentType>
@@ -446,11 +551,23 @@ export const DocumentDetailPanel: React.FC = () => {
                       value={header.partnerId}
                       onChange={(value) => setHeader((prev) => ({ ...prev, partnerId: value }))}
                       options={[
-                        { value: '', label: t('labels.noPartner') },
+                        {
+                          value: '',
+                          label:
+                            header.type === 'INVOICE' || header.type === 'CREDIT_NOTE'
+                              ? t('doc.partnerRequired')
+                              : t('labels.noPartner'),
+                        },
                         ...partners.map((partner) => ({ value: partner.id, label: partner.name })),
                       ]}
                       disabled={!editable}
                     />
+                    {editable && seeFinancials && (header.type === 'INVOICE' || header.type === 'CREDIT_NOTE') && (
+                      <InlineCreateSupplier
+                        disabled={updateDocument.isPending}
+                        onCreated={(partnerId) => setHeader((prev) => ({ ...prev, partnerId }))}
+                      />
+                    )}
                   </div>
                 )
               )}
@@ -466,26 +583,23 @@ export const DocumentDetailPanel: React.FC = () => {
               </div>
               <div>
                 <FieldLabel htmlFor="hdr-date">{t('doc.issuedOn')}</FieldLabel>
-                <input
+                <DateField
                   id="hdr-date"
-                  type="date"
                   value={header.issuedOn}
-                  onChange={(event) => setHeader((prev) => ({ ...prev, issuedOn: event.target.value }))}
+                  onChange={(value) => setHeader((prev) => ({ ...prev, issuedOn: value }))}
                   disabled={!editable}
-                  className={fieldClass}
+                  className="w-full"
                 />
+                {writable && <DateSanityHint issuedOn={header.issuedOn} type={header.type} />}
               </div>
-              {header.type === 'PROTOCOL' && (
+              {isWriteOff && (
                 <div>
                   <FieldLabel htmlFor="hdr-reason">{t('writeOff.reasonField')}</FieldLabel>
-                  <Select
+                  <Select<WriteOffReason | ''>
                     id="hdr-reason"
                     value={header.writeOffReason}
                     onChange={(value) => setHeader((prev) => ({ ...prev, writeOffReason: value }))}
-                    options={[
-                      { value: '' as const, label: t('writeOff.notWriteOff') },
-                      ...WRITE_OFF_REASONS.map((reason) => ({ value: reason, label: t(`labels.writeOffReason.${reason}`) })),
-                    ]}
+                    options={WRITE_OFF_REASONS.map((reason) => ({ value: reason, label: t(`labels.writeOffReason.${reason}`) }))}
                     disabled={!editable}
                   />
                 </div>
@@ -502,15 +616,19 @@ export const DocumentDetailPanel: React.FC = () => {
                 </div>
               )}
               {headerError && (
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <FieldError>{headerError}</FieldError>
+                <div className="sm:col-span-2 md:col-span-3">
+                  {headerDuplicate ? <DuplicateNotice duplicate={headerDuplicate} /> : <FieldError>{headerError}</FieldError>}
                 </div>
               )}
             </form>
           </GlassPanel>
 
-          <GlassPanel padded={false} title={t('doc.lines')} action={hasLines ? <LiveBadge>{formatEuro(lineTotal)}</LiveBadge> : undefined}>
-            {reading && (
+          <GlassPanel
+            padded={false}
+            title={t('doc.lines')}
+            action={hasLines && seeFinancials ? <LiveBadge>{formatEuro(lineTotal)}</LiveBadge> : undefined}
+          >
+            {reading && !readingTimedOut && (
               <div
                 className={cn(
                   'flex items-center gap-3 px-4 sm:px-5',
@@ -521,8 +639,37 @@ export const DocumentDetailPanel: React.FC = () => {
                 <div className={cn(!hasLines && 'text-center')}>
                   <p className="font-display text-[0.9rem] font-medium text-ops-accent">{t('doc.reading')}</p>
                   <p className="max-w-sm font-sans text-[0.74rem] text-slate-500">
-                    {hasLines ? t('doc.readingNewLines') : t('doc.readingHint')}
+                    {readingSlow ? t('doc.readingSlow') : hasLines ? t('doc.readingNewLines') : t('doc.readingHint')}
                   </p>
+                  {detailQuery.isRefetchError && (
+                    <p className="max-w-sm font-sans text-[0.74rem] text-ops-warn">{t('doc.readingCheckFailed')}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {reading && readingTimedOut && (
+              <div
+                className={cn(
+                  'flex items-start gap-3 border-ops-danger/25 bg-rose-50 px-4 py-3 sm:px-5',
+                  hasLines ? 'border-b' : 'flex-col items-center py-10',
+                )}
+              >
+                <TriangleAlert size={18} className="mt-0.5 shrink-0 text-ops-danger" />
+                <div className={cn('min-w-0 flex-1', !hasLines && 'text-center')}>
+                  <p className="font-display text-[0.82rem] font-semibold text-ops-danger">{t('doc.readingTimeout')}</p>
+                  <p className="mt-1 font-sans text-[0.76rem] text-rose-800">{t('doc.readingTimeoutHint')}</p>
+                  {editable && !evidenceOnly && document.captures[0] && (
+                    <button
+                      type="button"
+                      disabled={retryExtraction.isPending}
+                      onClick={() => void retryCapture(document.captures[document.captures.length - 1]!.id)}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ops-danger px-3 py-1.5 font-display text-[0.75rem] font-medium text-white disabled:opacity-60"
+                    >
+                      {retryExtraction.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
+                      {t('doc.retry')}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -537,7 +684,19 @@ export const DocumentDetailPanel: React.FC = () => {
                   await updateLine.mutateAsync({ lineId, ...input });
                 }}
                 onDelete={removeLine}
-                saving={updateLine.isPending}
+                onCreateProduct={async (lineId, input) => {
+                  await createProduct.mutateAsync({ lineId, ...input });
+                  toast.success(t('scanMatch.created', { name: input.name }));
+                }}
+                onConfirmProduct={async (productId) => {
+                  try {
+                    await confirmProduct.mutateAsync(productId);
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : t('doc.saveLineFailed'));
+                  }
+                }}
+                saving={updateLine.isPending || createProduct.isPending || confirmProduct.isPending}
+                expiryGuardDate={expiryGuardDate}
               />
             )}
 
@@ -562,6 +721,7 @@ export const DocumentDetailPanel: React.FC = () => {
               <div className="border-t border-slate-100 p-4 sm:px-5">
                 <LineForm
                   saving={addLine.isPending}
+                  expiryGuardDate={expiryGuardDate}
                   onCancel={() => setManualAdd(false)}
                   onSubmit={async (input) => {
                     await addLine.mutateAsync(input);
@@ -583,34 +743,52 @@ export const DocumentDetailPanel: React.FC = () => {
             )}
           </GlassPanel>
 
-          {editable && warnings.length > 0 && (
+          {document.totals && seeFinancials && (
+            <DocumentTotalsPanel
+              totals={document.totals}
+              paymentMethod={document.paymentMethod}
+              lineCount={lines.length}
+              type={document.type}
+              editable={editable}
+              saving={updateDocument.isPending}
+              onSave={saveTotals}
+            />
+          )}
+
+          {writable && posting?.duplicateOf && <DuplicateNotice duplicate={posting.duplicateOf} blocking />}
+
+          {editable && expiredWarnings.length > 0 && (
             <div className="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3">
               <p className="flex items-center gap-2 font-display text-[0.8rem] font-semibold text-amber-800">
-                <TriangleAlert size={15} /> {t('doc.expiredWarningTitle', { count: warnings.length })}
+                <TriangleAlert size={15} /> {t('doc.expiredWarningTitle', { count: expiredWarnings.length })}
               </p>
               <ul className="mt-1.5 list-disc pl-6 font-sans text-[0.76rem] text-amber-800">
-                {warnings.map((warning) => (
+                {expiredWarnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
-              <p className="mt-1.5 font-sans text-[0.74rem] text-amber-700">{t('doc.expiredWarningHint')}</p>
+              <p className="mt-1.5 font-sans text-[0.74rem] text-amber-700">
+                {document.direction === 'IN' ? t('doc.expiredReceivedHint') : t('doc.expiredWarningHint')}
+              </p>
             </div>
           )}
 
           {editable && (
-            <div className="sticky bottom-24 z-20 lg:bottom-4">
-              <div className={cn(glassClass, 'flex flex-wrap items-center gap-3 px-4 py-3')}>
-                <div className="min-w-0 flex-1">
-                  <p className="font-display text-[0.86rem] font-semibold text-ops-ink">
-                    {t('doc.linesSummary', { count: lines.length })} · {formatEuro(lineTotal)}
-                  </p>
-                  <p className={cn('truncate font-sans text-[0.72rem]', posting?.ok && !reading ? 'text-ops-teal' : 'text-ops-warn')}>
-                    {postStatus}
-                  </p>
-                </div>
-                {document.status === 'DRAFT' && posting?.ok && !reading && (
-                  <GhostButton onClick={runSubmit}>{t('doc.sendForReview')}</GhostButton>
-                )}
+            <div className={cn(glassClass, 'flex flex-wrap items-center gap-3 px-4 py-3')}>
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-[0.86rem] font-semibold text-ops-ink">
+                  {seeFinancials
+                    ? `${t('doc.linesSummary', { count: lines.length })} · ${formatEuro(lineTotal)}`
+                    : t('doc.linesSummary', { count: lines.length })}
+                </p>
+                <p className={cn('truncate font-sans text-[0.72rem]', posting?.ok && !reading ? 'text-ops-teal' : 'text-ops-warn')}>
+                  {postStatus}
+                </p>
+              </div>
+              {document.status === 'DRAFT' && posting?.ok && !reading && (
+                <GhostButton onClick={runSubmit}>{t('doc.sendForReview')}</GhostButton>
+              )}
+              {canPost && (
                 <ActionButton
                   icon={CheckCircle2}
                   label={t('doc.postNow')}
@@ -618,21 +796,24 @@ export const DocumentDetailPanel: React.FC = () => {
                   primary
                   disabled={busy || reading || !posting?.ok}
                 />
-              </div>
+              )}
             </div>
           )}
 
-          {editable && (
+          {editable && canCancel && (
             <div className="flex justify-end">
               <GhostButton danger onClick={runCancel}>
                 {t('doc.cancelDocument')}
               </GhostButton>
             </div>
           )}
+
+          {canReverse && document.reversible && <ReversePanel document={document} />}
         </div>
       </div>
 
       <CameraCapture open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={attachPhoto} />
+      <DocumentPrintView document={document} />
     </div>
   );
 };

@@ -159,8 +159,8 @@ export const REPORT_TEXT = {
     bg: 'Някои продадени редове нямат себестойност; тя и печалбата ги изключват.',
   },
   purchaseNet: {
-    en: 'Purchases are posted invoices and receipt notes (credit notes that reduce stock count negative); prices exclude VAT.',
-    bg: 'Покупките са осчетоводени фактури и стокови разписки (кредитни известия, намаляващи наличността, са с минус); цените са без ДДС.',
+    en: 'Purchases are posted invoices and credit/debit notes (notes that reduce stock count negative); prices exclude VAT. Receipt notes are not tax documents and are left out, so a delivery is counted once, from its invoice. Reversed documents and their reversals are left out too.',
+    bg: 'Покупките са осчетоводени фактури и кредитни/дебитни известия (известията, намаляващи наличността, са с минус); цените са без ДДС. Стоковите разписки не са данъчни документи и не се включват, за да се отчете всяка доставка веднъж, по фактурата ѝ. Сторнираните документи и сторното им също не се включват.',
   },
   salesGross: {
     en: 'Sales are till receipts net of voids; the till price includes VAT.',
@@ -257,6 +257,7 @@ export const REPORT_DOCUMENT_TYPE_LABELS: Record<DocumentType, Record<ReportLang
   STOCKTAKE: { en: 'Stocktake', bg: 'Инвентаризация' },
   OPENING_BALANCE: { en: 'Opening stock', bg: 'Начални наличности' },
   SALE: { en: 'Sale', bg: 'Продажба' },
+  WRITE_OFF: { en: 'Write-off', bg: 'Протокол за брак' },
 };
 
 /** CSV layouts (§4.8) so an export imports straight into accounting software. */

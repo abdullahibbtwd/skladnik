@@ -51,6 +51,13 @@ export class CreateSaleDto {
   @IsIn(PAYMENT_METHODS)
   paymentMethod!: PaymentMethod;
 
+  /** Card transaction reference (e-shop audit file, Annex 38). */
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  paymentReference?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(200)
@@ -66,6 +73,11 @@ export class CreateSaleDto {
   @IsOptional()
   @IsBoolean()
   confirmExpired?: boolean;
+
+  /** The cashier saw the below-cost warning for changed prices and wants to sell anyway. */
+  @IsOptional()
+  @IsBoolean()
+  confirmBelowCost?: boolean;
 }
 
 export class VoidSaleDto {

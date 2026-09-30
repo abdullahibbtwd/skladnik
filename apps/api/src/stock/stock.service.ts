@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthUser } from '@skladnik/shared';
 import { toNumber } from '../common/decimal';
+import {
+  presentMovementForRole,
+  presentReorderForRole,
+  presentStockItemForRole,
+} from '../common/staff-view';
+import { STANDING_DOCUMENT_SQL } from '../documents/reversal';
 import { PrismaService } from '../prisma/prisma.service';
 import { loadCostBook, siteLedger } from './ledger';
 import { suggestedOrderQty } from './reorder';
@@ -27,6 +33,8 @@ export class StockService {
   /**
    * On-hand and value per product and batch at one site, computed from the StockMovement ledger.
    * Batches are valued at their own cost, stock without a batch at the site's moving average.
+   * Products with a minimum and nothing on hand (including never received here) stay on the list
+   * so reorder, dashboard and the OUT filter see them.
    */
   async levels(user: AuthUser, siteId: string) {
     const { book, rows } = await loadCostBook(this.prisma, user.companyId, siteId);
@@ -35,10 +43,36 @@ export class StockService {
       { productId: row.productId, batchId: row.batchId, direction: 'OUT' as const, quantity: row.outTotal, lastAt: null },
     ]);
     const onHand = foldMovements(movements);
-    if (onHand.size === 0) return { siteId, items: [] };
     const batchOnHand = foldBatches(movements);
 
     const batchIds = [...batchOnHand.values()].flatMap((batches) => [...batches.keys()]);
+    const minOnly = await this.prisma.product.findMany({
+      where: {
+        companyId: user.companyId,
+        status: { not: 'ARCHIVED' },
+        minStock: { gt: 0 },
+        ...(onHand.size ? { id: { notIn: [...onHand.keys()] } } : {}),
+      },
+      select: { id: true },
+    });
+    const elsewhere = minOnly.map((product) => product.id);
+    const movedElsewhere = new Set(
+      elsewhere.length
+        ? (
+            await this.prisma.stockMovement.groupBy({
+              by: ['productId'],
+              where: { companyId: user.companyId, productId: { in: elsewhere } },
+            })
+          ).map((row) => row.productId)
+        : [],
+    );
+    for (const product of minOnly) {
+      if (movedElsewhere.has(product.id)) continue;
+      onHand.set(product.id, { onHand: 0, lastMovementAt: null });
+    }
+
+    if (onHand.size === 0) return { siteId, items: [] };
+
     const [products, batchRows] = await Promise.all([
       this.prisma.product.findMany({
         where: { companyId: user.companyId, id: { in: [...onHand.keys()] } },
@@ -91,7 +125,7 @@ export class StockService {
             ];
           })
           .sort(compareBatchExpiry);
-        return {
+        return presentStockItemForRole(user.role, {
           productId: product.id,
           name: product.name,
           code: product.code,
@@ -112,7 +146,7 @@ export class StockService {
           suggestedOrder: suggestedOrderQty(level.onHand, minStock, maxStock, product.unit),
           lastMovementAt: level.lastMovementAt?.toISOString() ?? null,
           batches,
-        };
+        });
       })
       .filter((item) => item.productStatus !== 'ARCHIVED' || item.onHand !== 0)
       .sort(compareStockLevels);
@@ -157,7 +191,7 @@ export class StockService {
       const doc = row.document;
       const counterpartSite =
         doc?.type === 'TRANSFER' ? (doc.siteId === siteId ? doc.targetSite : doc.site) : null;
-      return {
+      return presentMovementForRole(user.role, {
         id: row.id,
         occurredAt: isoDate(row.occurredAt),
         direction: row.direction,
@@ -179,7 +213,7 @@ export class StockService {
               counterpartSite,
             }
           : null,
-      };
+      });
     });
 
     const batchRows = product.batchTracking
@@ -272,6 +306,7 @@ export class StockService {
       WHERE d."companyId" = ${user.companyId}
         AND d."status" = 'POSTED'
         AND d."type" IN ('INVOICE', 'RECEIPT')
+        AND ${STANDING_DOCUMENT_SQL}
         AND d."partnerId" IS NOT NULL
         AND l."productId" = ANY(${candidates.map((row) => row.product.id)})
       ORDER BY l."productId", d."issuedOn" DESC, d."postedAt" DESC
@@ -306,7 +341,7 @@ export class StockService {
     const partnerIds = [...groups.keys()].filter((id): id is string => Boolean(id));
     const partners = await this.prisma.partner.findMany({
       where: { companyId: user.companyId, id: { in: partnerIds } },
-      select: { id: true, name: true, phone: true, email: true, taxId: true },
+      select: { id: true, name: true, phone: true, email: true, eik: true, vatNumber: true },
     });
     const partnerById = new Map(partners.map((partner) => [partner.id, partner]));
 
@@ -317,6 +352,6 @@ export class StockService {
         total: round2(lines.reduce((sum, line) => sum + line.lineTotal, 0)),
       }))
       .sort((a, b) => (a.partner ? (b.partner ? a.partner.name.localeCompare(b.partner.name) : -1) : 1));
-    return { siteId, suppliers };
+    return presentReorderForRole(user.role, { siteId, suppliers });
   }
 }

@@ -6,13 +6,27 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { grossQuantity, ingredientIssue, isSalesManager, type AuthUser, type PaymentMethod } from '@skladnik/shared';
+import {
+  canOverridePrice,
+  grossQuantity,
+  ingredientIssue,
+  isBelowCost,
+  isSalesManager,
+  quantityPrecisionProblem,
+  recipeQtyToStock,
+  recipeUnitProblem,
+  type AuthUser,
+  type ContentUnit,
+  type PaymentMethod,
+} from '@skladnik/shared';
+import { recordActivity } from '../activity/record-activity';
+import { apiBadRequest } from '../common/api-error';
 import { toNumber } from '../common/decimal';
 import { PrismaService } from '../prisma/prisma.service';
 import { loadCostBook, lockSites, saveAverages } from '../stock/ledger';
 import { addDays, businessDate, businessHour, businessRange, daysBetween, isBusinessDate } from './business-day';
 import type { CreateSaleDto, MarginsQueryDto, SalesListQueryDto, SalesReportQueryDto, VoidSaleDto } from './dto/sales.dto';
-import { allocateSaleLine } from './fefo';
+import { allocateSaleLine, shortfallMessage, type StockShortfall } from './fefo';
 import { marginRows, summarizeSales, type MarginGrouping, type ReportDocument } from './sales-report';
 
 const MAX_REPORT_DAYS = 366;
@@ -49,8 +63,9 @@ export class SalesService {
   /**
    * Records a till sale in one transaction: price check, FEFO batch allocation, stock check under the
    * site lock, then a posted SALE document with one OUT movement per allocated batch at its cost.
+   * `at` is for seed/backfill only — FEFO and timestamps use that instant instead of now.
    */
-  async create(user: AuthUser, dto: CreateSaleDto) {
+  async create(user: AuthUser, dto: CreateSaleDto, options: { at?: Date } = {}) {
     if (dto.clientRequestId) {
       const existing = await this.findByRequest(user.companyId, dto.clientRequestId);
       if (existing) return this.receipt(user, existing);
@@ -74,8 +89,18 @@ export class SalesService {
               orderBy: { position: 'asc' },
               select: {
                 quantity: true,
+                quantityUnit: true,
                 wastagePercent: true,
-                product: { select: { id: true, name: true, batchTracking: true } },
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    batchTracking: true,
+                    unit: true,
+                    netContent: true,
+                    netContentUnit: true,
+                  },
+                },
               },
             },
           },
@@ -83,14 +108,21 @@ export class SalesService {
       },
     });
     const productById = new Map(products.map((product) => [product.id, product]));
-    const manager = isSalesManager(user.role);
-    const priced = dto.items.map((item) => {
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: user.companyId },
+      select: { priceOverrideRoles: true },
+    });
+    const mayOverride = canOverridePrice(user.role, company.priceOverrideRoles);
+    const priced = dto.items.map((item, index) => {
       const product = productById.get(item.productId);
       if (!product) throw new NotFoundException('Product not found');
       if (product.status === 'ARCHIVED') throw new BadRequestException(`${product.name} is archived`);
+      const precision = quantityPrecisionProblem(item.quantity, product.unit, product.name);
+      if (precision) throw new BadRequestException(precision);
       const listPrice = toNumber(product.sellingPrice);
-      if (item.unitPrice !== undefined && round4(item.unitPrice) !== round4(listPrice) && !manager) {
-        throw new ForbiddenException('Only a manager can change a price at the till');
+      const overridden = item.unitPrice !== undefined && round4(item.unitPrice) !== round4(listPrice);
+      if (overridden && !mayOverride) {
+        throw new ForbiddenException('Your role cannot change prices at the till. Ask the owner to allow it in Settings → Stock rules.');
       }
       if (item.unitPrice === undefined && listPrice <= 0) {
         throw new BadRequestException(`${product.name} has no selling price yet`);
@@ -101,7 +133,7 @@ export class SalesService {
       if (item.batchId && !product.batchTracking) {
         throw new BadRequestException(`${product.name} is not tracked by batch`);
       }
-      return { item, product, unitPrice: round4(item.unitPrice ?? listPrice) };
+      return { index, item, product, listPrice, overridden, unitPrice: round4(item.unitPrice ?? listPrice) };
     });
     const stockIds = [
       ...new Set(
@@ -111,9 +143,15 @@ export class SalesService {
       ),
     ];
 
-    const now = new Date();
+    const now = options.at ?? new Date();
     const today = businessDate(now);
-    let sale: { id: string; number: string; total: number; expired: string[] };
+    let sale: {
+      id: string;
+      number: string;
+      total: number;
+      expired: string[];
+      overrides: { productId: string; product: string; listPrice: number; unitPrice: number; unitCost: number | null; belowCost: boolean }[];
+    };
     try {
       sale = await this.prisma.$transaction(
         async (tx) => {
@@ -126,9 +164,10 @@ export class SalesService {
             }),
           ]);
 
-          const shortfalls: string[] = [];
+          const shortfalls: StockShortfall[] = [];
           const expired = new Set<string>();
           const lines: SaleLineDraft[] = [];
+          const itemOfLine: number[] = [];
           // Each allocation reads the book after the previous line's issues, so a cart can't oversell.
           const allocate = (stock: { id: string; name: string; batchTracking: boolean }, quantity: number, batchId?: string) => {
             const result = allocateSaleLine(
@@ -162,12 +201,28 @@ export class SalesService {
             }));
           };
 
-          for (const { item, product, unitPrice } of priced) {
+          for (const { index, item, product, unitPrice } of priced) {
             if (product.recipe) {
               const yieldPortions = toNumber(product.recipe.yieldPortions);
               const movements: SaleMovementDraft[] = [];
               for (const ingredient of product.recipe.ingredients) {
-                const gross = grossQuantity(toNumber(ingredient.quantity), toNumber(ingredient.wastagePercent));
+                const content = {
+                  unit: ingredient.product.unit,
+                  netContent: ingredient.product.netContent === null ? null : toNumber(ingredient.product.netContent),
+                  netContentUnit: ingredient.product.netContentUnit as ContentUnit | null,
+                };
+                const stockQty = recipeQtyToStock(
+                  toNumber(ingredient.quantity),
+                  ingredient.quantityUnit as ContentUnit | null,
+                  content,
+                );
+                if (stockQty == null) {
+                  throw new BadRequestException(
+                    recipeUnitProblem(ingredient.quantityUnit as ContentUnit | null, content, ingredient.product.name) ??
+                      `${ingredient.product.name}: cannot convert recipe quantity`,
+                  );
+                }
+                const gross = grossQuantity(stockQty, toNumber(ingredient.wastagePercent));
                 const quantity = ingredientIssue(gross, yieldPortions, item.quantity);
                 if (quantity <= 0) continue;
                 const issued = allocate(
@@ -176,6 +231,7 @@ export class SalesService {
                 );
                 if (issued) movements.push(...issued);
               }
+              itemOfLine.push(index);
               lines.push({
                 productId: product.id,
                 unit: product.unit,
@@ -189,6 +245,7 @@ export class SalesService {
               continue;
             }
             for (const movement of allocate(product, item.quantity, item.batchId) ?? []) {
+              itemOfLine.push(index);
               lines.push({
                 productId: product.id,
                 unit: product.unit,
@@ -201,7 +258,21 @@ export class SalesService {
               });
             }
           }
-          if (shortfalls.length) throw new BadRequestException(shortfalls.join('. '));
+          if (shortfalls.length) {
+            const first = shortfalls[0]!;
+            throw apiBadRequest('INSUFFICIENT_STOCK', shortfalls.map(shortfallMessage).join('. '), {
+              product: first.product,
+              available: first.available,
+              requested: first.requested,
+              action: first.action,
+            }, {
+              errors: shortfalls.map((row) => ({
+                code: row.code,
+                message: shortfallMessage(row),
+                params: { product: row.product, available: row.available, requested: row.requested, action: row.action },
+              })),
+            });
+          }
           if (expired.size && !dto.confirmExpired) {
             const warnings = [...expired];
             throw new BadRequestException({
@@ -209,6 +280,39 @@ export class SalesService {
               error: 'Bad Request',
               code: 'EXPIRED_CONFIRM',
               message: `${warnings.join('. ')}. Confirm to sell expired stock.`,
+              warnings,
+            });
+          }
+
+          const overrides = priced
+            .filter((row) => row.overridden)
+            .map((row) => {
+              const issued = lines
+                .filter((_, position) => itemOfLine[position] === row.index)
+                .flatMap((line) => line.movements);
+              const costed = issued.length > 0 && issued.every((movement) => movement.unitCost > 0);
+              const unitCost = costed
+                ? round4(issued.reduce((sum, movement) => sum + movement.quantity * movement.unitCost, 0) / row.item.quantity)
+                : null;
+              return {
+                productId: row.product.id,
+                product: row.product.name,
+                listPrice: row.listPrice,
+                unitPrice: row.unitPrice,
+                unitCost,
+                belowCost: isBelowCost(row.unitPrice, toNumber(row.product.vatRate), unitCost),
+              };
+            });
+          const belowCost = overrides.filter((row) => row.belowCost);
+          if (belowCost.length && !dto.confirmBelowCost) {
+            const warnings = belowCost.map(
+              (row) => `${row.product}: ${row.unitPrice.toFixed(2)} is below its cost of ${row.unitCost!.toFixed(2)} (before VAT)`,
+            );
+            throw new BadRequestException({
+              statusCode: 400,
+              error: 'Bad Request',
+              code: 'BELOW_COST_CONFIRM',
+              message: `${warnings.join('. ')}. Confirm to sell below cost.`,
               warnings,
             });
           }
@@ -225,6 +329,7 @@ export class SalesService {
               issuedOn: dateOnly(today),
               postedAt: now,
               paymentMethod: dto.paymentMethod,
+              paymentReference: dto.paymentReference ?? null,
               createdById: user.id,
               clientRequestId: dto.clientRequestId ?? null,
               lines: {
@@ -267,6 +372,7 @@ export class SalesService {
             number,
             total: round2(lines.reduce((sum, line) => sum + line.lineTotal, 0)),
             expired: [...expired],
+            overrides,
           };
         },
         { timeout: 30_000 },
@@ -280,22 +386,38 @@ export class SalesService {
       throw error;
     }
 
-    await this.log(user, sale.id, 'SALE', {
-      number: sale.number,
-      total: sale.total,
-      paymentMethod: dto.paymentMethod,
-      ...(sale.expired.length ? { confirmedExpired: sale.expired } : {}),
+    await this.log(user, sale, 'SALE', {
+      metadata: {
+        total: sale.total,
+        paymentMethod: dto.paymentMethod,
+        ...(sale.expired.length ? { confirmedExpired: sale.expired } : {}),
+      },
     });
+    for (const { listPrice, unitPrice, ...override } of sale.overrides) {
+      await this.log(user, sale, 'PRICE_OVERRIDE', {
+        before: { unitPrice: listPrice },
+        after: { unitPrice },
+        metadata: { ...override, confirmedBelowCost: override.belowCost },
+      });
+    }
     return this.receipt(user, sale.id);
   }
 
-  /** Sales and voids posted at a site on one local day, newest first. */
+  /** Sales and voids posted at a site on one local day, newest first. Staff see only their own (CASHIER F-07). */
   async list(user: AuthUser, query: SalesListQueryDto) {
     const date = query.date ?? businessDate();
     if (!isBusinessDate(date)) throw new BadRequestException('date must be a valid YYYY-MM-DD');
     const { start, end } = businessRange(date, date);
+    const ownOnly = user.role === 'STAFF';
     const documents = await this.prisma.document.findMany({
-      where: { companyId: user.companyId, siteId: query.siteId, type: 'SALE', status: 'POSTED', postedAt: { gte: start, lt: end } },
+      where: {
+        companyId: user.companyId,
+        siteId: query.siteId,
+        type: 'SALE',
+        status: 'POSTED',
+        postedAt: { gte: start, lt: end },
+        ...(ownOnly ? { createdById: user.id } : {}),
+      },
       select: {
         id: true,
         number: true,
@@ -329,7 +451,12 @@ export class SalesService {
   }
 
   async get(user: AuthUser, id: string) {
-    return this.receipt(user, id);
+    const receipt = await this.receipt(user, id);
+    // Staff may only open their own receipts (CASHIER F-07).
+    if (user.role === 'STAFF' && receipt.sale.cashier?.id !== user.id) {
+      throw new NotFoundException('Sale not found');
+    }
+    return receipt;
   }
 
   /** A void is a new SALE document with direction IN: every movement of the sale comes back at the cost it left at. */
@@ -393,7 +520,7 @@ export class SalesService {
               .map((movement) => {
                 const quantity = toNumber(movement.quantity);
                 const unitCost = movement.unitCost === null ? book.unitCost(movement.productId, movement.batchId) : toNumber(movement.unitCost);
-                book.receive(movement.productId, movement.batchId, quantity, unitCost);
+                book.restore(movement.productId, movement.batchId, quantity, unitCost);
                 return {
                   companyId: user.companyId,
                   siteId: original.siteId,
@@ -404,6 +531,7 @@ export class SalesService {
                   direction: 'IN' as const,
                   quantity,
                   unitCost,
+                  reversalOfId: movement.id,
                   occurredAt: now,
                 };
               }),
@@ -421,14 +549,16 @@ export class SalesService {
       throw error;
     }
 
-    await this.log(user, voidId, 'VOID', { number: `${original.number}-V`, sale: original.number, reason: dto.reason ?? null });
+    await this.log(user, { id: voidId, number: `${original.number}-V` }, 'VOID', { metadata: { sale: original.number, reason: dto.reason ?? null } });
     return this.receipt(user, original.id);
   }
 
   /** Turnover, tickets, average ticket, cash / card, VAT and (for managers) cost and profit over local dates. */
   async report(user: AuthUser, query: SalesReportQueryDto) {
     const { from, to } = this.period(query);
-    const documents = await this.reportDocuments(user.companyId, query.siteId, from, to);
+    // Product decision (CASHIER F-07): Staff see only their own daily totals, never site-wide turnover.
+    const createdById = user.role === 'STAFF' ? user.id : undefined;
+    const documents = await this.reportDocuments(user.companyId, query.siteId, from, to, createdById);
     const summary = summarizeSales(documents);
     const topProducts = marginRows(documents, 'product').slice(0, 10);
     const manager = isSalesManager(user.role);
@@ -475,10 +605,23 @@ export class SalesService {
     return { from, to };
   }
 
-  private async reportDocuments(companyId: string, siteId: string, from: string, to: string): Promise<ReportDocument[]> {
+  private async reportDocuments(
+    companyId: string,
+    siteId: string,
+    from: string,
+    to: string,
+    createdById?: string,
+  ): Promise<ReportDocument[]> {
     const { start, end } = businessRange(from, to);
     const documents = await this.prisma.document.findMany({
-      where: { companyId, siteId, type: 'SALE', status: 'POSTED', postedAt: { gte: start, lt: end } },
+      where: {
+        companyId,
+        siteId,
+        type: 'SALE',
+        status: 'POSTED',
+        postedAt: { gte: start, lt: end },
+        ...(createdById ? { createdById } : {}),
+      },
       select: {
         id: true,
         direction: true,
@@ -598,6 +741,7 @@ export class SalesService {
         postedAt: doc.postedAt?.toISOString() ?? null,
         businessDate: doc.postedAt ? businessDate(doc.postedAt) : isoDate(doc.issuedOn),
         paymentMethod: doc.paymentMethod,
+        paymentReference: doc.paymentReference,
         site: doc.site,
         cashier: doc.createdBy,
         note: doc.notes,
@@ -643,9 +787,12 @@ export class SalesService {
     }
   }
 
-  private async log(user: AuthUser, entityId: string, action: string, metadata: Prisma.InputJsonValue) {
-    await this.prisma.activityLog.create({
-      data: { companyId: user.companyId, userId: user.id, entityType: 'Document', entityId, action, metadata },
-    });
+  private async log(
+    user: AuthUser,
+    sale: { id: string; number: string },
+    action: string,
+    entry: { before?: Record<string, unknown>; after?: Record<string, unknown>; metadata?: Record<string, unknown> },
+  ) {
+    await recordActivity(this.prisma, user, { entityType: 'Document', entityId: sale.id, label: sale.number, action, ...entry });
   }
 }

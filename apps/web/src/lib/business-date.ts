@@ -1,4 +1,5 @@
 import { BUSINESS_TIME_ZONE } from '@skladnik/shared';
+import { formatDateTime, formatDayHeading, formatTime } from './format';
 
 const isoFormat = new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
 
@@ -14,13 +15,13 @@ export function shiftDate(date: string, days: number) {
 }
 
 export function formatBusinessTime(iso: string, locale: string) {
-  return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', timeZone: BUSINESS_TIME_ZONE }).format(new Date(iso));
+  return formatTime(iso, locale);
 }
 
 export function formatBusinessDateTime(iso: string, locale: string) {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: BUSINESS_TIME_ZONE }).format(new Date(iso));
+  return formatDateTime(iso, locale);
 }
 
 export function formatDay(date: string, locale: string) {
-  return new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`));
+  return formatDayHeading(date, locale);
 }

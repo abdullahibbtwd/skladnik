@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -10,20 +11,28 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { MAX_WASTAGE_PERCENT } from '@skladnik/shared';
+import { CONTENT_UNITS, MAX_WASTAGE_PERCENT, type ContentUnit } from '@skladnik/shared';
 
 export class RecipeIngredientDto {
   @IsUUID()
   productId!: string;
 
-  /** Net quantity for the whole yield, in the ingredient's unit (0.018 kg of coffee, 0.15 l of milk). */
+  /** Net quantity for the whole yield, in `quantityUnit` or the ingredient's stock unit. */
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0.0001)
   @Max(100_000)
   quantity!: number;
+
+  /** G/ML for recipe grammage; omit/null for the product's stock unit. */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value === undefined || value === null ? null : value))
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsIn(CONTENT_UNITS)
+  quantityUnit?: ContentUnit | null;
 
   @IsOptional()
   @Type(() => Number)

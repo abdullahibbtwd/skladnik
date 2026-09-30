@@ -5,13 +5,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type ProductStatus } from '@prisma/client';
-import type { AuthUser } from '@skladnik/shared';
+import { canWriteProductCatalog, netContentProblem, type AuthUser, type ContentUnit } from '@skladnik/shared';
+import { changes, recordActivity } from '../activity/record-activity';
+import { apiForbidden } from '../common/api-error';
 import { toNumber } from '../common/decimal';
+import { presentProductForRole } from '../common/staff-view';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateSupplierCodeDto } from './dto/create-supplier-code.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { managerMinStockOnlyPatch } from './product-write-policy';
 
 const productInclude = {
   group: { select: { id: true, name: true } },
@@ -23,6 +27,41 @@ const productInclude = {
 } satisfies Prisma.ProductInclude;
 
 type ProductRow = Prisma.ProductGetPayload<{ include: typeof productInclude }>;
+
+const LOGGED_FIELDS = [
+  'name', 'code', 'unit', 'packSize', 'netContent', 'netContentUnit', 'vatRate', 'purchasePrice', 'sellingPrice',
+  'minStock', 'maxStock', 'batchTracking', 'status', 'group', 'barcodes',
+] as const;
+
+function productSnapshot(product: ProductRow) {
+  return {
+    name: product.name,
+    code: product.code,
+    unit: product.unit,
+    packSize: product.packSize,
+    netContent: product.netContent,
+    netContentUnit: product.netContentUnit,
+    vatRate: product.vatRate,
+    purchasePrice: product.purchasePrice,
+    sellingPrice: product.sellingPrice,
+    minStock: product.minStock,
+    maxStock: product.maxStock,
+    batchTracking: product.batchTracking,
+    status: product.status,
+    group: product.group?.name ?? null,
+    barcodes: product.barcodes.map((row) => row.barcode),
+  };
+}
+
+function resolveNetContent(
+  netContent: number | null | undefined,
+  netContentUnit: ContentUnit | null | undefined,
+): { netContent: number | null; netContentUnit: ContentUnit | null } {
+  const problem = netContentProblem(netContent, netContentUnit);
+  if (problem) throw new BadRequestException(problem);
+  if (netContent == null || netContentUnit == null) return { netContent: null, netContentUnit: null };
+  return { netContent, netContentUnit };
+}
 
 @Injectable()
 export class ProductsService {
@@ -50,13 +89,14 @@ export class ProductsService {
       include: productInclude,
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
     });
-    return { products: products.map((product) => this.serialize(product)) };
+    return { products: products.map((product) => this.serialize(product, user.role)) };
   }
 
   async create(user: AuthUser, dto: CreateProductDto) {
     await this.assertGroup(user.companyId, dto.groupId);
     const barcodes = this.normalizeBarcodes(dto.barcodes);
     await this.assertBarcodesFree(user.companyId, barcodes);
+    const net = resolveNetContent(dto.netContent, dto.netContentUnit);
 
     try {
       const product = await this.prisma.product.create({
@@ -67,6 +107,8 @@ export class ProductsService {
           groupId: dto.groupId ?? null,
           unit: dto.unit,
           packSize: dto.packSize ?? 1,
+          netContent: net.netContent,
+          netContentUnit: net.netContentUnit,
           vatRate: dto.vatRate,
           purchasePrice: dto.purchasePrice,
           sellingPrice: dto.sellingPrice,
@@ -80,8 +122,8 @@ export class ProductsService {
         },
         include: productInclude,
       });
-      await this.log(user, product.id, 'CREATE', { name: product.name, code: product.code });
-      return { product: this.serialize(product) };
+      await this.log(user, product, 'CREATE', { after: productSnapshot(product) });
+      return { product: this.serialize(product, user.role) };
     } catch (error) {
       this.throwIfCodeTaken(error);
       throw error;
@@ -90,6 +132,25 @@ export class ProductsService {
 
   async update(user: AuthUser, id: string, dto: UpdateProductDto) {
     const existing = await this.findInCompany(user.companyId, id);
+    const catalogWriter = canWriteProductCatalog(user.role);
+    if (!catalogWriter) {
+      const restricted = managerMinStockOnlyPatch(dto as unknown as Record<string, unknown>);
+      if (!restricted.ok) {
+        throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Site managers can only change the minimum stock on a product');
+      }
+      if (restricted.minStock === undefined) {
+        throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Site managers can only change the minimum stock on a product');
+      }
+      const product = await this.prisma.product.update({
+        where: { id: existing.id },
+        data: { minStock: restricted.minStock },
+        include: productInclude,
+      });
+      const diff = changes(productSnapshot(existing), productSnapshot(product), ['minStock']);
+      if (diff) await this.log(user, product, 'UPDATE', diff);
+      return { product: this.serialize(product, user.role) };
+    }
+
     if (dto.groupId !== undefined) {
       await this.assertGroup(user.companyId, dto.groupId);
     }
@@ -99,6 +160,16 @@ export class ProductsService {
     if (dto.code !== undefined) data.code = dto.code.trim();
     if (dto.unit !== undefined) data.unit = dto.unit;
     if (dto.packSize !== undefined) data.packSize = dto.packSize;
+    if (dto.netContent !== undefined || dto.netContentUnit !== undefined) {
+      const net = resolveNetContent(
+        dto.netContent !== undefined ? dto.netContent : existing.netContent === null ? null : toNumber(existing.netContent),
+        dto.netContentUnit !== undefined
+          ? dto.netContentUnit
+          : (existing.netContentUnit as ContentUnit | null),
+      );
+      data.netContent = net.netContent;
+      data.netContentUnit = net.netContentUnit;
+    }
     if (dto.vatRate !== undefined) data.vatRate = dto.vatRate;
     if (dto.purchasePrice !== undefined) data.purchasePrice = dto.purchasePrice;
     if (dto.sellingPrice !== undefined) data.sellingPrice = dto.sellingPrice;
@@ -132,8 +203,9 @@ export class ProductsService {
           include: productInclude,
         });
       });
-      await this.log(user, product.id, 'UPDATE', { fields: Object.keys(dto) });
-      return { product: this.serialize(product) };
+      const diff = changes(productSnapshot(existing), productSnapshot(product), LOGGED_FIELDS);
+      if (diff) await this.log(user, product, 'UPDATE', diff);
+      return { product: this.serialize(product, user.role) };
     } catch (error) {
       this.throwIfCodeTaken(error);
       throw error;
@@ -141,17 +213,20 @@ export class ProductsService {
   }
 
   async archive(user: AuthUser, id: string) {
+    if (!canWriteProductCatalog(user.role)) {
+      throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Only the owner or accountant can archive products');
+    }
     const existing = await this.findInCompany(user.companyId, id);
     if (existing.status === 'ARCHIVED') {
-      return { product: this.serialize(existing) };
+      return { product: this.serialize(existing, user.role) };
     }
     const product = await this.prisma.product.update({
       where: { id: existing.id },
       data: { status: 'ARCHIVED' },
       include: productInclude,
     });
-    await this.log(user, product.id, 'ARCHIVE', { name: product.name });
-    return { product: this.serialize(product) };
+    await this.log(user, product, 'ARCHIVE', { before: { status: existing.status }, after: { status: product.status } });
+    return { product: this.serialize(product, user.role) };
   }
 
   async addSupplierCode(user: AuthUser, productId: string, dto: CreateSupplierCodeDto) {
@@ -176,9 +251,8 @@ export class ProductsService {
         },
         include: { partner: { select: { id: true, name: true, kind: true } } },
       });
-      await this.log(user, product.id, 'SUPPLIER_CODE', {
-        partnerId: partner.id,
-        supplierCode: mapping.supplierCode,
+      await this.log(user, product, 'SUPPLIER_CODE', {
+        after: { supplier: partner.name, supplierCode: mapping.supplierCode },
       });
       return {
         mapping: {
@@ -204,7 +278,7 @@ export class ProductsService {
       throw new NotFoundException('Supplier code not found');
     }
     await this.prisma.supplierProductCode.delete({ where: { id: mapping.id } });
-    await this.log(user, product.id, 'SUPPLIER_CODE_DELETE', { mappingId });
+    await this.log(user, product, 'SUPPLIER_CODE_DELETE', { before: { supplierCode: mapping.supplierCode } });
     return { ok: true };
   }
 
@@ -260,13 +334,15 @@ export class ProductsService {
     }
   }
 
-  private serialize(product: ProductRow) {
-    return {
+  private serialize(product: ProductRow, role: AuthUser['role']) {
+    return presentProductForRole(role, {
       id: product.id,
       name: product.name,
       code: product.code,
       unit: product.unit,
       packSize: toNumber(product.packSize),
+      netContent: product.netContent === null ? null : toNumber(product.netContent),
+      netContentUnit: product.netContentUnit as ContentUnit | null,
       vatRate: toNumber(product.vatRate),
       purchasePrice: toNumber(product.purchasePrice),
       sellingPrice: toNumber(product.sellingPrice),
@@ -283,19 +359,21 @@ export class ProductsService {
       })),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
-    };
+    });
   }
 
-  private async log(user: AuthUser, entityId: string, action: string, metadata: Prisma.InputJsonValue) {
-    await this.prisma.activityLog.create({
-      data: {
-        companyId: user.companyId,
-        userId: user.id,
-        entityType: 'Product',
-        entityId,
-        action,
-        metadata,
-      },
+  private async log(
+    user: AuthUser,
+    product: { id: string; name: string },
+    action: string,
+    diff: { before?: Record<string, unknown>; after?: Record<string, unknown> },
+  ) {
+    await recordActivity(this.prisma, user, {
+      entityType: 'Product',
+      entityId: product.id,
+      label: product.name,
+      action,
+      ...diff,
     });
   }
 }

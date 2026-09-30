@@ -28,7 +28,7 @@ export const MovementHistoryPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const batchId = searchParams.get('batchId') ?? undefined;
   const { siteId } = useDashboard();
-  const { createDocuments } = usePermissions();
+  const { createDocuments, seeFinancials, stockOps } = usePermissions();
   const sitesQuery = useSitesQuery();
   const stockQuery = useStockQuery(siteId);
   const movementsQuery = useMovementsQuery(siteId, productId, batchId);
@@ -47,8 +47,8 @@ export const MovementHistoryPanel: React.FC = () => {
   const describe = (movement: StockMovementRecord) => {
     const doc = movement.document;
     if (!doc) return { title: t('history.noDocument'), detail: '' };
-    const title = doc.writeOffReason
-      ? `${t('writeOff.eyebrow')} · ${t(`labels.writeOffReason.${doc.writeOffReason}`)}`
+    const base = doc.writeOffReason
+      ? `${t('labels.documentType.WRITE_OFF')} · ${t(`labels.writeOffReason.${doc.writeOffReason}`)}`
       : doc.type === 'STOCKTAKE'
         ? movement.direction === 'IN'
           ? t('history.stocktakeSurplus')
@@ -56,6 +56,7 @@ export const MovementHistoryPanel: React.FC = () => {
         : doc.type === 'SALE' && doc.reversal
           ? t('history.saleVoid')
           : t(`labels.documentType.${doc.type}`);
+    const title = doc.reversal && doc.type !== 'SALE' ? `${t('reversal.eyebrow')} · ${base}` : base;
     const detail = doc.counterpartSite
       ? `${movement.direction === 'OUT' ? '→' : '←'} ${doc.counterpartSite.name}`
       : (doc.partner?.name ?? '');
@@ -87,26 +88,30 @@ export const MovementHistoryPanel: React.FC = () => {
           icon={PackageMinus}
           iconColor="text-ops-accent"
         />
-        <MetricCard
-          label={t('history.unitCost')}
-          value={unitCost === null ? '—' : formatEuro(unitCost)}
-          hint={selectedBatch ? t('history.batchCost') : t('history.avgCost')}
-          icon={PackageMinus}
-          iconColor="text-ops-teal"
-        />
-        <MetricCard
-          label={t('history.value')}
-          value={unitCost === null ? '—' : formatEuro(Math.max(0, onHand) * unitCost)}
-          hint={t('stocktake.atCost')}
-          icon={PackageMinus}
-          iconColor="text-ops-teal"
-        />
+        {seeFinancials && (
+          <>
+            <MetricCard
+              label={t('history.unitCost')}
+              value={unitCost === null || unitCost === undefined ? '—' : formatEuro(unitCost)}
+              hint={selectedBatch ? t('history.batchCost') : t('history.avgCost')}
+              icon={PackageMinus}
+              iconColor="text-ops-teal"
+            />
+            <MetricCard
+              label={t('history.value')}
+              value={unitCost === null || unitCost === undefined ? '—' : formatEuro(Math.max(0, onHand) * unitCost)}
+              hint={t('stocktake.atCost')}
+              icon={PackageMinus}
+              iconColor="text-ops-teal"
+            />
+          </>
+        )}
       </MetricGrid>
 
-      {onHand > 0 && createDocuments && (
+      {onHand > 0 && (stockOps || createDocuments) && (
         <div className="flex flex-wrap gap-2">
-          <ActionButton icon={ArrowLeftRight} label={t('history.transfer')} onClick={() => navigate(`/app/transfer?${itemParams}`)} />
-          <ActionButton icon={PackageMinus} label={t('history.writeOff')} onClick={() => navigate(`/app/write-off?${itemParams}`)} />
+          {stockOps && <ActionButton icon={ArrowLeftRight} label={t('history.transfer')} onClick={() => navigate(`/app/transfer?${itemParams}`)} />}
+          {createDocuments && <ActionButton icon={PackageMinus} label={t('history.writeOff')} onClick={() => navigate(`/app/write-off?${itemParams}`)} />}
         </div>
       )}
 
@@ -162,7 +167,7 @@ export const MovementHistoryPanel: React.FC = () => {
                 <tr className={tableHeadRowClass()}>
                   <th className="px-4 py-2.5 font-display font-medium sm:px-5">{t('history.document')}</th>
                   <th className="px-3 py-2.5 text-right font-display font-medium">{t('history.change')}</th>
-                  <th className="px-3 py-2.5 text-right font-display font-medium">{t('history.cost')}</th>
+                  {seeFinancials && <th className="px-3 py-2.5 text-right font-display font-medium">{t('history.cost')}</th>}
                   <th className="px-4 py-2.5 text-right font-display font-medium sm:px-5">{t('history.balance')}</th>
                 </tr>
               </thead>
@@ -194,9 +199,11 @@ export const MovementHistoryPanel: React.FC = () => {
                         {movement.direction === 'IN' ? '+' : '−'}
                         {qtyFormat.format(movement.quantity)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-[0.74rem] whitespace-nowrap text-slate-500">
-                        {movement.unitCost === null ? '—' : formatEuro(movement.unitCost)}
-                      </td>
+                      {seeFinancials && (
+                        <td className="px-3 py-2.5 text-right font-mono text-[0.74rem] whitespace-nowrap text-slate-500">
+                          {movement.unitCost === null ? '—' : formatEuro(movement.unitCost)}
+                        </td>
+                      )}
                       <td className="px-4 py-2.5 text-right font-mono text-[0.84rem] whitespace-nowrap text-ops-ink sm:px-5">
                         {qtyFormat.format(movement.balance)}
                       </td>

@@ -174,4 +174,52 @@
     font-size: 7.5pt;
     color: #475569;
   }
+
+  @page document {
+    size: A4 portrait;
+    margin: 14mm;
+  }
+
+  .document-print {
+    page: document;
+    font-size: 9.5pt;
+  }
+
+  .document-print-company {
+    margin-bottom: 6pt;
+  }
+
+  .document-print-parties {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10pt;
+    margin-bottom: 8pt;
+  }
+
+  .document-print-label {
+    font-size: 7.5pt;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #475569;
+  }
+
+  .document-print-signatures {
+    display: flex;
+    gap: 24pt;
+    margin-top: 32pt;
+    break-inside: avoid;
+  }
+
+  .document-print-signatures > div {
+    flex: 1;
+    border-top: 0.75pt solid #0f172a;
+    padding-top: 3pt;
+  }
+
+  .document-print-footer {
+    margin-top: 16pt;
+    font-size: 7.5pt;
+    color: #475569;
+    white-space: pre-line;
+  }
 }

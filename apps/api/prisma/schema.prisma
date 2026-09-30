@@ -51,11 +51,16 @@ enum DocumentType {
   OPENING_BALANCE
   /// Продажба от касата: OUT, posted on creation. A void is a SALE with direction IN and reversalOfId set.
   SALE
+  /// Протокол за брак: OUT at cost, with a writeOffReason (required on this type only).
+  WRITE_OFF
 }
 
 enum PaymentMethod {
   CASH
   CARD
+  /// Supplier documents only; the till takes cash or card.
+  BANK_TRANSFER
+  OTHER
 }
 
 enum DocumentStatus {
@@ -70,7 +75,7 @@ enum StockDirection {
   OUT
 }
 
-/// Set only on PROTOCOL documents that are write-offs (протокол за брак).
+/// Set on WRITE_OFF documents only (a CHECK constraint keeps the two together).
 enum WriteOffReason {
   EXPIRED
   DAMAGED
@@ -94,6 +99,12 @@ enum UnitOfMeasure {
   JAR
   OTHER
   L
+}
+
+/// Weight or volume used for recipe grammage (1 pcs = 400 g) and recipe line units.
+enum ContentUnit {
+  G
+  ML
 }
 
 enum CaptureExtractionStatus {
@@ -121,6 +132,22 @@ enum VatLedger {
 model Company {
   id        String   @id @default(uuid())
   name      String
+  /// ЕИК / БУЛСТАТ, checksum-validated. Used by the VAT files and Annex 38.
+  eik       String?
+  /// BG + ЕИК when VAT-registered.
+  vatNumber String?
+  address   String?
+  city      String?
+  /// Материално отговорно лице / manager printed on documents.
+  mol       String?
+  phone     String?
+  email     String?
+  /// Days before expiry for the watch / plan / sell now / pull warnings, largest first.
+  expiryWindows Int[]   @default([30, 14, 7, 3])
+  /// PrintTemplate JSON; null = defaults.
+  printTemplate Json?
+  /// Roles that may charge other than the catalog price at the till (the owner always can).
+  priceOverrideRoles UserRole[] @default([OWNER, ACCOUNTANT, SITE_MANAGER])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -147,6 +174,27 @@ model Company {
   vatReturnInputs VatReturnInput[]
   vatLedgerEntries VatLedgerEntry[]
   complianceFilings ComplianceFiling[]
+  documentSeries  DocumentSeries[]
+}
+
+/// Numbering of documents the company issues itself (write-offs, transfers, …). The row is locked while a
+/// number is taken, so two documents never get the same one.
+model DocumentSeries {
+  companyId  String
+  /// DocumentSeriesKey: WRITE_OFF, TRANSFER, STOCKTAKE, OPENING_BALANCE, DISPATCH.
+  key        String
+  prefix     String
+  padding    Int      @default(4)
+  nextNumber Int      @default(1)
+  /// When true, nextNumber restarts at 1 on the first issue of a new calendar year (Europe/Sofia).
+  resetYearly    Boolean @default(false)
+  /// Calendar year of the last number taken; used with resetYearly.
+  lastIssuedYear Int?
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, key])
 }
 
 /// Physical location: store / kitchen / bar / warehouse (§4.1).
@@ -170,17 +218,47 @@ model Site {
   stockMovements  StockMovement[]
   stockCosts      StockCost[]
   invitationSites InvitationSite[]
+  eShop           EShop?
 
   @@unique([companyId, name])
   @@index([companyId])
   @@index([managerUserId])
 }
 
+/// A site registered with the NRA as an e-shop (Annex 38 to Наредба Н-18). Its till sales are the orders
+/// in the monthly audit file.
+model EShop {
+  siteId          String   @id
+  companyId       String
+  /// e_shop_n: the unique number from the NRA registration.
+  number          String
+  /// domain_name: the web address.
+  webAddress      String
+  /// e_shop_type: 1 own domain, 2 online platform.
+  type            Int
+  /// paym codes reported for till sales taken as cash / card.
+  cashPayment     Int      @default(3)
+  cardPayment     Int      @default(2)
+  /// pos_n: the virtual POS terminal.
+  posTerminal     String?
+  /// proc_id: the payment service provider's tax number and name.
+  paymentProvider String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
 model User {
   id           String   @id @default(uuid())
   companyId    String
   email        String   @unique
-  passwordHash String
+  /// Null for Google-only accounts that have never set a password.
+  passwordHash String?
+  /// Google OpenID subject; set on first Google sign-in.
+  googleSub    String?  @unique
   name         String
   role         UserRole
   isActive     Boolean  @default(true)
@@ -274,6 +352,9 @@ model Product {
   unit           UnitOfMeasure @default(PCS)
   /// Pieces (or kg) contained in one of `unit` — e.g. CASE of 20 pcs.
   packSize       Decimal       @default(1) @db.Decimal(12, 3)
+  /// Net weight/volume of one stock unit for recipes (e.g. 1 PCS = 400 G). Both null or both set.
+  netContent     Decimal?      @db.Decimal(12, 3)
+  netContentUnit ContentUnit?
   vatRate        Decimal       @db.Decimal(5, 2)
   purchasePrice  Decimal       @db.Decimal(12, 4)
   sellingPrice   Decimal       @db.Decimal(12, 4)
@@ -327,7 +408,10 @@ model Partner {
   companyId String
   kind      PartnerKind @default(SUPPLIER)
   name      String
-  taxId       String?
+  /// ЕИК / БУЛСТАТ (or ЕГН / ЛНЧ of a sole trader), digits only, checksum-validated on save.
+  eik         String?
+  /// BG + ЕИК for a registered Bulgarian partner, or an EU VAT number.
+  vatNumber   String?
   address     String?
   mol         String?
   phone       String?
@@ -341,7 +425,8 @@ model Partner {
   supplierCodes SupplierProductCode[]
 
   @@index([companyId])
-  @@unique([companyId, taxId])
+  @@unique([companyId, eik])
+  @@index([companyId, vatNumber])
 }
 
 /// Maps a supplier's printed product code onto our Product. Same SKU will have
@@ -431,11 +516,18 @@ model Document {
   notes            String?
   /// Photos on a write-off are evidence and are never sent to OCR.
   writeOffReason   WriteOffReason?
-  /// SALE only. A void copies the method of the sale it reverses.
+  /// SALE: cash or card, a void copies the method of the sale it reverses. Paper documents: as printed.
   paymentMethod    PaymentMethod?
+  /// SALE: the card transaction's reference number (Annex 38 trans_n).
+  paymentReference String?
+  /// Amounts printed on the paper (read by OCR or typed), checked against the lines before posting.
+  /// The calculated totals always come from the lines and are never stored.
+  printedTaxableBase Decimal?     @db.Decimal(14, 2)
+  printedVatAmount   Decimal?     @db.Decimal(14, 2)
+  printedTotal       Decimal?     @db.Decimal(14, 2)
   /// Who created it (the cashier for a sale).
   createdById      String?
-  /// Set on the document that reverses another (a sale void). One reversal per document.
+  /// Set on the document that reverses another: a sale void, or the reversal of a posted document. One per document.
   reversalOfId     String?        @unique
   /// Idempotency key sent by the till, so a retried request can't record the same sale twice.
   clientRequestId  String?
@@ -459,7 +551,8 @@ model Document {
   productsCreated  Product[]       @relation("ProductsCreatedFromDocument")
   stockMovements   StockMovement[]
 
-  @@unique([companyId, number])
+  /// Duplicates are same partner + type + number among non-cancelled documents, checked under a lock in DocumentsService.
+  @@index([companyId, number])
   @@unique([companyId, clientRequestId])
   @@index([companyId, type, postedAt])
   @@index([siteId, type, postedAt])
@@ -486,6 +579,8 @@ model DocumentCapture {
   /// GLM self-reported: high | medium | low
   confidence         String?
   createdAt          DateTime                 @default(now())
+  /// Last status change; a read that hasn't moved for a while is checked against its queue job.
+  updatedAt          DateTime                 @default(now()) @updatedAt
 
   company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   document Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -504,14 +599,19 @@ model DocumentLine {
   position             Int            @default(0)
   /// Supplier's printed Код / № for this row (also stored on SupplierProductCode once matched).
   supplierProductCode  String?
+  /// EAN/GTIN printed on the row, attached to the product when the reviewer creates one from this line.
+  ocrBarcode           String?
   ocrDescription       String?
   ocrUnit              String?
   unit                 UnitOfMeasure?
   quantity             Decimal        @db.Decimal(12, 3)
   unitPrice            Decimal        @db.Decimal(12, 4)
   discountPercent      Decimal        @default(0) @db.Decimal(5, 2)
+  /// Always quantity × unitPrice × (1 − discount), worked out by the server.
   finalUnitPrice       Decimal?       @db.Decimal(12, 4)
   lineTotal            Decimal?       @db.Decimal(12, 4)
+  /// Line total as read by OCR, kept only to point the reviewer at the line that disagrees.
+  ocrLineTotal         Decimal?       @db.Decimal(12, 4)
   vatRate              Decimal        @db.Decimal(5, 2)
   ocrBatchNumber       String?
   ocrExpiryDate        DateTime?      @db.Date
@@ -552,6 +652,9 @@ model StockMovement {
   quantity       Decimal        @db.Decimal(12, 3)
   /// Cost per unit, excluding VAT. IN: price paid (or the sender's cost for a transfer). OUT: cost issued at.
   unitCost       Decimal?       @db.Decimal(12, 4)
+  /// The movement this one undoes (same site, product, batch, quantity and cost, opposite direction).
+  /// Undoing an IN also takes its quantity and value out of the batch cost; see siteLedger.
+  reversalOfId   String?        @unique
   occurredAt     DateTime       @default(now())
   createdAt      DateTime       @default(now())
 
@@ -561,6 +664,8 @@ model StockMovement {
   documentLine DocumentLine? @relation(fields: [documentLineId], references: [id], onDelete: SetNull)
   product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   batch        Batch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  reversalOf   StockMovement? @relation("MovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy   StockMovement? @relation("MovementReversal")
 
   @@index([companyId])
   @@index([siteId, productId])
@@ -611,8 +716,10 @@ model RecipeIngredient {
   recipeId       String
   productId      String
   position       Int     @default(0)
-  /// Net quantity in the ingredient's own unit (kg, l, pcs) that ends up in the whole yield.
+  /// Net quantity for the whole yield, in `quantityUnit` or the product's stock unit when null.
   quantity       Decimal @db.Decimal(12, 4)
+  /// G/ML when the cook enters grammage; null means the ingredient product's stock unit.
+  quantityUnit   ContentUnit?
   /// Loss while cleaning / cooking, as a share of the gross quantity issued from stock.
   wastagePercent Decimal @default(0) @db.Decimal(5, 2)
 
@@ -651,8 +758,6 @@ model ExportProfile {
 /// Registration details printed into the NRA VAT files (§4.7b).
 model VatSettings {
   companyId     String   @id
-  /// BG + 9 or 10 digits.
-  vatNumber     String?
   /// Name in the files (at most 50 characters); defaults to the company name.
   legalName     String?
   /// Person submitting the return (EGN or name, field 00-04).
@@ -710,13 +815,15 @@ model VatLedgerEntry {
   @@index([companyId, period, ledger])
 }
 
-/// An archived regulatory submission (VAT return files now, Annex 38 later). Never edited after it is
+/// An archived regulatory submission (VAT return files, Annex 38 audit files). Never edited after it is
 /// generated except to record that it was submitted; a correction is a new version.
 model ComplianceFiling {
   id            String    @id @default(uuid())
   companyId     String
   kind          String
   period        String
+  /// '' for a company-wide filing (VAT return), the site id for a per-site one (Annex 38).
+  scope         String    @default("")
   version       Int
   /// Hash of the source data, to tell when the books changed after filing.
   sourceHash    String
@@ -734,24 +841,33 @@ model ComplianceFiling {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@unique([companyId, kind, period, version])
+  @@unique([companyId, kind, period, scope, version])
   @@index([companyId, kind, period])
 }
 
-/// Generic mutation log (§4.9).
+/// Append-only change log (§4.9, AC 7). A database trigger rejects updates and deletes; the only change
+/// allowed is userId becoming null when a user is deleted (userName keeps who it was).
 model ActivityLog {
-  id         String   @id @default(uuid())
-  companyId  String
-  userId     String?
-  entityType String
-  entityId   String
-  action     String
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(uuid())
+  companyId   String
+  userId      String?
+  userName    String?
+  entityType  String
+  entityId    String
+  /// Document number, product name… at the time of the change, so the log reads without joins.
+  entityLabel String?
+  action      String
+  /// Changed fields only: their values before and after.
+  before      Json?
+  after       Json?
+  metadata    Json?
+  createdAt   DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([companyId, createdAt])
+  @@index([companyId, userId, createdAt])
+  @@index([companyId, entityType, createdAt])
   @@index([entityType, entityId])
 }

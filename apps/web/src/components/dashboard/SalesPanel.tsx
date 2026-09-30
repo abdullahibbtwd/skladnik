@@ -9,6 +9,7 @@ import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
 import type { SalesSummary } from '../../lib/workspace-api';
 import { useSalesQuery, useSalesReportQuery, useSitesQuery } from '../../lib/workspace-session';
+import { DateField } from '../ui/DateField';
 import { useDashboard } from './dashboard-context';
 import { ActionButton, GlassPanel, LiveBadge, MetricCard, MetricGrid, PageHeader, tableHeadRowClass, tableRowClass } from './dashboard-ui';
 
@@ -125,13 +126,12 @@ export const SalesPanel: React.FC = () => {
         >
           <ChevronLeft size={17} />
         </button>
-        <input
-          type="date"
+        <DateField
           value={date}
           max={today}
-          onChange={(event) => event.target.value && setDate(event.target.value)}
+          onChange={(value) => value && setDate(value)}
           aria-label={t('sales.day')}
-          className="h-10 rounded-xl border border-slate-200 bg-white px-3 font-mono text-[0.86rem] text-ops-ink outline-none focus:border-ops-teal/50"
+          className="w-40"
         />
         <button
           type="button"
@@ -145,7 +145,7 @@ export const SalesPanel: React.FC = () => {
         <span className="ml-1 font-display text-[0.86rem] font-medium text-slate-600">
           {date === today ? t('sales.today') : formatDay(date, i18n.language)}
         </span>
-        <div className="ml-auto flex gap-2 lg:hidden">
+        <div className="ml-auto flex gap-2 md:hidden">
           {manager && <ActionButton icon={Percent} label={t('app.margins')} onClick={() => navigate('/app/sales/margins')} />}
           <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} primary />
         </div>

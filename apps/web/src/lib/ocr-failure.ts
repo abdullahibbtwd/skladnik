@@ -9,6 +9,8 @@ export function ocrFailureCopy(raw: string | null | undefined) {
     text.includes('rate limit') ||
     text.includes('timeout') ||
     text.includes('aborted') ||
+    text.includes('interrupted') ||
+    text.includes('stalled') ||
     text.includes('try again later');
   const billing =
     text.includes('1113') ||

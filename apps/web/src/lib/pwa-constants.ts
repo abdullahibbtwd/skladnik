@@ -33,5 +33,8 @@ export const API_PATH_PREFIXES = [
   'reports',
   'vat',
   'export-profiles',
+  'company',
+  'activity',
+  'annex38',
   'health',
 ] as const;

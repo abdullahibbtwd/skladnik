@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -12,6 +13,14 @@ async function bootstrap() {
 
   // req.ip honours X-Forwarded-For only from private-network proxies (nginx, Vite), so rate limits can't be dodged by spoofing it.
   app.set('trust proxy', config.get<string>('TRUST_PROXY') ?? 'loopback, linklocal, uniquelocal');
+  app.disable('x-powered-by');
+  app.use(
+    helmet({
+      // API responses are JSON; CSP belongs on the nginx-served SPA.
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({

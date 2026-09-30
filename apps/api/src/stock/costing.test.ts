@@ -45,6 +45,43 @@ function expectEqual(actual: unknown, expected: unknown, label: string) {
   expectEqual(book.unitCost('y', 'new-batch'), 1.5, 'unknown batch falls back to the average');
 }
 
+// Reversing a receipt takes it back out of the average and the batch cost, as if it never came in.
+{
+  const book = new CostBook([], new Map(), new Map());
+  book.receive('z', 'b1', 10, 2);
+  book.receive('z', 'b1', 10, 4);
+  expectEqual(book.unitCost('z', 'b1'), 3, 'batch blends both receipts');
+  expectEqual(book.average('z'), 3, 'average blends both receipts');
+  book.unreceive('z', 'b1', 10, 4);
+  expectEqual(book.onHand('z', 'b1'), 10, 'reversed quantity leaves the batch');
+  expectEqual(book.unitCost('z', 'b1'), 2, 'batch cost back to the first receipt');
+  expectEqual(book.average('z'), 2, 'average back to the first receipt');
+  book.unreceive('z', 'b1', 10, 2);
+  expectEqual(book.onHand('z'), 0, 'nothing left');
+  expectEqual(book.average('z'), 2, 'average kept when nothing is left');
+}
+
+// Part of the stock already went out at the blended average: the average never goes negative.
+{
+  const book = new CostBook([], new Map(), new Map());
+  book.receive('w', null, 10, 1);
+  book.receive('w', null, 10, 9);
+  book.issue('w', null, 9);
+  book.unreceive('w', null, 10, 9);
+  expectEqual(book.onHand('w'), 1, 'one left');
+  expectEqual(book.average('w'), 5, 'average kept instead of (11 × 5 − 90) / 1');
+}
+
+// Undoing an issue puts the stock back without changing what the batch cost.
+{
+  const book = new CostBook([{ productId: 'v', batchId: 'b1', onHand: 10, inQty: 10, inValue: 30 }], new Map([['v', 3]]), new Map());
+  const cost = book.issue('v', 'b1', 4);
+  book.restore('v', 'b1', 4, cost);
+  expectEqual(book.onHand('v', 'b1'), 10, 'batch back to 10');
+  expectEqual(book.unitCost('v', 'b1'), 3, 'batch cost unchanged');
+  expectEqual(book.average('v'), 3, 'average unchanged');
+}
+
 // No history at all: catalog purchase price.
 {
   const book = new CostBook([], new Map(), new Map([['q', 4.2]]));

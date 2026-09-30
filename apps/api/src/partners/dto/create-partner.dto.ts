@@ -14,11 +14,19 @@ export class CreatePartnerDto {
   @IsIn(PARTNER_KINDS)
   kind!: PartnerKind;
 
+  /** ЕИК / БУЛСТАТ, or the ЕГН / ЛНЧ of a sole trader. Checksum-validated by the service. */
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsString()
-  @MaxLength(32)
-  taxId?: string;
+  @MaxLength(20)
+  eik?: string;
+
+  /** BG + ЕИК, or an EU VAT number. */
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(20)
+  vatNumber?: string;
 
   @IsOptional()
   @Transform(emptyToUndefined)

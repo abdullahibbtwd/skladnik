@@ -2,8 +2,11 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/cn';
 import { expiryTone } from '../../lib/dashboard-data';
+import { formatDaysLeft } from '../../lib/format';
+import { useExpiryWindows } from '../../lib/workspace-session';
 
 export const TONE_CLASS = {
+  expired: 'border-ops-danger/25 bg-ops-danger/10 text-ops-danger',
   critical: 'border-ops-danger/20 bg-ops-danger/8 text-ops-danger',
   urgent: 'border-ops-warn/25 bg-ops-warn/8 text-ops-warn',
   warning: 'border-ops-warn/15 bg-orange-50 text-ops-warn',
@@ -37,7 +40,7 @@ export function PageHeader({
         <h1 className="mt-1 font-display text-[1.35rem] font-semibold tracking-tight text-ops-ink">{title}</h1>
         <p className="mt-1 max-w-xl font-sans text-[0.8rem] text-slate-500">{description}</p>
       </div>
-      {action && <div className="hidden lg:block">{action}</div>}
+      {action && <div className="hidden md:block">{action}</div>}
     </div>
   );
 }
@@ -167,7 +170,7 @@ export function StatusPill({ status }: { status: string }) {
       ? 'posted'
       : status === 'REVIEW' || status === 'Review'
         ? 'review'
-        : status === 'CANCELLED'
+        : status === 'CANCELLED' || status === 'REVERSED'
           ? 'cancelled'
           : 'pending';
   const label =
@@ -179,7 +182,9 @@ export function StatusPill({ status }: { status: string }) {
           ? t('labels.documentStatus.POSTED')
           : status === 'CANCELLED'
             ? t('labels.documentStatus.CANCELLED')
-            : status === 'Pending'
+            : status === 'REVERSED'
+              ? t('labels.documentStatus.REVERSED')
+              : status === 'Pending'
               ? t('ops.pending')
               : status;
 
@@ -208,10 +213,11 @@ export function StatusPill({ status }: { status: string }) {
 }
 
 export function DaysPill({ days }: { days: number }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const windows = useExpiryWindows();
   return (
-    <span className={cn('inline-flex rounded-md border px-2 py-0.5 font-mono text-[0.7rem] font-medium whitespace-nowrap', TONE_CLASS[expiryTone(days)])}>
-      {days < 0 ? t('expiry.expired') : days === 0 ? t('expiry.today') : `${days}d`}
+    <span className={cn('inline-flex rounded-md border px-2 py-0.5 font-mono text-[0.7rem] font-medium whitespace-nowrap', TONE_CLASS[expiryTone(days, windows)])}>
+      {days < 0 ? t('expiry.expired') : days === 0 ? t('expiry.today') : formatDaysLeft(days, i18n.language)}
     </span>
   );
 }
@@ -227,7 +233,7 @@ export function ExpiryChip({
   active: boolean;
   subLabel: string;
 }) {
-  const tone = expiryTone(days);
+  const tone = expiryTone(days, useExpiryWindows());
   return (
     <div
       className={cn(
@@ -237,8 +243,8 @@ export function ExpiryChip({
     >
       <div className="flex items-center justify-between">
         <p className={cn('font-display text-[1.25rem] font-semibold tracking-tight', active ? 'text-ops-ink' : 'text-slate-400')}>{count}</p>
-        {active && days <= 3 && <span className="size-1.5 rounded-full bg-ops-danger" />}
-        {active && days === 7 && <span className="size-1.5 rounded-full bg-ops-warn" />}
+        {active && tone === 'critical' && <span className="size-1.5 rounded-full bg-ops-danger" />}
+        {active && tone === 'urgent' && <span className="size-1.5 rounded-full bg-ops-warn" />}
       </div>
       <p className="mt-0.5 font-display text-[0.68rem] font-medium opacity-80">
         ≤ {days}d · {subLabel}
@@ -270,9 +276,9 @@ export function GlassPanel({
     <section className={glassClass}>
       <SpecularRim />
       {title && (
-        <div className="flex items-center justify-between border-b border-slate-100 bg-ops-canvas/60 px-4 py-3 sm:px-5 sm:py-3.5">
-          <h2 className="font-display text-[0.92rem] font-semibold text-ops-ink">{title}</h2>
-          {action}
+        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-slate-100 bg-ops-canvas/60 px-4 py-3 sm:px-5 sm:py-3.5">
+          <h2 className="min-w-0 truncate font-display text-[0.92rem] font-semibold text-ops-ink">{title}</h2>
+          {action && <div className="shrink-0">{action}</div>}
         </div>
       )}
       <div className={padded ? 'p-4 sm:p-5' : ''}>{children}</div>
@@ -287,3 +293,20 @@ export function tableHeadRowClass() {
 export function tableRowClass() {
   return 'border-b border-slate-100 last:border-0 transition-colors hover:bg-ops-canvas/70';
 }
+
+/** Hide wide tables below 640 px; pair with a card list that uses `sm:hidden`. */
+export function desktopTableWrapClass() {
+  return 'hidden overflow-x-auto sm:block';
+}
+
+/** Card list for screens under 640 px. */
+export function mobileCardListClass() {
+  return 'divide-y divide-slate-100 sm:hidden';
+}
+
+export function mobileCardClass() {
+  return 'flex flex-col gap-2 px-4 py-3.5 sm:px-5';
+}
+
+/** Extra page padding when a fixed mobile action bar sits above the dock (e.g. POS). */
+export const stickyActionPagePad = 'pb-[calc(7.5rem+env(safe-area-inset-bottom))] md:pb-0';

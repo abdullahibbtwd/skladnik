@@ -1,4 +1,4 @@
-import { NameIndex, nameKey, partnerKey } from './name-matching';
+import { NameIndex, nameKey, partnerKey, productKey } from './name-matching';
 
 function expectEqual(actual: unknown, expected: unknown, label: string) {
   if (actual !== expected) throw new Error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -32,5 +32,34 @@ expectEqual(ambiguous.find('Бира Загорка 0.5 кын'), null, 'tie is 
 
 products.add({ id: 'new', name: 'Айрян 500 мл' });
 expectEqual(products.find('айрян 500мл')?.id, 'new', 'records added during an import are found');
+
+// Audit F-03 catalog: the clean invoice's three lines must land on the existing products.
+expectEqual(productKey('Кисело мляко 400гр'), productKey('Кисело мляко 400 г'), 'unit spellings fold');
+expectEqual(productKey('Прясно мляко 1лт'), productKey('Прясно мляко 1 л'), 'litre spellings fold');
+const catalog = new NameIndex<Row>(
+  [
+    { id: 'M-001', name: 'Прясно мляко 3% 1 л' },
+    { id: 'M-002', name: 'Кисело мляко 3.6% 400 г' },
+    { id: 'M-005', name: 'Масло 82% 125 г' },
+    { id: 'M-003', name: 'Кисело мляко 2% 400 г' },
+  ],
+  productKey,
+  0.88,
+  true,
+);
+expectEqual(catalog.find('Прящо мляко 3% 1 л')?.id, 'M-001', 'the misread "Прящо" still matches');
+expectEqual(catalog.find('Кисело мляко 3,6% 400гр')?.id, 'M-002', 'comma decimal and "гр"');
+expectEqual(catalog.find('Масло 82% 125 г')?.id, 'M-005', 'exact once batch/expiry are stripped');
+expectEqual(catalog.find('Кисело мляко краве 3.6% 400 г')?.id, 'M-002', 'one extra word');
+expectEqual(catalog.find('Масло краве 82% 125 г'), null, 'a one-word record never takes an extra word');
+expectEqual(catalog.find('Кисело мляко 3.6% 500 г'), null, 'other size stays unmatched');
+
+const suggestions = catalog.suggest('Кисело мляко 3.6 400', 3).map((row) => row.item.id);
+expectEqual(suggestions[0], 'M-002', 'best suggestion first');
+expectEqual(suggestions.includes('M-003'), true, 'a close sibling is offered too');
+expectEqual(catalog.suggest('Шоколад 100 г').length, 0, 'nothing close, nothing offered');
+
+const partners = new NameIndex<Row>([{ id: 'p', name: 'Млечен път ЕООД' }], partnerKey);
+expectEqual(partners.find('Млечен път Юг ЕООД'), null, 'extra word is off for partners');
 
 console.log('name-matching tests passed');

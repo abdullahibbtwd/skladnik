@@ -78,8 +78,13 @@ services:
       ZAI_API_KEY: ${ZAI_API_KEY:-}
       GLM_BASE_URL: ${GLM_BASE_URL:-https://api.z.ai/api/paas/v4}
       GLM_MODEL: ${GLM_MODEL:-glm-5.3-flash}
+      GLM_REASONING_EFFORT: ${GLM_REASONING_EFFORT:-}
+      VISION_MAX_EDGE: ${VISION_MAX_EDGE:-}
+      GLM_HEADER_MODEL: ${GLM_HEADER_MODEL:-}
+      GLM_COMPACT_OUTPUT: ${GLM_COMPACT_OUTPUT:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-Skladnik <beth.t@example.com>}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     depends_on:
       postgres:
         condition: service_healthy

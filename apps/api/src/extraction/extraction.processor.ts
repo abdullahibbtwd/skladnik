@@ -70,7 +70,8 @@ export class ExtractionProcessor extends WorkerHost {
       this.logger.log(
         `OCR timings for capture ${capture.id} (${extracted.model}, ${extracted.data.lines.length} lines): ` +
           `since upload ${startedAt - job.timestamp}ms, fetch ${fetchedAt - startedAt}ms, ` +
-          `vision ${extractedAt - fetchedAt}ms, apply ${Date.now() - extractedAt}ms`,
+          `vision ${extractedAt - fetchedAt}ms, apply ${Date.now() - extractedAt}ms, ` +
+          `output ${extracted.timings.outputTokens ?? '?'} tokens (reasoning ${extracted.timings.reasoningTokens ?? '?'})`,
       );
       return { ok: true, lines: extracted.data.lines.length, confidence: extracted.data.confidence };
     } catch (error) {

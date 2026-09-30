@@ -10,14 +10,27 @@ import { PartnersService } from './partners.service';
 export class PartnersController {
   constructor(private readonly partners: PartnersService) {}
 
+  /** Full directory — Owner / Site manager / Accountant only (CASHIER F-05). */
   @Get()
+  @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
   list(@CurrentUser() user: AuthUser, @Query('kind') kind?: string) {
     const filtered = kind && (PARTNER_KINDS as readonly string[]).includes(kind) ? (kind as PartnerKind) : undefined;
     return this.partners.list(user, filtered);
   }
 
+  /**
+   * Lightweight id+name lookup for document entry (Staff included).
+   * Product decision: Staff drafts may omit supplier; manager completes before posting.
+   */
+  @Get('lookup')
+  lookup(@CurrentUser() user: AuthUser, @Query('kind') kind?: string, @Query('q') q?: string) {
+    const filtered = kind && (PARTNER_KINDS as readonly string[]).includes(kind) ? (kind as PartnerKind) : undefined;
+    return this.partners.lookup(user, filtered, q);
+  }
+
+  /** Site managers create a supplier from an invoice screen; they still cannot open Partners settings. */
   @Post()
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreatePartnerDto) {
     return this.partners.create(user, dto);
   }

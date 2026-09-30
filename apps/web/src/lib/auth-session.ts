@@ -2,9 +2,13 @@ import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/re
 import { useNavigate } from 'react-router-dom';
 import {
   authKeys,
+  fetchAuthProviders,
   fetchCurrentUser,
+  forgotPasswordRequest,
+  googleAuthRequest,
   loginRequest,
   logoutRequest,
+  resetPasswordRequest,
   signupRequest,
   signupWithInviteRequest,
   type SessionUser,
@@ -56,10 +60,27 @@ export function useMeQuery() {
   return query;
 }
 
+export function useAuthProvidersQuery() {
+  return useQuery({
+    queryKey: [...authKeys.all, 'providers'] as const,
+    queryFn: fetchAuthProviders,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
 export function useLoginMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) => loginRequest(email, password),
+    onSuccess: (user) => cacheSession(queryClient, user),
+  });
+}
+
+export function useGoogleAuthMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (credential: string) => googleAuthRequest(credential),
     onSuccess: (user) => cacheSession(queryClient, user),
   });
 }
@@ -79,6 +100,19 @@ export function useSignupWithInviteMutation() {
     mutationFn: (input: { token: string; email: string; password: string; name: string }) =>
       signupWithInviteRequest(input),
     onSuccess: (user) => cacheSession(queryClient, user),
+  });
+}
+
+export function useForgotPasswordMutation() {
+  return useMutation({
+    mutationFn: (email: string) => forgotPasswordRequest(email),
+  });
+}
+
+export function useResetPasswordMutation() {
+  return useMutation({
+    mutationFn: ({ token, password }: { token: string; password: string }) =>
+      resetPasswordRequest(token, password),
   });
 }
 

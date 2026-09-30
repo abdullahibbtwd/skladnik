@@ -87,33 +87,66 @@ export class CostBook {
   }
 
   receive(productId: string, batchId: string | null, quantity: number, unitCost: number) {
+    this.reweight(productId, quantity, unitCost);
+    this.adjust(productId, batchId, quantity);
+    if (batchId !== null) {
+      const batch = this.batch(productId, batchId);
+      batch.inQty += quantity;
+      batch.inValue += quantity * unitCost;
+    }
+  }
+
+  /** Puts back stock that left at `unitCost` (undoing an OUT). The average takes it back; the batch cost doesn't change. */
+  restore(productId: string, batchId: string | null, quantity: number, unitCost: number) {
+    this.reweight(productId, quantity, unitCost);
+    this.adjust(productId, batchId, quantity);
+  }
+
+  /**
+   * Undoes a receipt: the quantity and its value come back out of the batch cost and the average, as if it
+   * never came in. When the rest was already issued at the old average, the average is left alone rather
+   * than going negative.
+   */
+  unreceive(productId: string, batchId: string | null, quantity: number, unitCost: number) {
+    const before = this.onHand(productId);
+    const remaining = round3(before - quantity);
+    if (remaining > 0) {
+      const average = (before * this.average(productId) - quantity * unitCost) / remaining;
+      if (average >= 0) {
+        this.averages.set(productId, round4(average));
+        this.changed.add(productId);
+      }
+    }
+    this.adjust(productId, batchId, -quantity);
+    if (batchId !== null) {
+      const batch = this.batch(productId, batchId);
+      batch.inQty = Math.max(0, batch.inQty - quantity);
+      batch.inValue = batch.inQty > 0 ? Math.max(0, batch.inValue - quantity * unitCost) : 0;
+    }
+  }
+
+  private reweight(productId: string, quantity: number, unitCost: number) {
     const before = this.onHand(productId);
     const prior = this.averages.get(productId) ?? this.fallback.get(productId) ?? unitCost;
     const average = before <= 0 ? unitCost : (before * prior + quantity * unitCost) / (before + quantity);
     this.averages.set(productId, round4(average));
     this.changed.add(productId);
+  }
 
+  private adjust(productId: string, batchId: string | null, quantity: number) {
     if (batchId === null) {
       const product = this.product(productId);
       product.loose = round3(product.loose + quantity);
     } else {
       const batch = this.batch(productId, batchId);
       batch.onHand = round3(batch.onHand + quantity);
-      batch.inQty += quantity;
-      batch.inValue += quantity * unitCost;
     }
   }
 
   /** Takes stock out and returns the unit cost it leaves at. */
   issue(productId: string, batchId: string | null, quantity: number): number {
     const cost = this.unitCost(productId, batchId);
-    if (batchId === null) {
-      const product = this.product(productId);
-      product.loose = round3(product.loose - quantity);
-    } else {
-      const batch = this.batch(productId, batchId);
-      batch.onHand = round3(batch.onHand - quantity);
-    }
+    this.adjust(productId, batchId, -quantity);
     return cost;
   }
 

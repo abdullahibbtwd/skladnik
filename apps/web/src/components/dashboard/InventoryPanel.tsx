@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { ClipboardList, Package, Plus, Search } from 'lucide-react';
 import {
+  CONTENT_UNITS,
   PRODUCT_STATUSES,
   UNITS_OF_MEASURE,
+  type ContentUnit,
   type ProductStatus,
   type UnitOfMeasure,
 } from '@skladnik/shared';
-import { useAuthRole } from '../../lib/auth-store';
 import { formatEuro } from '../../lib/dashboard-data';
 import {
   useAddSupplierCode,
@@ -19,6 +20,7 @@ import {
   useStockQuery,
   useUpdateProduct,
 } from '../../lib/workspace-session';
+import { usePermissions } from '../../lib/permissions';
 import { cn } from '../../lib/cn';
 import { useDashboard } from './dashboard-context';
 import { flattenProductGroups, type ProductRecord } from '../../lib/workspace-api';
@@ -29,15 +31,19 @@ import { confirm } from '../ui/Dialog';
 import { useTranslation } from 'react-i18next';
 import {
   ActionButton,
+  desktopTableWrapClass,
   GhostButton,
   GlassPanel,
   LiveBadge,
   MetricCard,
   MetricGrid,
+  mobileCardClass,
+  mobileCardListClass,
   PageHeader,
   tableHeadRowClass,
   tableRowClass,
 } from './dashboard-ui';
+import { RowActionsMenu } from './RowActionsMenu';
 import { WorkspaceModal } from './WorkspaceModal';
 
 type ProductForm = {
@@ -46,6 +52,8 @@ type ProductForm = {
   groupId: string;
   unit: UnitOfMeasure;
   packSize: string;
+  netContent: string;
+  netContentUnit: '' | ContentUnit;
   vatRate: string;
   purchasePrice: string;
   sellingPrice: string;
@@ -62,6 +70,8 @@ const emptyForm: ProductForm = {
   groupId: '',
   unit: 'PCS',
   packSize: '1',
+  netContent: '',
+  netContentUnit: '',
   vatRate: '20',
   purchasePrice: '0',
   sellingPrice: '0',
@@ -81,7 +91,8 @@ function parseBarcodes(value: string) {
 
 export const InventoryPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
-  const role = useAuthRole();
+  const permissions = usePermissions();
+  const seeFinancials = permissions.seeFinancials;
   const { siteId } = useDashboard();
   const stockQuery = useStockQuery(siteId);
   const onHandById = useMemo(
@@ -89,7 +100,9 @@ export const InventoryPanel: React.FC = () => {
     [stockQuery.data],
   );
   const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  const canCatalog = permissions.productCatalog;
+  const canMinStock = permissions.productMinStock;
+  const canWrite = canCatalog || canMinStock;
   const groupsQuery = useProductGroupsQuery();
   const partnersQuery = usePartnersQuery();
   const [groupFilter, setGroupFilter] = useState('');
@@ -142,8 +155,10 @@ export const InventoryPanel: React.FC = () => {
       groupId: product.group?.id ?? '',
       unit: product.unit,
       packSize: String(product.packSize),
+      netContent: product.netContent == null ? '' : String(product.netContent),
+      netContentUnit: product.netContentUnit ?? '',
       vatRate: String(product.vatRate),
-      purchasePrice: String(product.purchasePrice),
+      purchasePrice: String(product.purchasePrice ?? 0),
       sellingPrice: String(product.sellingPrice),
       minStock: String(product.minStock),
       maxStock: product.maxStock === null ? '' : String(product.maxStock),
@@ -164,6 +179,8 @@ export const InventoryPanel: React.FC = () => {
     groupId: form.groupId || null,
     unit: form.unit,
     packSize: Number(form.packSize),
+    netContent: form.netContent.trim() === '' ? null : Number(form.netContent),
+    netContentUnit: form.netContentUnit === '' ? null : form.netContentUnit,
     vatRate: Number(form.vatRate),
     purchasePrice: Number(form.purchasePrice),
     sellingPrice: Number(form.sellingPrice),
@@ -178,6 +195,12 @@ export const InventoryPanel: React.FC = () => {
     event.preventDefault();
     setError(null);
     try {
+      if (editing && !canCatalog) {
+        await updateProduct.mutateAsync({ id: editing.id, minStock: Number(form.minStock) });
+        toast.success(t('inventory.updated'));
+        setModal(null);
+        return;
+      }
       const payload = payloadFromForm();
       if (editing) {
         await updateProduct.mutateAsync({ id: editing.id, ...payload });
@@ -212,7 +235,10 @@ export const InventoryPanel: React.FC = () => {
     }
   };
 
-  const title = useMemo(() => (editing ? t('inventory.editProduct') : t('inventory.addProduct')), [editing, t]);
+  const title = useMemo(() => {
+    if (editing && !canCatalog) return t('inventory.editMinStock');
+    return editing ? t('inventory.editProduct') : t('inventory.addProduct');
+  }, [editing, canCatalog, t]);
   const saving = createProduct.isPending || updateProduct.isPending;
 
   return (
@@ -220,7 +246,7 @@ export const InventoryPanel: React.FC = () => {
       <PageHeader
         title={t('pages.inventoryTitle')}
         description={t('pages.inventoryDesc')}
-        action={canWrite ? <ActionButton icon={Plus} label={t('inventory.addProduct')} onClick={openCreate} primary /> : undefined}
+        action={canCatalog ? <ActionButton icon={Plus} label={t('inventory.addProduct')} onClick={openCreate} primary /> : undefined}
       />
 
       <MetricGrid columns={3}>
@@ -283,106 +309,217 @@ export const InventoryPanel: React.FC = () => {
             {t('inventory.emptyCatalog')}
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[50rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-5 py-3 font-display font-medium">{t('inventory.product')}</th>
-                  <th className="px-4 py-3 text-right font-display font-medium whitespace-nowrap">{t('stock.onHand')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('inventory.group')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('inventory.unit')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('inventory.vat')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('inventory.buySell')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('inventory.status')}</th>
-                  {canWrite && <th className="px-5 py-3 text-right font-display font-medium">{t('inventory.actions')}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.id} className={tableRowClass()}>
-                    <td className="px-5 py-3.5">
-                      <p className="font-display text-[0.86rem] font-medium text-ops-ink">{product.name}</p>
-                      <p className="font-mono text-[0.66rem] text-slate-400">
-                        {product.code}
-                        {product.barcodes[0] ? ` · ${product.barcodes[0].barcode}` : ''}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3.5 text-right font-mono text-[0.82rem] tabular-nums">
-                      {(() => {
-                        const level = onHandById.get(product.id);
-                        if (!level) return <span className="text-slate-400">{!stockQuery.data ? (stockQuery.isLoading ? '…' : '—') : '0'}</span>;
-                        return (
+          <>
+            <ul className={mobileCardListClass()}>
+              {products.map((product) => {
+                const level = onHandById.get(product.id);
+                const onHandLabel = !level
+                  ? !stockQuery.data
+                    ? stockQuery.isLoading
+                      ? '…'
+                      : '—'
+                    : '0'
+                  : qtyFormat.format(level.onHand);
+                const archive = async () => {
+                  const ok = await confirm({
+                    title: t('inventory.archiveNamed', { name: product.name }),
+                    description: t('inventory.archiveBody'),
+                    confirmLabel: t('common.archive'),
+                    danger: true,
+                  });
+                  if (!ok) return;
+                  try {
+                    await archiveProduct.mutateAsync(product.id);
+                    toast.success(t('inventory.archived'));
+                  } catch (archiveError) {
+                    toast.error(archiveError instanceof Error ? archiveError.message : t('common.couldNotArchive'));
+                  }
+                };
+                return (
+                  <li key={product.id} className={mobileCardClass()}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-display text-[0.86rem] font-medium text-ops-ink">{product.name}</p>
+                        <p className="font-mono text-[0.66rem] text-slate-400">
+                          {product.code}
+                          {product.barcodes[0] ? ` · ${product.barcodes[0].barcode}` : ''}
+                        </p>
+                        <p className="mt-1 font-sans text-[0.74rem] text-slate-500">
                           <span
                             className={cn(
-                              level.status === 'OUT' ? 'text-ops-danger' : level.status === 'LOW' ? 'text-ops-warn' : 'text-ops-ink',
+                              'font-mono tabular-nums',
+                              level?.status === 'OUT'
+                                ? 'text-ops-danger'
+                                : level?.status === 'LOW'
+                                  ? 'text-ops-warn'
+                                  : 'text-ops-ink',
                             )}
                           >
-                            {qtyFormat.format(level.onHand)}
+                            {onHandLabel}
                           </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{product.group?.name ?? '—'}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">
-                      {t(`labels.unit.${product.unit}`)}
-                      {product.packSize !== 1 ? ` · ${product.packSize}` : ''}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono text-[0.78rem] text-slate-600">{product.vatRate}%</td>
-                    <td className="px-4 py-3.5 font-mono text-[0.78rem] text-slate-600">
-                      {formatEuro(product.purchasePrice)} / {formatEuro(product.sellingPrice)}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span
-                        className={
-                          product.status === 'PENDING_REVIEW'
-                            ? 'font-display text-[0.72rem] text-ops-warn'
-                            : product.status === 'ARCHIVED'
-                              ? 'font-display text-[0.72rem] text-slate-400'
-                              : 'font-display text-[0.72rem] text-ops-teal'
-                        }
-                      >
-                        {t(`labels.productStatus.${product.status}`)}
-                      </span>
-                    </td>
-                    {canWrite && (
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <GhostButton onClick={() => openEdit(product)}>{t('common.edit')}</GhostButton>
-                          {product.status !== 'ARCHIVED' && (
-                            <GhostButton
-                              danger
-                              onClick={async () => {
-                                const ok = await confirm({
-                                  title: t('inventory.archiveNamed', { name: product.name }),
-                                  description: t('inventory.archiveBody'),
-                                  confirmLabel: t('common.archive'),
-                                  danger: true,
-                                });
-                                if (!ok) return;
-                                try {
-                                  await archiveProduct.mutateAsync(product.id);
-                                  toast.success(t('inventory.archived'));
-                                } catch (archiveError) {
-                                  toast.error(archiveError instanceof Error ? archiveError.message : t('common.couldNotArchive'));
-                                }
-                              }}
-                            >
-                              {t('common.archive')}
-                            </GhostButton>
-                          )}
-                        </div>
-                      </td>
+                          {' · '}
+                          <span
+                            className={
+                              product.status === 'PENDING_REVIEW'
+                                ? 'text-ops-warn'
+                                : product.status === 'ARCHIVED'
+                                  ? 'text-slate-400'
+                                  : 'text-ops-teal'
+                            }
+                          >
+                            {t(`labels.productStatus.${product.status}`)}
+                          </span>
+                        </p>
+                      </div>
+                      {canWrite && (
+                        <RowActionsMenu
+                          actions={[
+                            {
+                              label: canCatalog ? t('common.edit') : t('inventory.editMinStock'),
+                              onClick: () => openEdit(product),
+                            },
+                            ...(canCatalog && product.status !== 'ARCHIVED'
+                              ? [{ label: t('common.archive'), onClick: () => void archive(), danger: true }]
+                              : []),
+                          ]}
+                        />
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className={desktopTableWrapClass()}>
+              <table className="w-full min-w-[50rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-5 py-3 font-display font-medium">{t('inventory.product')}</th>
+                    <th className="px-4 py-3 text-right font-display font-medium whitespace-nowrap">{t('stock.onHand')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('inventory.group')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('inventory.unit')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('inventory.vat')}</th>
+                    {seeFinancials ? (
+                      <th className="px-4 py-3 font-display font-medium">{t('inventory.buySell')}</th>
+                    ) : (
+                      <th className="px-4 py-3 font-display font-medium">{t('inventory.sellingPrice')}</th>
                     )}
+                    <th className="px-4 py-3 font-display font-medium">{t('inventory.status')}</th>
+                    {canWrite && <th className="px-5 py-3 text-right font-display font-medium">{t('inventory.actions')}</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.id} className={tableRowClass()}>
+                      <td className="px-5 py-3.5">
+                        <p className="font-display text-[0.86rem] font-medium text-ops-ink">{product.name}</p>
+                        <p className="font-mono text-[0.66rem] text-slate-400">
+                          {product.code}
+                          {product.barcodes[0] ? ` · ${product.barcodes[0].barcode}` : ''}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-[0.82rem] tabular-nums">
+                        {(() => {
+                          const level = onHandById.get(product.id);
+                          if (!level) return <span className="text-slate-400">{!stockQuery.data ? (stockQuery.isLoading ? '…' : '—') : '0'}</span>;
+                          return (
+                            <span
+                              className={cn(
+                                level.status === 'OUT' ? 'text-ops-danger' : level.status === 'LOW' ? 'text-ops-warn' : 'text-ops-ink',
+                              )}
+                            >
+                              {qtyFormat.format(level.onHand)}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{product.group?.name ?? '—'}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">
+                        {t(`labels.unit.${product.unit}`)}
+                        {product.packSize !== 1 ? ` · ${product.packSize}` : ''}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-[0.78rem] text-slate-600">{product.vatRate}%</td>
+                      <td className="px-4 py-3.5 font-mono text-[0.78rem] text-slate-600">
+                        {seeFinancials
+                          ? `${formatEuro(product.purchasePrice ?? 0)} / ${formatEuro(product.sellingPrice)}`
+                          : formatEuro(product.sellingPrice)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={
+                            product.status === 'PENDING_REVIEW'
+                              ? 'font-display text-[0.72rem] text-ops-warn'
+                              : product.status === 'ARCHIVED'
+                                ? 'font-display text-[0.72rem] text-slate-400'
+                                : 'font-display text-[0.72rem] text-ops-teal'
+                          }
+                        >
+                          {t(`labels.productStatus.${product.status}`)}
+                        </span>
+                      </td>
+                      {canWrite && (
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <GhostButton onClick={() => openEdit(product)}>
+                              {canCatalog ? t('common.edit') : t('inventory.editMinStock')}
+                            </GhostButton>
+                            {canCatalog && product.status !== 'ARCHIVED' && (
+                              <GhostButton
+                                danger
+                                onClick={async () => {
+                                  const ok = await confirm({
+                                    title: t('inventory.archiveNamed', { name: product.name }),
+                                    description: t('inventory.archiveBody'),
+                                    confirmLabel: t('common.archive'),
+                                    danger: true,
+                                  });
+                                  if (!ok) return;
+                                  try {
+                                    await archiveProduct.mutateAsync(product.id);
+                                    toast.success(t('inventory.archived'));
+                                  } catch (archiveError) {
+                                    toast.error(archiveError instanceof Error ? archiveError.message : t('common.couldNotArchive'));
+                                  }
+                                }}
+                              >
+                                {t('common.archive')}
+                              </GhostButton>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
 
-      <WorkspaceModal title={title} isOpen={modal !== null} onClose={() => setModal(null)} wide>
+      <WorkspaceModal title={title} isOpen={modal !== null} onClose={() => setModal(null)} wide={canCatalog}>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          {!canCatalog && editing ? (
+            <>
+              <p className="font-sans text-[0.82rem] text-slate-600">
+                {editing.name}
+                <span className="ml-2 font-mono text-[0.72rem] text-slate-400">{editing.code}</span>
+              </p>
+              <p className="font-sans text-[0.74rem] text-slate-500">{t('inventory.minStockManagerHint')}</p>
+              <div>
+                <FieldLabel htmlFor="product-min">{t('inventory.minStock')}</FieldLabel>
+                <input
+                  id="product-min"
+                  required
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={form.minStock}
+                  onChange={(event) => setForm((prev) => ({ ...prev, minStock: event.target.value }))}
+                  className={`${textFieldClass} pl-3`}
+                />
+              </div>
+            </>
+          ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <FieldLabel htmlFor="product-name">{t('inventory.name')}</FieldLabel>
@@ -437,6 +574,33 @@ export const InventoryPanel: React.FC = () => {
                 onChange={(event) => setForm((prev) => ({ ...prev, packSize: event.target.value }))}
                 className={`${textFieldClass} pl-3`}
               />
+            </div>
+            <div>
+              <FieldLabel htmlFor="product-net-content">{t('inventory.netContent')}</FieldLabel>
+              <div className="flex gap-2">
+                <input
+                  id="product-net-content"
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  value={form.netContent}
+                  onChange={(event) => setForm((prev) => ({ ...prev, netContent: event.target.value }))}
+                  placeholder={t('inventory.netContentPlaceholder')}
+                  className={`${textFieldClass} pl-3`}
+                />
+                <Select
+                  id="product-net-unit"
+                  value={form.netContentUnit}
+                  onChange={(netContentUnit) =>
+                    setForm((prev) => ({ ...prev, netContentUnit: netContentUnit as '' | ContentUnit }))
+                  }
+                  options={[
+                    { value: '', label: '—' },
+                    ...CONTENT_UNITS.map((unit) => ({ value: unit, label: t(`labels.unit.${unit}`) })),
+                  ]}
+                />
+              </div>
+              <p className="mt-1 font-sans text-[0.72rem] text-slate-500">{t('inventory.netContentHint')}</p>
             </div>
             <div>
               <FieldLabel htmlFor="product-vat">{t('inventory.vatPercent')}</FieldLabel>
@@ -536,6 +700,7 @@ export const InventoryPanel: React.FC = () => {
               />
             </div>
           </div>
+          )}
           {error && <FieldError>{error}</FieldError>}
           <div className="flex justify-end gap-2 pt-1">
             <GhostButton onClick={() => setModal(null)}>{t('common.cancel')}</GhostButton>
@@ -549,7 +714,7 @@ export const InventoryPanel: React.FC = () => {
           </div>
         </form>
 
-        {editing && (
+        {editing && canCatalog && (
           <div className="mt-6 border-t border-slate-100 pt-5">
             <h3 className="font-display text-[0.86rem] font-semibold text-ops-ink">{t('inventory.supplierCodes')}</h3>
             <p className="mt-1 font-sans text-[0.75rem] text-slate-500">

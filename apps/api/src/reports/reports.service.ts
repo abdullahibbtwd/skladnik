@@ -10,6 +10,7 @@ import {
   STOCK_VALUE_GROUPINGS,
   TURNOVER_GROUPINGS,
   WRITE_OFF_REASON_LABELS,
+  partnerTaxNumber,
   reportColumn,
   reportColumnLabel,
   type AuthUser,
@@ -25,8 +26,10 @@ import {
   type WriteOffReason,
 } from '@skladnik/shared';
 import { toNumber } from '../common/decimal';
+import { STANDING_DOCUMENT } from '../documents/reversal';
 import { PrismaService } from '../prisma/prisma.service';
 import { addDays, businessDate, businessRange, dayStart, daysBetween, isBusinessDate } from '../sales/business-day';
+import { IN_BASIS_QTY, IN_BASIS_VALUE } from '../stock/ledger';
 import type { ReportExportQueryDto, ReportQueryDto } from './dto/report.dto';
 import { formatDate } from './export/cells';
 import { buildCsv } from './export/csv';
@@ -477,8 +480,8 @@ export class ReportsService {
     const rows = await this.prisma.$queryRaw<{ siteId: string; productId: string; batchId: string; qty: number; inQty: number; inValue: number }[]>`
       SELECT "siteId", "productId", "batchId",
         SUM(CASE WHEN "direction" = 'IN' THEN "quantity" ELSE -"quantity" END)::float8 AS "qty",
-        COALESCE(SUM(CASE WHEN "direction" = 'IN' AND "unitCost" IS NOT NULL THEN "quantity" END), 0)::float8 AS "inQty",
-        COALESCE(SUM(CASE WHEN "direction" = 'IN' AND "unitCost" IS NOT NULL THEN "quantity" * "unitCost" END), 0)::float8 AS "inValue"
+        ${IN_BASIS_QTY} AS "inQty",
+        ${IN_BASIS_VALUE} AS "inValue"
       FROM "StockMovement"
       WHERE "companyId" = ${ctx.scope.companyId} AND "siteId" = ANY(${ctx.scope.siteIds}) AND "batchId" IS NOT NULL
       GROUP BY "siteId", "productId", "batchId"
@@ -722,10 +725,10 @@ export class ReportsService {
       where: {
         companyId: ctx.scope.companyId,
         siteId: { in: ctx.scope.siteIds },
-        type: 'PROTOCOL',
-        direction: 'OUT',
+        type: 'WRITE_OFF',
         status: 'POSTED',
-        writeOffReason: ctx.query.reason ?? { not: null },
+        ...STANDING_DOCUMENT,
+        ...(ctx.query.reason ? { writeOffReason: ctx.query.reason } : {}),
         issuedOn: { gte: dateValue(from), lte: dateValue(to) },
       },
       orderBy: [{ issuedOn: 'asc' }, { number: 'asc' }],
@@ -831,7 +834,7 @@ export class ReportsService {
         note: line.doc.notes,
         createdBy: line.doc.createdBy?.name ?? null,
         _documentId: line.doc.id,
-        _documentType: 'PROTOCOL',
+        _documentType: 'WRITE_OFF',
       })),
       totals: { date: this.text('total', ctx.lang), value: round2(total) },
       notes: [],
@@ -848,6 +851,7 @@ export class ReportsService {
         siteId: { in: ctx.scope.siteIds },
         type: 'STOCKTAKE',
         status: 'POSTED',
+        ...STANDING_DOCUMENT,
         issuedOn: { gte: dateValue(from), lte: dateValue(to) },
       },
       orderBy: [{ issuedOn: 'asc' }, { number: 'asc' }],
@@ -1028,8 +1032,9 @@ export class ReportsService {
   }
 
   /**
-   * Purchases: one entry per posted invoice, receipt note or credit/debit note; prices exclude VAT and
-   * VAT is charged per rate on each document. Stock going back out (a credit note) counts negative.
+   * Purchases: one entry per posted invoice or credit/debit note; prices exclude VAT and VAT is charged per
+   * rate on each document. Stock going back out (a credit note) counts negative. A receipt note is not a tax
+   * document: the same delivery's invoice carries the VAT, so counting both would claim it twice.
    * Sales: till receipts summed per day and site (voids negative); gross prices are split per rate.
    */
   private async vatEntries(ctx: Ctx, from: string, to: string): Promise<VatEntry[]> {
@@ -1039,7 +1044,8 @@ export class ReportsService {
           companyId: ctx.scope.companyId,
           siteId: { in: ctx.scope.siteIds },
           status: 'POSTED',
-          type: { in: ['INVOICE', 'RECEIPT', 'CREDIT_NOTE'] },
+          type: { in: ['INVOICE', 'CREDIT_NOTE'] },
+          ...STANDING_DOCUMENT,
           issuedOn: { gte: dateValue(from), lte: dateValue(to) },
         },
         orderBy: [{ issuedOn: 'asc' }, { number: 'asc' }],
@@ -1050,7 +1056,7 @@ export class ReportsService {
           number: true,
           issuedOn: true,
           siteId: true,
-          partner: { select: { name: true, taxId: true } },
+          partner: { select: { name: true, eik: true, vatNumber: true } },
           lines: { select: { quantity: true, unitPrice: true, finalUnitPrice: true, lineTotal: true, vatRate: true } },
         },
       }),
@@ -1075,7 +1081,7 @@ export class ReportsService {
         documentType: this.documentTypeLabel(doc.type as DocumentType, false, ctx.lang),
         number: doc.number,
         partner: doc.partner?.name ?? null,
-        partnerTaxId: doc.partner?.taxId ?? null,
+        partnerTaxId: partnerTaxNumber(doc.partner),
         siteId: doc.siteId,
         documents: 1,
         rates: new Map(

@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type UnitAlias } from '@prisma/client';
 import type { AuthUser } from '@skladnik/shared';
+import { changes, recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUnitAliasDto } from './dto/create-unit-alias.dto';
 import { UpdateUnitAliasDto } from './dto/update-unit-alias.dto';
@@ -26,7 +27,7 @@ export class UnitAliasesService {
           unit: dto.unit,
         },
       });
-      await this.log(user, alias.id, 'CREATE', { raw: alias.raw, unit: alias.unit });
+      await this.log(user, { id: alias.id, label: alias.raw }, 'CREATE', { after: { raw: alias.raw, unit: alias.unit } });
       return { alias: this.serialize(alias) };
     } catch (error) {
       this.throwIfTaken(error);
@@ -44,7 +45,8 @@ export class UnitAliasesService {
           ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
         },
       });
-      await this.log(user, alias.id, 'UPDATE', { fields: Object.keys(dto) });
+      const diff = changes(existing, alias, ['raw', 'unit']);
+      if (diff) await this.log(user, { id: alias.id, label: alias.raw }, 'UPDATE', diff);
       return { alias: this.serialize(alias) };
     } catch (error) {
       this.throwIfTaken(error);
@@ -55,7 +57,7 @@ export class UnitAliasesService {
   async remove(user: AuthUser, id: string) {
     const existing = await this.findInCompany(user.companyId, id);
     await this.prisma.unitAlias.delete({ where: { id: existing.id } });
-    await this.log(user, existing.id, 'DELETE', { raw: existing.raw });
+    await this.log(user, { id: existing.id, label: existing.raw }, 'DELETE', { before: { raw: existing.raw, unit: existing.unit } });
     return { ok: true };
   }
 
@@ -83,16 +85,12 @@ export class UnitAliasesService {
     };
   }
 
-  private async log(user: AuthUser, entityId: string, action: string, metadata: Prisma.InputJsonValue) {
-    await this.prisma.activityLog.create({
-      data: {
-        companyId: user.companyId,
-        userId: user.id,
-        entityType: 'UnitAlias',
-        entityId,
-        action,
-        metadata,
-      },
-    });
+  private async log(
+    user: AuthUser,
+    entity: { id: string; label: string },
+    action: string,
+    diff: { before?: Record<string, unknown>; after?: Record<string, unknown> },
+  ) {
+    await recordActivity(this.prisma, user, { entityType: 'UnitAlias', entityId: entity.id, label: entity.label, action, ...diff });
   }
 }

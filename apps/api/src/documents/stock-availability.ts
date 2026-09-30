@@ -13,6 +13,14 @@ export type LedgerRow = {
   quantity: number;
 };
 
+export type StockShortfall = {
+  code: 'INSUFFICIENT_STOCK';
+  product: string;
+  available: number;
+  requested: number;
+  action: 'take' | 'sell';
+};
+
 function round3(value: number) {
   return Math.round(value * 1000) / 1000;
 }
@@ -34,8 +42,13 @@ export function onHandByKey(rows: LedgerRow[]): Map<string, number> {
   return result;
 }
 
-/** One message per product/batch where the lines take out more than the site holds. */
-export function stockShortfalls(lines: OutgoingLine[], onHand: Map<string, number>): string[] {
+export function shortfallMessage(shortfall: StockShortfall) {
+  const verb = shortfall.action === 'sell' ? 'to sell' : 'to take out';
+  return `Not enough stock of ${shortfall.product}: ${shortfall.available} on hand, ${shortfall.requested} ${verb}`;
+}
+
+/** One shortfall per product/batch where the lines take out more than the site holds. */
+export function stockShortfalls(lines: OutgoingLine[], onHand: Map<string, number>): StockShortfall[] {
   const demand = new Map<string, { line: OutgoingLine; quantity: number }>();
   for (const line of lines) {
     const batchNumber = line.batchTracking ? (line.batchNumber?.trim() ?? '') : null;
@@ -44,12 +57,12 @@ export function stockShortfalls(lines: OutgoingLine[], onHand: Map<string, numbe
     demand.set(key, { line, quantity: round3((current?.quantity ?? 0) + line.quantity) });
   }
 
-  const errors: string[] = [];
+  const errors: StockShortfall[] = [];
   for (const [key, { line, quantity }] of demand) {
     const available = Math.max(0, onHand.get(key) ?? 0);
     if (quantity <= available) continue;
-    const what = line.batchTracking ? `${line.productName} (batch ${line.batchNumber?.trim() ?? '—'})` : line.productName;
-    errors.push(`Not enough stock of ${what}: ${available} on hand, ${quantity} to take out`);
+    const product = line.batchTracking ? `${line.productName} (batch ${line.batchNumber?.trim() ?? '—'})` : line.productName;
+    errors.push({ code: 'INSUFFICIENT_STOCK', product, available, requested: quantity, action: 'take' });
   }
   return errors;
 }

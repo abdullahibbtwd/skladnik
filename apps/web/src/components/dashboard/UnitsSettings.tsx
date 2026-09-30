@@ -16,13 +16,17 @@ import { toast } from '../ui/Toaster';
 import { confirm } from '../ui/Dialog';
 import {
   ActionButton,
+  desktopTableWrapClass,
   GhostButton,
   GlassPanel,
   LiveBadge,
+  mobileCardClass,
+  mobileCardListClass,
   PageHeader,
   tableHeadRowClass,
   tableRowClass,
 } from './dashboard-ui';
+import { RowActionsMenu } from './RowActionsMenu';
 import { WorkspaceModal } from './WorkspaceModal';
 
 export const UnitsSettings: React.FC = () => {
@@ -93,52 +97,91 @@ export const UnitsSettings: React.FC = () => {
         ) : aliases.length === 0 ? (
           <p className="px-5 py-8 font-sans text-sm text-slate-500">{t('units.empty')}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[28rem] text-left">
-              <thead>
-                <tr className={tableHeadRowClass()}>
-                  <th className="px-5 py-3 font-display font-medium">{t('units.printedAs')}</th>
-                  <th className="px-4 py-3 font-display font-medium">{t('units.canonical')}</th>
-                  {canWrite && <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {aliases.map((alias) => (
-                  <tr key={alias.id} className={tableRowClass()}>
-                    <td className="px-5 py-3.5 font-mono text-[0.86rem] text-ops-ink">{alias.raw}</td>
-                    <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{t(`labels.unit.${alias.unit}`)}</td>
-                    {canWrite && (
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <GhostButton onClick={() => openEdit(alias)}>{t('common.edit')}</GhostButton>
-                          <GhostButton
-                            danger
-                            onClick={async () => {
-                              const ok = await confirm({
-                                title: t('units.removeNamed', { raw: alias.raw }),
-                                description: t('units.deleteBody'),
-                                confirmLabel: t('common.remove'),
-                                danger: true,
-                              });
-                              if (!ok) return;
-                              try {
-                                await deleteAlias.mutateAsync(alias.id);
-                                toast.success(t('units.removed'));
-                              } catch (deleteError) {
-                                toast.error(deleteError instanceof Error ? deleteError.message : t('common.couldNotRemove'));
-                              }
-                            }}
-                          >
-                            {t('common.remove')}
-                          </GhostButton>
-                        </div>
-                      </td>
-                    )}
+          <>
+            <ul className={mobileCardListClass()}>
+              {aliases.map((alias) => {
+                const remove = async () => {
+                  const ok = await confirm({
+                    title: t('units.removeNamed', { raw: alias.raw }),
+                    description: t('units.deleteBody'),
+                    confirmLabel: t('common.remove'),
+                    danger: true,
+                  });
+                  if (!ok) return;
+                  try {
+                    await deleteAlias.mutateAsync(alias.id);
+                    toast.success(t('units.removed'));
+                  } catch (deleteError) {
+                    toast.error(deleteError instanceof Error ? deleteError.message : t('common.couldNotRemove'));
+                  }
+                };
+                return (
+                  <li key={alias.id} className={mobileCardClass()}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-[0.86rem] text-ops-ink">{alias.raw}</p>
+                        <p className="font-sans text-[0.74rem] text-slate-500">{t(`labels.unit.${alias.unit}`)}</p>
+                      </div>
+                      {canWrite && (
+                        <RowActionsMenu
+                          actions={[
+                            { label: t('common.edit'), onClick: () => openEdit(alias) },
+                            { label: t('common.remove'), onClick: () => void remove(), danger: true },
+                          ]}
+                        />
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className={desktopTableWrapClass()}>
+              <table className="w-full min-w-[28rem] text-left">
+                <thead>
+                  <tr className={tableHeadRowClass()}>
+                    <th className="px-5 py-3 font-display font-medium">{t('units.printedAs')}</th>
+                    <th className="px-4 py-3 font-display font-medium">{t('units.canonical')}</th>
+                    {canWrite && <th className="px-5 py-3 text-right font-display font-medium">{t('common.actions')}</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {aliases.map((alias) => (
+                    <tr key={alias.id} className={tableRowClass()}>
+                      <td className="px-5 py-3.5 font-mono text-[0.86rem] text-ops-ink">{alias.raw}</td>
+                      <td className="px-4 py-3.5 font-sans text-[0.82rem] text-slate-600">{t(`labels.unit.${alias.unit}`)}</td>
+                      {canWrite && (
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <GhostButton onClick={() => openEdit(alias)}>{t('common.edit')}</GhostButton>
+                            <GhostButton
+                              danger
+                              onClick={async () => {
+                                const ok = await confirm({
+                                  title: t('units.removeNamed', { raw: alias.raw }),
+                                  description: t('units.deleteBody'),
+                                  confirmLabel: t('common.remove'),
+                                  danger: true,
+                                });
+                                if (!ok) return;
+                                try {
+                                  await deleteAlias.mutateAsync(alias.id);
+                                  toast.success(t('units.removed'));
+                                } catch (deleteError) {
+                                  toast.error(deleteError instanceof Error ? deleteError.message : t('common.couldNotRemove'));
+                                }
+                              }}
+                            >
+                              {t('common.remove')}
+                            </GhostButton>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </GlassPanel>
 

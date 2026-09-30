@@ -54,7 +54,7 @@ expectEqual(
   expectEqual(result.expired.length, 1, 'override warns on expired');
   expectEqual(
     allocateSaleLine({ ...line, quantity: 4, batchId: 'soon' }, today).shortfall,
-    'Not enough stock of Yoghurt (batch L2): 3 on hand, 4 to sell',
+    { code: 'INSUFFICIENT_STOCK', product: 'Yoghurt (batch L2)', available: 3, requested: 4, action: 'sell' },
     'override shortfall',
   );
 }
@@ -62,7 +62,11 @@ expectEqual(
 // Not enough in total: nothing is allocated.
 expectEqual(
   allocateSaleLine({ ...line, quantity: 19 }, today),
-  { allocations: [], shortfall: 'Not enough stock of Yoghurt: 18 on hand, 19 to sell', expired: [] },
+  {
+    allocations: [],
+    shortfall: { code: 'INSUFFICIENT_STOCK', product: 'Yoghurt', available: 18, requested: 19, action: 'sell' },
+    expired: [],
+  },
   'total shortfall',
 );
 
@@ -74,8 +78,30 @@ expectEqual(
 );
 expectEqual(
   allocateSaleLine({ productName: 'Bread', batchTracking: false, quantity: 4, onHand: -1, batches: [] }, today).shortfall,
-  'Not enough stock of Bread: 0 on hand, 4 to sell',
+  { code: 'INSUFFICIENT_STOCK', product: 'Bread', available: 0, requested: 4, action: 'sell' },
   'untracked shortfall, negative shown as 0',
 );
+
+/**
+ * Acceptance criterion 3 (expired-batch sale): a fixture with ONLY an expired batch
+ * must surface an expired warning so the till (Staff or manager) requires confirmExpired.
+ * sales.service.create refuses the sale when expired.length > 0 && !dto.confirmExpired.
+ */
+{
+  const onlyExpired: SellableBatch[] = [
+    { batchId: 'gone', batchNumber: 'EXP-01', expiryDate: '2026-01-15', onHand: 4 },
+  ];
+  const result = allocateSaleLine(
+    { productName: 'Milk', batchTracking: true, onHand: 4, batches: onlyExpired, quantity: 1 },
+    today,
+  );
+  expectEqual(result.allocations, [{ batchId: 'gone', quantity: 1, expired: true }], 'expired-only allocation');
+  expectEqual(
+    result.expired,
+    ['Milk (batch EXP-01) expired on 2026-01-15'],
+    'expired-only warning for Staff and manager confirm',
+  );
+  expectEqual(Boolean(result.expired.length), true, 'confirmExpired required');
+}
 
 console.log('fefo tests passed');

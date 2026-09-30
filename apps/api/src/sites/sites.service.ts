@@ -6,13 +6,19 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Site } from '@prisma/client';
 import type { AuthUser } from '@skladnik/shared';
+import { changes, recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
 
 const siteInclude = {
   manager: { select: { id: true, name: true, email: true, isActive: true } },
+  eShop: { select: { siteId: true } },
 } as const;
+
+function siteSnapshot(site: Site & { manager: { name: string } | null }) {
+  return { name: site.name, type: site.type, address: site.address, manager: site.manager?.name ?? null, isActive: site.isActive };
+}
 
 @Injectable()
 export class SitesService {
@@ -63,7 +69,7 @@ export class SitesService {
         include: siteInclude,
       });
 
-      await this.log(user, site.id, 'CREATE', { name: site.name });
+      await this.log(user, { id: site.id, label: site.name }, 'CREATE', { after: siteSnapshot(site) });
       return { site: this.serialize(site) };
     } catch (error) {
       this.throwIfNameTaken(error);
@@ -95,7 +101,8 @@ export class SitesService {
         data,
         include: siteInclude,
       });
-      await this.log(user, site.id, 'UPDATE', { fields: Object.keys(dto) });
+      const diff = changes(siteSnapshot(existing), siteSnapshot(site));
+      if (diff) await this.log(user, { id: site.id, label: site.name }, 'UPDATE', diff);
       return { site: this.serialize(site) };
     } catch (error) {
       this.throwIfNameTaken(error);
@@ -114,7 +121,7 @@ export class SitesService {
       data: { isActive: false, deactivatedAt: new Date() },
       include: siteInclude,
     });
-    await this.log(user, site.id, 'DEACTIVATE', { name: site.name });
+    await this.log(user, { id: site.id, label: site.name }, 'DEACTIVATE', { before: { isActive: true }, after: { isActive: false } });
     return { site: this.serialize(site) };
   }
 
@@ -153,7 +160,7 @@ export class SitesService {
     }
   }
 
-  private serialize(site: Site & { manager: { id: string; name: string; email: string; isActive: boolean } | null }) {
+  private serialize(site: Site & { manager: { id: string; name: string; email: string; isActive: boolean } | null; eShop?: { siteId: string } | null }) {
     return {
       id: site.id,
       name: site.name,
@@ -162,21 +169,19 @@ export class SitesService {
       isActive: site.isActive,
       deactivatedAt: site.deactivatedAt,
       manager: site.manager,
+      /** Registered as an e-shop (Annex 38): the till asks for card transaction references. */
+      eShop: Boolean(site.eShop),
       createdAt: site.createdAt,
       updatedAt: site.updatedAt,
     };
   }
 
-  private async log(user: AuthUser, entityId: string, action: string, metadata: Prisma.InputJsonValue) {
-    await this.prisma.activityLog.create({
-      data: {
-        companyId: user.companyId,
-        userId: user.id,
-        entityType: 'Site',
-        entityId,
-        action,
-        metadata,
-      },
-    });
+  private async log(
+    user: AuthUser,
+    entity: { id: string; label: string },
+    action: string,
+    diff: { before?: Record<string, unknown>; after?: Record<string, unknown> },
+  ) {
+    await recordActivity(this.prisma, user, { entityType: 'Site', entityId: entity.id, label: entity.label, action, ...diff });
   }
 }

@@ -139,6 +139,7 @@ export function usePhotoQueueRuntime(userId: string | undefined) {
     const unsubscribeQueue = subscribeQueue((event, local) => {
       if (event.type === 'uploaded' && event.userId === userId) {
         void queryClient.invalidateQueries({ queryKey: ['workspace', 'documents'] });
+        if (event.documentId) void queryClient.invalidateQueries({ queryKey: ['workspace', 'document', event.documentId] });
         const show = event.bySw ? document.visibilityState === 'visible' : local;
         if (show) {
           const documentId = event.documentId;
