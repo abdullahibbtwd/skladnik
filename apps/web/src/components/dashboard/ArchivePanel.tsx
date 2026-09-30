@@ -17,7 +17,7 @@ export const ArchivePanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const role = useAuthRole();
-  const allowed = isCompanyWideRole(role);
+  const allowed = Boolean(role && isCompanyWideRole(role));
   const siteOptions = useSiteOptions();
   const [siteId, setSiteId] = useState('');
   const [range, setRange] = useState<DateRange>(() => periodPresets(businessToday()).lastMonth);

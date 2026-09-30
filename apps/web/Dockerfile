@@ -14,6 +14,8 @@ RUN npm ci --include=dev
 FROM node:22-alpine AS build
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
+# Coolify may inject NODE_ENV=production as a build ARG; keep tooling available.
+ENV NODE_ENV=development
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY tsconfig.base.json ./
