@@ -24,13 +24,20 @@ export class StorageService implements OnModuleInit {
     const protocol = useSsl ? 'https' : 'http';
     const endpoint = `${protocol}://${endpointHost}:${port}`;
     const publicHost = config.get<string>('MINIO_PUBLIC_ENDPOINT') ?? endpointHost;
+    const publicPort = config.get<string>('MINIO_PUBLIC_PORT') ?? port;
+    const publicSslFlag = config.get<string>('MINIO_PUBLIC_USE_SSL');
+    const publicUseSsl = publicSslFlag === undefined ? useSsl : publicSslFlag === 'true';
+    const publicProtocol = publicUseSsl ? 'https' : 'http';
+    const isDefaultPort = publicPort === (publicUseSsl ? '443' : '80');
     const credentials = {
       accessKeyId: config.getOrThrow<string>('MINIO_ACCESS_KEY'),
       secretAccessKey: config.getOrThrow<string>('MINIO_SECRET_KEY'),
     };
 
     this.bucket = config.get<string>('MINIO_BUCKET') ?? 'invoices';
-    this.publicBaseUrl = `${protocol}://${publicHost}:${port}`;
+    this.publicBaseUrl = isDefaultPort
+      ? `${publicProtocol}://${publicHost}`
+      : `${publicProtocol}://${publicHost}:${publicPort}`;
     this.client = new S3Client({
       region: 'us-east-1',
       endpoint,
