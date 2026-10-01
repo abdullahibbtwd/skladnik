@@ -18,6 +18,8 @@ import { businessDate } from '../sales/business-day';
 import { annex38File, annex38FileName, buildAnnex38, type Annex38SaleInput } from './annex38-file';
 import type { Annex38SubmittedDto, EShopSettingsDto } from './annex38.dto';
 
+const dateValue = (value: string) => new Date(`${value}T00:00:00Z`);
+
 type EShopRow = { number: string; webAddress: string; type: number; cashPayment: number; cardPayment: number; posTerminal: string | null; paymentProvider: string | null };
 
 function settingsOf(row: EShopRow | null): EShopSettings | null {
