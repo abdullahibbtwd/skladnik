@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { CompanyScopeGuard } from './guards/company-scope.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AccountantReadOnlyGuard } from './guards/accountant-readonly.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { SiteAccessGuard } from './guards/site-access.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -23,6 +24,8 @@ import { InvitesModule } from '../invites/invites.module';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: CompanyScopeGuard },
+    // ACC-01: after auth/roles so ACCOUNTANT mutations are denied unless allow-listed.
+    { provide: APP_GUARD, useClass: AccountantReadOnlyGuard },
   ],
   exports: [AuthService, SiteAccessGuard],
 })

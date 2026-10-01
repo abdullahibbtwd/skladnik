@@ -16,12 +16,13 @@ import {
 } from '@skladnik/shared';
 import { formatAmount } from '../compliance/fixed-width';
 import { encodeWindows1251, inWindows1251 } from '../reports/export/csv';
-import { round2 } from '../reports/report-math';
+import { round2, splitGross } from '../reports/report-math';
 
 /**
- * Annex 38 to Наредба Н-18: the e-shop's monthly audit file (NRA schema `dec_audit.xsd`, copied next to this
- * file). Orders are the till sales delivered at the e-shop's site in the month; returns are the voids made in
- * the month, whichever month the order was in. Pure, so the whole file can be tested without a database.
+ * Annex 38 to Наредба Н-18: the e-shop's monthly audit file (NRA schema `dec_audit.xsd`).
+ * ACC-05 product decision: till (POS) sales are NOT e-shop orders — do not map cash/card till
+ * payments to e-shop payment codes. Until the app has a real e-shop order/payment model, pass
+ * an empty `sales` list; the Одит page explains this and does not generate a file.
  */
 
 type PaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
@@ -78,15 +79,16 @@ export function refundCode(method: PaymentMethod | null): Annex38RefundCode {
   return method ? REFUND_BY_METHOD[method] : 4;
 }
 
-/** Till prices include VAT; the file wants the net unit price and the VAT and gross per line. */
+/** Till prices include VAT; the file wants the net unit price and the VAT and gross per line.
+ * ACC-03: same splitGross rule as VAT return / journals (base rounded, VAT = gross − base). */
 export function itemAmounts(line: Pick<Annex38SaleLine, 'quantity' | 'unitPrice' | 'lineTotal' | 'vatRate'>) {
   const gross = round2(line.lineTotal);
-  const vat = round2((gross * line.vatRate) / (100 + line.vatRate));
+  const { net, vat } = splitGross(gross, line.vatRate);
   return {
     quantity: round2(line.quantity),
     unitPrice: round2((line.unitPrice * 100) / (100 + line.vatRate)),
     vat,
-    net: round2(gross - vat),
+    net,
     total: gross,
   };
 }

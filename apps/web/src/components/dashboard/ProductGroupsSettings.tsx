@@ -148,7 +148,7 @@ function GroupCards({
 export const ProductGroupsSettings: React.FC = () => {
   const { t } = useTranslation();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT';
+  const canWrite = role === 'OWNER';
   const groupsQuery = useProductGroupsQuery();
   const createGroup = useCreateProductGroup();
   const updateGroup = useUpdateProductGroup();

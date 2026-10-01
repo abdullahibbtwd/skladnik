@@ -7,7 +7,7 @@ import {
 import { Prisma, type ProductStatus } from '@prisma/client';
 import { canWriteProductCatalog, netContentProblem, type AuthUser, type ContentUnit } from '@skladnik/shared';
 import { changes, recordActivity } from '../activity/record-activity';
-import { apiForbidden } from '../common/api-error';
+import { apiBadRequest, apiForbidden } from '../common/api-error';
 import { toNumber } from '../common/decimal';
 import { presentProductForRole } from '../common/staff-view';
 import { PrismaService } from '../prisma/prisma.service';
@@ -134,21 +134,41 @@ export class ProductsService {
     const existing = await this.findInCompany(user.companyId, id);
     const catalogWriter = canWriteProductCatalog(user.role);
     if (!catalogWriter) {
+      // SKL-12: site managers write ProductSiteMin for their own site only (not company Product.minStock).
       const restricted = managerMinStockOnlyPatch(dto as unknown as Record<string, unknown>);
       if (!restricted.ok) {
-        throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Site managers can only change the minimum stock on a product');
+        throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Управителят на обект може да променя само минимума за наличност');
       }
       if (restricted.minStock === undefined) {
-        throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Site managers can only change the minimum stock on a product');
+        throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Управителят на обект може да променя само минимума за наличност');
       }
-      const product = await this.prisma.product.update({
-        where: { id: existing.id },
-        data: { minStock: restricted.minStock },
-        include: productInclude,
+      if (!restricted.siteId) {
+        throw apiBadRequest('PRODUCT_SITE_MIN_REQUIRED', 'Посочете обект за минимума на наличност');
+      }
+      if (!user.allSites && !user.siteIds.includes(restricted.siteId)) {
+        throw apiForbidden('PRODUCT_SITE_FORBIDDEN', 'Можете да променяте минимума само за своите обекти');
+      }
+      const site = await this.prisma.site.findFirst({
+        where: { id: restricted.siteId, companyId: user.companyId, isActive: true },
+        select: { id: true },
       });
-      const diff = changes(productSnapshot(existing), productSnapshot(product), ['minStock']);
-      if (diff) await this.log(user, product, 'UPDATE', diff);
-      return { product: this.serialize(product, user.role) };
+      if (!site) throw apiBadRequest('SITE_NOT_FOUND', 'Обектът не е намерен');
+
+      await this.prisma.productSiteMin.upsert({
+        where: { productId_siteId: { productId: existing.id, siteId: restricted.siteId } },
+        create: {
+          companyId: user.companyId,
+          productId: existing.id,
+          siteId: restricted.siteId,
+          minStock: restricted.minStock,
+        },
+        update: { minStock: restricted.minStock },
+      });
+      await this.log(user, existing, 'UPDATE', {
+        before: { minStock: toNumber(existing.minStock) },
+        after: { siteMinStock: restricted.minStock, siteId: restricted.siteId },
+      });
+      return { product: this.serialize(existing, user.role) };
     }
 
     if (dto.groupId !== undefined) {
@@ -197,6 +217,19 @@ export class ProductsService {
             });
           }
         }
+        // Owner/accountant may also set a per-site override when siteId is supplied.
+        if (dto.siteId !== undefined && dto.minStock !== undefined) {
+          await tx.productSiteMin.upsert({
+            where: { productId_siteId: { productId: existing.id, siteId: dto.siteId } },
+            create: {
+              companyId: user.companyId,
+              productId: existing.id,
+              siteId: dto.siteId,
+              minStock: dto.minStock,
+            },
+            update: { minStock: dto.minStock },
+          });
+        }
         return tx.product.update({
           where: { id: existing.id },
           data,
@@ -214,7 +247,7 @@ export class ProductsService {
 
   async archive(user: AuthUser, id: string) {
     if (!canWriteProductCatalog(user.role)) {
-      throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Only the owner or accountant can archive products');
+      throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Само собственикът може да архивира продукти');
     }
     const existing = await this.findInCompany(user.companyId, id);
     if (existing.status === 'ARCHIVED') {
@@ -345,7 +378,7 @@ export class ProductsService {
       netContentUnit: product.netContentUnit as ContentUnit | null,
       vatRate: toNumber(product.vatRate),
       purchasePrice: toNumber(product.purchasePrice),
-      sellingPrice: toNumber(product.sellingPrice),
+      sellingPrice: product.sellingPrice === null ? null : toNumber(product.sellingPrice),
       minStock: toNumber(product.minStock),
       maxStock: product.maxStock === null ? null : toNumber(product.maxStock),
       batchTracking: product.batchTracking,

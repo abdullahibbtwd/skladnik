@@ -13,7 +13,8 @@ import { useDashboard } from './dashboard-context';
 import { daysUntil, formatEuro } from '../../lib/dashboard-data';
 import { ActionButton, DaysPill, GlassPanel, LiveBadge, PageHeader } from './dashboard-ui';
 
-type Filter = 'ALL' | Exclude<StockLevelStatus, 'OK'>;
+/** SKL-18: ON_HAND = stock > 0 (panel title „Налично“); LOW/OUT keep status buckets. */
+type Filter = 'ALL' | 'ON_HAND' | Exclude<StockLevelStatus, 'OK'>;
 
 const BATCHES_SHOWN = 3;
 
@@ -44,17 +45,24 @@ export const StockPanel: React.FC = () => {
   const counts = useMemo(
     () => ({
       ALL: items.length,
+      ON_HAND: items.filter((item) => item.onHand > 0).length,
       LOW: items.filter((item) => item.status === 'LOW').length,
       OUT: items.filter((item) => item.status === 'OUT').length,
     }),
     [items],
   );
   const query = search.trim();
-  const visible = items.filter((item) => (filter === 'ALL' || item.status === filter) && matches(item, query));
+  const visible = items.filter((item) => {
+    if (!matches(item, query)) return false;
+    if (filter === 'ALL') return true;
+    if (filter === 'ON_HAND') return item.onHand > 0;
+    return item.status === filter;
+  });
   const totalValue = visible.reduce((sum, item) => sum + (item.value ?? 0), 0);
 
   const filters: { id: Filter; label: string }[] = [
     { id: 'ALL', label: t('stock.all') },
+    { id: 'ON_HAND', label: t('stock.onHand') },
     { id: 'LOW', label: t('stock.low') },
     { id: 'OUT', label: t('stock.out') },
   ];
@@ -136,12 +144,12 @@ export const StockPanel: React.FC = () => {
 
       <GlassPanel
         padded={false}
-        title={t('stock.onHand')}
+        title={filter === 'ON_HAND' || filter === 'ALL' ? t('stock.onHand') : t('stock.title')}
         action={
           <LiveBadge>
             {seeFinancials
-              ? `${t('stock.products', { count: visible.length })} · ${formatEuro(totalValue)}`
-              : t('stock.products', { count: visible.length })}
+              ? `${t('stock.products', { count: filter === 'ALL' ? counts.ON_HAND : visible.length })} · ${formatEuro(totalValue)}`
+              : t('stock.products', { count: filter === 'ALL' ? counts.ON_HAND : visible.length })}
           </LiveBadge>
         }
       >
@@ -202,6 +210,11 @@ export const StockPanel: React.FC = () => {
                           >
                             {batch.expiryDate && <DaysPill days={daysUntil(batch.expiryDate)} />}
                             <span>{batch.batchNumber}</span>
+                            {batch.isAutomatic && (
+                              <span className="rounded bg-slate-200/80 px-1 py-px font-display text-[0.58rem] font-medium tracking-wide text-slate-600 uppercase">
+                                {t('stock.autoBatch')}
+                              </span>
+                            )}
                             <span className="text-ops-ink">{formatQty(batch.onHand, i18n.language)}</span>
                           </li>
                         ))}

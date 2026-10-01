@@ -251,7 +251,7 @@ const PrintTemplateForm: React.FC<{ template: PrintTemplate; profile: CompanyPro
 
 export const DocumentSettings: React.FC = () => {
   const { t } = useTranslation();
-  const canEdit = usePermissions().companySettings;
+  const canEdit = usePermissions().companySettingsWrite;
   const settingsQuery = useCompanySettingsQuery();
   const settings = settingsQuery.data;
 

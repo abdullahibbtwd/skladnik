@@ -31,6 +31,8 @@ const requiredNumber = z.preprocess((value) => {
 }, z.number());
 
 export const ExtractedLineSchema = z.object({
+  /** Printed row № on the paper (1-based). Used to detect a missing previous page (ACC-04). */
+  printedLineNumber: nullableNumber,
   supplierCode: nullableString,
   barcode: nullableString,
   ocrDescription: z.preprocess((value) => (typeof value === 'string' ? value : ''), z.string()),
@@ -85,8 +87,26 @@ export const ExtractedDocumentSchema = z.object({
   taxableBase: nullableNumber,
   vatAmount: nullableNumber,
   grossTotal: nullableNumber,
+  /** ACC-04: “Словом: …” text; server parses conservatively — null parse never blocks. */
+  amountInWords: nullableString,
   paymentMethod,
   confidence: z.enum(['high', 'medium', 'low']).default('medium'),
+  fieldConfidence: z
+    .object({
+      documentNumber: z.enum(['high', 'medium', 'low']).default('medium'),
+      issuedOn: z.enum(['high', 'medium', 'low']).default('medium'),
+      supplierName: z.enum(['high', 'medium', 'low']).default('medium'),
+      supplierTaxId: z.enum(['high', 'medium', 'low']).default('medium'),
+      grossTotal: z.enum(['high', 'medium', 'low']).default('medium'),
+    })
+    .optional()
+    .default({
+      documentNumber: 'medium',
+      issuedOn: 'medium',
+      supplierName: 'medium',
+      supplierTaxId: 'medium',
+      grossTotal: 'medium',
+    }),
 });
 
 export type ExtractedDocument = z.infer<typeof ExtractedDocumentSchema>;

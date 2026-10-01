@@ -159,6 +159,8 @@ export type ProductWriteInput = {
   purchasePrice: number;
   sellingPrice: number;
   minStock?: number;
+  /** When set with minStock, updates ProductSiteMin for that site (site managers). */
+  siteId?: string;
   maxStock?: number | null;
   batchTracking?: boolean;
   status?: ProductStatus;
@@ -613,6 +615,8 @@ export type DocumentLineRecord = {
   quantity: number;
   /** Omitted for Staff (CASHIER F-04). */
   unitPrice?: number;
+  freeOfCharge?: boolean;
+  missingPrice?: boolean;
   discountPercent: number;
   /** Always quantity × price × (1 − discount), worked out by the server. */
   finalUnitPrice?: number | null;
@@ -679,7 +683,11 @@ export type DocumentDetailResponse = {
   /** `confirmExpired` / `confirmDate` mean posting needs that flag because of `expired` / `dateWarning`. */
   posting: {
     ok: boolean;
+    /** Staff may submit when only reviewWarnings remain (pending product, bad ЕИК, totals, …). */
+    canSubmit: boolean;
     errors: string[];
+    /** Post-blocking issues shown to the reviewer after Staff submit (SKL-01/03/08). */
+    reviewWarnings: string[];
     warnings: string[];
     expired: string[];
     dateWarning: string | null;
@@ -724,6 +732,7 @@ export type DocumentLineWriteInput = {
   /** Required on every document type except stocktakes. */
   quantity?: number;
   unitPrice: number;
+  freeOfCharge?: boolean;
   discountPercent?: number;
   vatRate?: number;
   batchNumber?: string;
@@ -808,6 +817,14 @@ export function cancelDocument(id: string) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/cancel`, { method: 'POST' });
 }
 
+/** Preview next automatic batch number for the line form "Авто" button (SKL-15). */
+export function suggestDocumentAutoBatch(documentId: string, input: { productId: string; expiryDate: string }) {
+  return requestJson<{ batchNumber: string; expiryDate: string; isAutomatic: boolean }>(
+    `/documents/${documentId}/suggest-auto-batch`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
 export type ReverseDocumentInput = { reason: string; confirmFiledPeriod?: boolean };
 
 /** Returns the new reversal document. */
@@ -884,6 +901,8 @@ export type StockBatch = {
   batchNumber: string;
   expiryDate: string | null;
   onHand: number;
+  /** System-generated batch number (SKL-15 Авто). */
+  isAutomatic?: boolean;
   /** Omitted for Staff (CASHIER F-04). */
   unitCost?: number;
   value?: number;

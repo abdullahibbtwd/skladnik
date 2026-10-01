@@ -12,6 +12,7 @@ import type {
   ProductRecord,
   ProductSuggestion,
 } from '../../lib/workspace-api';
+import { suggestDocumentAutoBatch } from '../../lib/workspace-api';
 import { useProductsQuery } from '../../lib/workspace-session';
 import { DateField } from '../ui/DateField';
 import { toast } from '../ui/Toaster';
@@ -27,8 +28,11 @@ export function lineIssues(line: DocumentLineRecord): LineIssue[] {
   if (line.product.status === 'PENDING_REVIEW') issues.push('pending');
   if (line.quantity <= 0) issues.push('qty');
   if (line.product.batchTracking) {
-    if (!line.batchNumber?.trim()) issues.push('batch');
-    if (!line.expiryDate) issues.push('expiry');
+    // SKL-15: expiry alone is enough — server generates A-YYYYMMDD-NN when batch is empty.
+    if (!line.expiryDate) {
+      if (!line.batchNumber?.trim()) issues.push('batch');
+      issues.push('expiry');
+    }
   }
   return issues;
 }
@@ -48,6 +52,7 @@ type PickedProduct = Pick<ProductRecord, 'id' | 'name' | 'code' | 'batchTracking
 };
 
 export function DocumentLines({
+  documentId,
   lines,
   editable,
   selectedLineId,
@@ -59,6 +64,7 @@ export function DocumentLines({
   saving,
   expiryGuardDate,
 }: {
+  documentId: string;
   lines: DocumentLineRecord[];
   editable: boolean;
   /** Document date when an expired batch on this document needs confirmation. */
@@ -124,6 +130,16 @@ export function DocumentLines({
                       {t('doc.pendingReview')}
                     </span>
                   )}
+                  {seeFinancials && line.missingPrice && (
+                    <span className="ml-1.5 rounded bg-rose-100 px-1 py-px align-middle font-sans text-[0.64rem] font-medium text-ops-danger">
+                      {t('doc.missingPrice')}
+                    </span>
+                  )}
+                  {seeFinancials && line.freeOfCharge && (
+                    <span className="ml-1.5 rounded bg-slate-100 px-1 py-px align-middle font-sans text-[0.64rem] font-medium text-slate-600">
+                      {t('doc.freeOfCharge')}
+                    </span>
+                  )}
                 </span>
                 {printedDiffers && (
                   <span className="line-clamp-2 font-sans text-[0.72rem] text-slate-500">
@@ -180,6 +196,7 @@ export function DocumentLines({
               <div className="px-4 pb-4 sm:px-5">
                 <LineForm
                   key={line.id}
+                  documentId={documentId}
                   line={line}
                   initialProduct={preset?.lineId === line.id ? preset.product : undefined}
                   saving={saving}
@@ -206,6 +223,7 @@ export function DocumentLines({
 }
 
 export function LineForm({
+  documentId,
   line,
   initialProduct,
   saving,
@@ -215,6 +233,7 @@ export function LineForm({
   onCancel,
   onDelete,
 }: {
+  documentId: string;
   line?: DocumentLineRecord;
   /** Picked in place of the line's product, e.g. a "did you mean" that needs batch details. */
   initialProduct?: PickedProduct;
@@ -237,6 +256,7 @@ export function LineForm({
   const [expiryDate, setExpiryDate] = useState(line?.expiryDate ?? '');
   const [error, setError] = useState<string | null>(null);
   const [submitNext, setSubmitNext] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -316,10 +336,38 @@ export function LineForm({
       </div>
       {product?.batchTracking && (
         <div className="grid grid-cols-2 gap-2">
-          <label>
+          <div>
             <span className={labelClass}>{t('doc.batch')}</span>
-            <input value={batchNumber} onChange={(event) => setBatchNumber(event.target.value)} className={inputClass} />
-          </label>
+            <div className="flex gap-1.5">
+              <input
+                value={batchNumber}
+                onChange={(event) => setBatchNumber(event.target.value)}
+                className={cn(inputClass, 'min-w-0 flex-1')}
+              />
+              <button
+                type="button"
+                disabled={!product || !expiryDate || autoBusy || saving}
+                onClick={async () => {
+                  if (!product || !expiryDate) return;
+                  setAutoBusy(true);
+                  try {
+                    const result = await suggestDocumentAutoBatch(documentId, {
+                      productId: product.id,
+                      expiryDate,
+                    });
+                    setBatchNumber(result.batchNumber);
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : t('doc.saveLineFailed'));
+                  } finally {
+                    setAutoBusy(false);
+                  }
+                }}
+                className="shrink-0 rounded-lg border border-slate-200 bg-ops-canvas px-2.5 py-2 font-display text-[0.72rem] font-medium text-ops-ink disabled:opacity-50"
+              >
+                {autoBusy ? <Loader2 size={12} className="animate-spin" /> : t('doc.autoBatch')}
+              </button>
+            </div>
+          </div>
           <label>
             <span className={labelClass}>{t('doc.expiry')}</span>
             <DateField value={expiryDate} onChange={setExpiryDate} className="w-full" />

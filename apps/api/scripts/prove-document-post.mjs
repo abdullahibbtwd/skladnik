@@ -207,7 +207,7 @@ await json('PATCH', `/documents/${otherSupplier.body.document.id}`, cookie, { is
 const oldPreview = await json('GET', `/documents/${otherSupplier.body.document.id}`, cookie);
 assert(oldPreview.body.posting?.confirmDate === true, `old date should ask for confirmation ${JSON.stringify(oldPreview.body.posting)}`);
 const oldBlocked = await json('POST', `/documents/${otherSupplier.body.document.id}/post`, cookie);
-assert(oldBlocked.status === 400 && /Confirm the date/.test(oldBlocked.body.message), `old date without flag should 400, got ${oldBlocked.status} ${JSON.stringify(oldBlocked.body)}`);
+assert(oldBlocked.status === 400 && (/Confirm the date/i.test(oldBlocked.body.message) || /Потвърдете датата/i.test(oldBlocked.body.message)), `old date without flag should 400, got ${oldBlocked.status} ${JSON.stringify(oldBlocked.body)}`);
 
 // MGR F-05: invoice without a supplier cannot post.
 const noSupplier = await json('POST', '/documents', cookie, { siteId: site.id, type: 'INVOICE', documentNumber: `NOSUP-${stamp}`, issuedOn: '2026-09-17' });

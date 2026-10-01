@@ -90,6 +90,14 @@ export class UpdateProductDto {
   @Min(0)
   minStock?: number;
 
+  /**
+   * SKL-12/18: when set with minStock, writes ProductSiteMin for that site
+   * (site managers must supply their own site; company-wide Product.minStock is Owner/Accountant).
+   */
+  @IsOptional()
+  @IsUUID()
+  siteId?: string;
+
   /** null clears it (suggestions then order up to twice the minimum). */
   @IsOptional()
   @Transform(({ value }) => (value === '' ? null : value === undefined || value === null ? value : Number(value)))

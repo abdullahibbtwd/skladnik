@@ -32,7 +32,7 @@ import { WorkspaceModal } from './WorkspaceModal';
 export const UnitsSettings: React.FC = () => {
   const { t } = useTranslation();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT';
+  const canWrite = role === 'OWNER';
   const aliasesQuery = useUnitAliasesQuery();
   const createAlias = useCreateUnitAlias();
   const updateAlias = useUpdateUnitAlias();

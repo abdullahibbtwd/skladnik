@@ -21,7 +21,7 @@ export const TransferPanel: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  const canWrite = role === 'OWNER' || role === 'SITE_MANAGER';
   const { siteId } = useDashboard();
   const sitesQuery = useSitesQuery();
   const targetsQuery = useTransferTargetsQuery();

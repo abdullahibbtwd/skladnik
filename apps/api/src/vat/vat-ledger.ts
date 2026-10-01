@@ -204,13 +204,13 @@ export function tillSalesRows(facts: TillSaleInput[], period: string, grouping: 
     for (const [rate, grossRaw] of group.gross) {
       const gross = round2(grossRaw);
       if (gross === 0) continue;
-      const net = round2(splitGross(gross, rate).net);
+      const { net, vat } = splitGross(gross, rate);
       if (rate === 20) {
         add('11', net);
-        add('21', gross - net);
+        add('21', vat);
       } else if (rate === 9) {
         add('13', net);
-        add('24', gross - net);
+        add('24', vat);
       } else if (rate === 0) {
         add('19', gross);
         zeroRated += gross;

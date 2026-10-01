@@ -22,19 +22,19 @@ export class CompanyController {
   }
 
   @Put('profile')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   saveProfile(@CurrentUser() user: AuthUser, @Body() dto: CompanyProfileDto) {
     return this.company.saveProfile(user, dto);
   }
 
   @Put('expiry-windows')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   saveExpiryWindows(@CurrentUser() user: AuthUser, @Body() dto: ExpiryWindowsDto) {
     return this.company.saveExpiryWindows(user, dto.windows);
   }
 
   @Put('print-template')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   savePrintTemplate(@CurrentUser() user: AuthUser, @Body() dto: PrintTemplateDto) {
     return this.company.savePrintTemplate(user, dto);
   }
@@ -47,7 +47,7 @@ export class CompanyController {
   }
 
   @Put('series/:key')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   saveSeries(@CurrentUser() user: AuthUser, @Param('key') key: string, @Body() dto: DocumentSeriesDto) {
     return this.company.saveSeries(user, key, dto);
   }

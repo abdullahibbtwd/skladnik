@@ -79,7 +79,7 @@ export function buildDashboardState(
   windows: readonly number[] = DEFAULT_EXPIRY_WINDOWS,
   today = new Date(),
 ) {
-  const pendingDocs = documents.filter((doc) => doc.status === 'DRAFT' || doc.status === 'REVIEW');
+  const pendingDocs = documents.filter((doc) => doc.status === 'REVIEW');
   const operations: StockOperation[] = [...documents]
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     .slice(0, 8)

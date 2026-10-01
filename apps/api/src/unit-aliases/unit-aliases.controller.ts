@@ -16,13 +16,13 @@ export class UnitAliasesController {
   }
 
   @Post()
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateUnitAliasDto) {
     return this.aliases.create(user, dto);
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -32,7 +32,7 @@ export class UnitAliasesController {
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.aliases.remove(user, id);
   }

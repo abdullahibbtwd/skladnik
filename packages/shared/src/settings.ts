@@ -131,8 +131,8 @@ export function printTemplateOf(value: unknown): PrintTemplate {
 
 // ─── Till prices ────────────────────────────────────────────────────────────
 
-/** Roles that may charge a price other than the catalog price at the till. The owner always can. */
-export const DEFAULT_PRICE_OVERRIDE_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
+/** Roles that may charge a price other than the catalog price at the till. The owner always can. ACC-01: no Accountant. */
+export const DEFAULT_PRICE_OVERRIDE_ROLES: readonly UserRole[] = ['OWNER', 'SITE_MANAGER'];
 
 export function canOverridePrice(role: UserRole | null | undefined, allowed: readonly UserRole[]) {
   return role === 'OWNER' || Boolean(role && allowed.includes(role));
@@ -153,6 +153,8 @@ export type CompanyProfile = {
   address: string | null;
   city: string | null;
   mol: string | null;
+  /** Person signing the VAT return (НАП 00-04). ACC-06. */
+  declarant: string | null;
   phone: string | null;
   email: string | null;
 };

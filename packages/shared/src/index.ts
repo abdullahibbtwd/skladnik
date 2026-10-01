@@ -1,4 +1,4 @@
-export const USER_ROLES = ['OWNER', 'SITE_MANAGER', 'STAFF', 'ACCOUNTANT'] as const;
+export const USER_ROLES = ['OWNER', 'SITE_MANAGER', 'STAFF', 'ACCOUNTANT', 'CASHIER'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const COMPANY_WIDE_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT'];
@@ -15,6 +15,16 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   SITE_MANAGER: 'Site manager',
   STAFF: 'Staff',
   ACCOUNTANT: 'Accountant',
+  // SKL-07 product decision: separate CASHIER ("Касиер") — POS only; STAFF loses till access.
+  CASHIER: 'Cashier',
+};
+
+export const ROLE_LABELS_BG: Record<UserRole, string> = {
+  OWNER: 'Собственик',
+  SITE_MANAGER: 'Мениджър на обекта',
+  STAFF: 'Персонал',
+  ACCOUNTANT: 'Счетоводител',
+  CASHIER: 'Касиер',
 };
 
 export const SITE_TYPE_LABELS: Record<SiteType, string> = {
@@ -98,11 +108,51 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 /** Business days (daily sales report, sale numbers) follow Bulgarian local time. */
 export const BUSINESS_TIME_ZONE = 'Europe/Sofia';
 
-/** Can void sales, sell below or above the catalog price, and see costs and margins. */
+/**
+ * Financial visibility, reports, VAT and margins.
+ * ACC-01: ACCOUNTANT stays here for read/export; mutating ops use OPERATIONAL_MANAGER_ROLES.
+ */
 export const SALES_MANAGER_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
 
 export function isSalesManager(role: UserRole | null | undefined): boolean {
   return Boolean(role && SALES_MANAGER_ROLES.includes(role));
+}
+
+/**
+ * ACC-01 product decision: Accountant is read-only — no till, documents, master-data or stock writes.
+ * Separation of duties setting skipped (no "втори човек за осчетоводяване").
+ */
+export const OPERATIONAL_MANAGER_ROLES: readonly UserRole[] = ['OWNER', 'SITE_MANAGER'];
+
+export function isOperationalManager(role: UserRole | null | undefined): boolean {
+  return Boolean(role && OPERATIONAL_MANAGER_ROLES.includes(role));
+}
+
+export function isAccountant(role: UserRole | null | undefined): boolean {
+  return role === 'ACCOUNTANT';
+}
+
+/**
+ * SKL-07: roles that may open the till and record sales.
+ * Product decision: STAFF loses POS; only CASHIER (and operational managers) sell.
+ * ACC-01: Accountant removed from the till.
+ */
+export const POS_ROLES: readonly UserRole[] = ['OWNER', 'SITE_MANAGER', 'CASHIER'];
+
+/** List / report / open a sale receipt (includes read-only Accountant). */
+export const SALES_READ_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER', 'CASHIER'];
+
+export function canUsePos(role: UserRole | null | undefined): boolean {
+  return Boolean(role && (POS_ROLES as readonly string[]).includes(role));
+}
+
+export function canReadSales(role: UserRole | null | undefined): boolean {
+  return Boolean(role && (SALES_READ_ROLES as readonly string[]).includes(role));
+}
+
+/** Cashier (and former Staff sales scope): list/report limited to own tickets. */
+export function seesOwnSalesOnly(role: UserRole | null | undefined): boolean {
+  return role === 'CASHIER';
 }
 
 /**
@@ -131,11 +181,11 @@ export function canStaffCreateDocumentType(type: DocumentType): boolean {
   return (STAFF_DOCUMENT_CREATE_TYPES as readonly string[]).includes(type);
 }
 
-/** Manager (and company-wide) roles that post / cancel / reverse any document. */
-export const DOCUMENT_MANAGER_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
+/** Roles that post / cancel / reverse any document. ACC-01: Accountant excluded (read-only). */
+export const DOCUMENT_MANAGER_ROLES: readonly UserRole[] = OPERATIONAL_MANAGER_ROLES;
 
 export function isDocumentManager(role: UserRole | null | undefined): boolean {
-  return Boolean(role && (DOCUMENT_MANAGER_ROLES as readonly string[]).includes(role));
+  return isOperationalManager(role);
 }
 
 export const DOCUMENT_STATUSES = ['DRAFT', 'REVIEW', 'POSTED', 'CANCELLED'] as const;
@@ -178,13 +228,14 @@ export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
   BOTH: 'Both',
 };
 
-export const MASTER_DATA_WRITE_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT'];
-/** Create, edit catalog fields, archive, supplier codes — not site managers. */
-export const PRODUCT_CATALOG_WRITE_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT'];
+/** ACC-01: Accountant no longer writes partners / groups / units. */
+export const MASTER_DATA_WRITE_ROLES: readonly UserRole[] = ['OWNER'];
+/** Create, edit catalog fields, archive, supplier codes — not site managers. ACC-01: no Accountant. */
+export const PRODUCT_CATALOG_WRITE_ROLES: readonly UserRole[] = ['OWNER'];
 /** @deprecated Prefer canWriteProductCatalog / canAdjustProductMinStock. */
 export const PRODUCT_WRITE_ROLES: readonly UserRole[] = PRODUCT_CATALOG_WRITE_ROLES;
-/** Site managers may only change the reorder minimum on an existing product. */
-export const PRODUCT_MIN_STOCK_ROLES: readonly UserRole[] = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'];
+/** Site managers may only change the reorder minimum on an existing product. ACC-01: no Accountant. */
+export const PRODUCT_MIN_STOCK_ROLES: readonly UserRole[] = ['OWNER', 'SITE_MANAGER'];
 
 export function canWriteMasterData(role: UserRole | null | undefined): boolean {
   return Boolean(role && MASTER_DATA_WRITE_ROLES.includes(role));
@@ -315,7 +366,9 @@ export * from './compliance';
 export * from './vat';
 export * from './annex38';
 export * from './document-checks';
+export * from './document-number';
 export * from './tax-ids';
 export * from './settings';
 export * from './quantity';
 export * from './recipe-units';
+export * from './amount-in-words-bg';

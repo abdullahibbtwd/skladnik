@@ -140,8 +140,12 @@ const ANNEX38_ISSUE_TEXT: Record<string, Record<ReportLang, string>> = {
     bg: 'ЕИК на фирмата {{value}} не минава проверката. Коригирайте го в Настройки → Фирма.',
   },
   ESHOP_NOT_SET: {
-    en: "Enter this site's e-shop registration: the NRA e-shop number, web address and type.",
-    bg: 'Въведете регистрацията на електронния магазин за този обект: уникален номер от НАП, уеб адрес и вид.',
+    en: "This site is not registered as an e-shop. Annex 38 applies only to e-shop sites (Settings → Sites).",
+    bg: 'Този обект не е регистриран като електронен магазин. Приложение 38 важи само за обекти с е-магазин (Настройки → Обекти).',
+  },
+  ESHOP_ORDERS_UNAVAILABLE: {
+    en: 'The app has no e-shop order/payment data yet. Till sales are not mapped to e-shop payment types. Annex 38 files are not generated until order data exists.',
+    bg: 'Приложението още няма данни за поръчки/плащания на е-магазин. Касовите продажби не се преобразуват в типове плащане за е-магазин. Файлове по Приложение 38 не се генерират, докато няма данни за поръчки.',
   },
   ESHOP_NUMBER_FORMAT: {
     en: "E-shop number {{value}} doesn't match the usual NRA format (RF and 7 digits). Check it against the registration.",

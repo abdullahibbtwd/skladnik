@@ -58,7 +58,7 @@ const emptyForm: PartnerForm = {
 export const PartnersSettings: React.FC = () => {
   const { t } = useTranslation();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT';
+  const canWrite = role === 'OWNER';
   const partnersQuery = usePartnersQuery();
   const createPartner = useCreatePartner();
   const updatePartner = useUpdatePartner();

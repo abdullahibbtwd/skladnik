@@ -49,7 +49,7 @@ const inputClass =
 
 function useCanWrite() {
   const role = useAuthRole();
-  return role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  return role === 'OWNER' || role === 'SITE_MANAGER';
 }
 
 export const StocktakeListPanel: React.FC = () => {

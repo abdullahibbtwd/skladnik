@@ -122,15 +122,15 @@ export function taxIdProblemMessage(problem: TaxIdProblem, owner?: string) {
   const who = owner ? `${owner}: ` : '';
   switch (problem.code) {
     case 'EIK_FORMAT':
-      return `${who}ЕИК ${problem.value} must be 9 or 13 digits (or a 10-digit ЕГН / ЛНЧ)`;
+      return `${who}ЕИК ${problem.value} трябва да е 9 или 13 цифри (или 10-цифрено ЕГН / ЛНЧ)`;
     case 'EIK_CHECKSUM':
-      return `${who}ЕИК ${problem.value} fails the checksum; check it against the registration`;
+      return `${who}ЕИК ${problem.value} не минава контролната сума; сверете го с регистрацията`;
     case 'VAT_FORMAT':
-      return `${who}VAT number ${problem.value} is not a valid format (BG + 9 or 10 digits, or an EU VAT number)`;
+      return `${who}ДДС номер ${problem.value} не е валиден формат (BG + 9 или 10 цифри, или ЕУ ДДС номер)`;
     case 'VAT_CHECKSUM':
-      return `${who}VAT number ${problem.value} fails the checksum; check it against the registration`;
+      return `${who}ДДС номер ${problem.value} не минава контролната сума; сверете го с регистрацията`;
     case 'VAT_EIK_MISMATCH':
-      return `${who}VAT number ${problem.value} doesn't match the ЕИК`;
+      return `${who}ДДС номер ${problem.value} не съвпада с ЕИК`;
   }
 }
 

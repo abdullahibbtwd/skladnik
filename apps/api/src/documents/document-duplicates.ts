@@ -1,4 +1,5 @@
 import type { DocumentType, Prisma } from '@prisma/client';
+import { normalizeDocumentNumber } from '@skladnik/shared';
 import { STANDING_DOCUMENT } from './reversal';
 
 export type DuplicateKey = {
@@ -13,14 +14,17 @@ export type DuplicateKey = {
 /**
  * Suppliers number their paperwork independently, so a number repeats only within one partner and
  * document type. Cancelled and reversed documents don't count: re-entering one of them is legitimate.
+ *
+ * SKL-09: compare on numberKey (trim, case-insensitive, no inner spaces/separators, no leading zeros).
  */
 export function findDuplicateDocument(db: Prisma.TransactionClient, key: DuplicateKey) {
+  const numberKey = normalizeDocumentNumber(key.number);
   return db.document.findFirst({
     where: {
       companyId: key.companyId,
       partnerId: key.partnerId,
       type: key.type,
-      number: key.number,
+      numberKey,
       status: { not: 'CANCELLED' },
       ...STANDING_DOCUMENT,
       ...(key.excludeId ? { id: { not: key.excludeId } } : {}),
@@ -32,7 +36,8 @@ export function findDuplicateDocument(db: Prisma.TransactionClient, key: Duplica
 
 export type DuplicateDocument = NonNullable<Awaited<ReturnType<typeof findDuplicateDocument>>>;
 
-/** Serialises writers of the same number so the check-then-write above can't race. */
+/** Serialises writers of the same normalised number so the check-then-write above can't race. */
 export async function lockDocumentNumber(tx: Prisma.TransactionClient, companyId: string, number: string) {
-  await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${`document-number:${companyId}:${number}`}))`;
+  const numberKey = normalizeDocumentNumber(number);
+  await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${`document-number:${companyId}:${numberKey}`}))`;
 }

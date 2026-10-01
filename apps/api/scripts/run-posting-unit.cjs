@@ -3,20 +3,28 @@ require('ts-node/register/transpile-only');
 
 (async () => {
   require('../src/common/staff-view.test.ts');
+  require('../src/auth/accountant-allowlist.test.ts');
   require('../src/documents/document-access.test.ts');
+  require('../src/documents/amount-in-words-bg.test.ts');
   require('../src/documents/opening-balance.test.ts');
   require('../src/products/product-write-policy.test.ts');
   require('../src/documents/can-document-be-posted.test.ts');
+  require('../src/documents/document-lifecycle.test.ts');
+  require('../src/documents/auto-batch.test.ts');
   require('../src/documents/document-totals.test.ts');
   require('../src/documents/auto-products.test.ts');
   require('../src/documents/stock-availability.test.ts');
   await require('../src/documents/pdf-to-images.test.ts');
   require('../src/extraction/extracted-document.schema.test.ts');
+  require('../src/extraction/barcode.test.ts');
+  require('../src/extraction/extraction-fixtures.test.ts');
+  await require('../src/extraction/original-image.test.ts');
   require('../src/extraction/ocr-errors.test.ts');
   require('../src/extraction/name-matching.test.ts');
   require('../src/extraction/product-text.test.ts');
   require('../src/extraction/parse-ocr-date.test.ts');
   require('../src/stock/stock-levels.test.ts');
+  require('../src/stock/stock-as-of.test.ts');
   require('../src/stock/quantity.test.ts');
   require('../src/stock/costing.test.ts');
   require('../src/documents/reversal.test.ts');
@@ -32,9 +40,9 @@ require('ts-node/register/transpile-only');
   require('../src/compliance/compliance.test.ts');
   require('../src/vat/vat-ledger.test.ts');
   require('../src/annex38/annex38.test.ts');
+  require('../src/seed/seed-eik.test.ts');
   require('../src/company/settings.test.ts');
 })().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-

@@ -279,6 +279,7 @@
     "audit": "Audit",
     "settings": "Settings",
     "stock": "Stock",
+    "checkStock": "Check stock",
     "scan": "Scan",
     "receive": "Receive",
     "writeOff": "Write-off",
@@ -334,6 +335,7 @@
       "OWNER": "Owner",
       "SITE_MANAGER": "Site manager",
       "STAFF": "Staff",
+      "CASHIER": "Cashier",
       "ACCOUNTANT": "Accountant"
     },
     "siteType": {
@@ -491,6 +493,16 @@
     "submitReview": "Submit for review",
     "post": "Post",
     "cancelDocument": "Cancel document",
+    "cancelDraft": "Cancel draft",
+    "cancelDraftTitle": "Cancel this draft?",
+    "cancelDraftBody": "The draft will be cancelled. Products created only for it will be removed.",
+    "cancelDraftConfirm": "Cancel draft",
+    "autoBatch": "Auto",
+    "notes": "Notes",
+    "openPartnersSettings": "Settings → Partners",
+    "autoBatch": "Auto",
+    "notes": "Notes",
+    "notesEmpty": "No notes",
     "unmatched": "Unmatched",
     "pendingReview": "pending review",
     "notBatchTracked": "Not batch-tracked",
@@ -716,7 +728,7 @@
     "allStatuses": "All statuses",
     "allTypes": "All types",
     "siteNamed": "Site · {{name}}",
-    "intake": "Intake",
+    "intake": "All documents",
     "shown": "{{count}} shown",
     "loading": "Loading documents…",
     "loadFailed": "Could not load documents.",
@@ -735,6 +747,8 @@
     "catalog": "Catalog",
     "catalogHint": "SKUs in this filter",
     "pendingReview": "Pending review",
+    "missingPrice": "missing price",
+    "freeOfCharge": "free of charge",
     "pendingHint": "Need a human check after OCR",
     "batchTracked": "Batch tracked",
     "batchHint": "Require lot + expiry on intake",
@@ -937,6 +951,8 @@
     "expiringPull": "To pull",
     "expiringPullHint": "Expired and soon-expiring batches at this site",
     "receiveGoods": "Receive goods",
+    "checkStock": "Check stock",
+    "expiringSoon": "Expiring soon",
     "writeOff": "Write-off",
     "openExpiry": "All expiring",
     "recentOps": "Recent documents",
@@ -978,7 +994,8 @@
     "belowMin": "Below minimum ({{min}})",
     "lastMoved": "last moved {{date}}",
     "moreBatches_one": "+{{count}} batch",
-    "moreBatches_other": "+{{count}} batches"
+    "moreBatches_other": "+{{count}} batches",
+    "autoBatch": "Auto"
   },
   "expiry": {
     "writeOff": "Write off",
@@ -1936,10 +1953,12 @@
     "legalName": "Registered name",
     "city": "City",
     "mol": "Managing officer (МОЛ)",
+    "declarant": "VAT return declarant",
+    "declarantPlaceholder": "Name or personal ID of the person who signs",
     "saved": "Company details saved.",
     "missing": "Still missing: {{fields}}. The VAT ledgers and Annex 38 need them.",
-    "ownerOnly": "Only the owner or accountant can change the company details.",
-    "usedFor": "The VAT number here is the one used in the VAT ledgers and declarations. ЕИК and VAT number are checked against their checksums when you save."
+    "ownerOnly": "Only the owner can change the company details.",
+    "usedFor": "ЕИК, VAT number and declarant from here go into the VAT files and Annex 38. ЕИК and VAT number are checksum-validated when you save."
   },
   "taxId": {
     "eik": "ЕИК / БУЛСТАТ",
@@ -2185,6 +2204,7 @@
     "BELOW_COST_CONFIRM": "Confirm selling below cost.",
     "FILED_PERIOD_CONFIRM": "Confirm reversing a document in a filed VAT period.",
     "REQUEST_TIMEOUT": "The request took too long. Please try again.",
+    "ACCOUNTANT_READ_ONLY": "The accountant may only view and export. Data changes are not allowed.",
     "PRODUCT_CATALOG_FORBIDDEN": "Site managers can only change the minimum stock on a product.",
     "OPENING_BALANCE_OWNER_ONLY": "Only the owner can post opening stock.",
     "OPENING_BALANCE_LOCKED": "Opening stock is locked for this site after {{documentNumber}} was posted."

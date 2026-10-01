@@ -195,13 +195,17 @@ export default function App() {
         <Route path="reorder" element={<ReorderPanel />} />
         <Route path="inventory" element={<InventoryPanel />} />
         <Route path="expiry" element={<ExpiryPanel />} />
-        <Route path="pos" element={<PosPanel />} />
-        <Route path="sales">
-          <Route index element={<SalesPanel />} />
-          <Route element={<RequirePermission permission="manage" fallback="/app/sales" />}>
-            <Route path="margins" element={<MarginsPanel />} />
+        <Route element={<RequirePermission permission="pos" />}>
+          <Route path="pos" element={<PosPanel />} />
+        </Route>
+        <Route element={<RequirePermission permission="salesRead" />}>
+          <Route path="sales">
+            <Route index element={<SalesPanel />} />
+            <Route element={<RequirePermission permission="reports" fallback="/app/sales" />}>
+              <Route path="margins" element={<MarginsPanel />} />
+            </Route>
+            <Route path=":id" element={<SaleReceiptPanel />} />
           </Route>
-          <Route path=":id" element={<SaleReceiptPanel />} />
         </Route>
         <Route path="recipes" element={<RequirePermission permission="manage" />}>
           <Route
@@ -229,7 +233,7 @@ export default function App() {
             }
           />
         </Route>
-        <Route path="reports" element={<RequirePermission permission="manage" />}>
+        <Route path="reports" element={<RequirePermission permission="reports" />}>
           <Route
             index
             element={

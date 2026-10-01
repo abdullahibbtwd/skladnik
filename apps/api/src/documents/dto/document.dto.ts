@@ -333,6 +333,11 @@ export class UpdateDocumentLineDto {
   @Min(0)
   unitPrice?: number;
 
+  /** ACC-14: free goods / sample — allows posting with unitPrice 0. */
+  @IsOptional()
+  @IsBoolean()
+  freeOfCharge?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -377,8 +382,13 @@ export class CreateProductFromLineDto {
   @MaxLength(64)
   code?: string;
 
+  /** Required — never default to OTHER from a scan (SKL-03). */
   @IsIn(UNITS_OF_MEASURE)
   unit!: UnitOfMeasure;
+
+  /** Required product group (SKL-03). */
+  @IsUUID()
+  groupId!: string;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -386,11 +396,15 @@ export class CreateProductFromLineDto {
   @Max(100)
   vatRate!: number;
 
+  /**
+   * Selling price stays empty until set — do not copy the purchase price (SKL-03).
+   * Product cannot be sold at the till until this is set.
+   */
   @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
-  sellingPrice?: number;
+  sellingPrice?: number | null;
 
   @IsOptional()
   @IsBoolean()

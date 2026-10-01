@@ -7,6 +7,9 @@ function assert(condition: unknown, message: string): asserts condition {
 const onlyMin = managerMinStockOnlyPatch({ minStock: 12 });
 assert(onlyMin.ok && onlyMin.minStock === 12, 'minStock alone is allowed');
 
+const withSite = managerMinStockOnlyPatch({ minStock: 8, siteId: 's1' });
+assert(withSite.ok && withSite.siteId === 's1' && withSite.minStock === 8, 'siteId + minStock allowed');
+
 const empty = managerMinStockOnlyPatch({});
 assert(empty.ok && empty.minStock === undefined, 'empty patch is ok (no-op upstream)');
 

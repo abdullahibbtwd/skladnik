@@ -104,8 +104,7 @@ export const DashboardPage: React.FC = () => {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
-  const canCreateDocuments =
-    user.role === 'OWNER' || user.role === 'ACCOUNTANT' || user.role === 'SITE_MANAGER' || user.role === 'STAFF';
+  const canCreateDocuments = user.role === 'OWNER' || user.role === 'SITE_MANAGER' || user.role === 'STAFF';
 
   const onStartDocument = (type: 'RECEIPT' | 'WRITE_OFF') => {
     if (!canCreateDocuments) {

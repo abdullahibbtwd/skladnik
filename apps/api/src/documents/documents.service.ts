@@ -16,6 +16,8 @@ import {
   isPaperDocumentType,
   isStockOperationType,
   isTillDocumentType,
+  isDocumentManager,
+  normalizeDocumentNumber,
   quantityPrecisionProblem,
   reconcileTotals,
   seriesForDocument,
@@ -34,6 +36,7 @@ import { isRealPostedActivity, openingBalanceRoleAllowed } from './opening-balan
 import { toNumber } from '../common/decimal';
 import { takeSeriesNumber } from '../company/document-series';
 import { rememberSupplierCode } from '../extraction/extraction-apply.service';
+import { barcodeForMatching } from '../extraction/barcode';
 import { NameIndex, productKey } from '../extraction/name-matching';
 import { OCR_JOB_EXTRACT, OCR_JOB_OPTIONS, OCR_QUEUE, ocrJobId, type OcrJobData } from '../extraction/ocr.constants';
 import { splitProductText } from '../extraction/product-text';
@@ -44,15 +47,19 @@ import { loadCostBook, lockSites, saveAverages, siteLedger } from '../stock/ledg
 import { StorageService } from '../storage/storage.service';
 import {
   canDocumentBePosted,
-  dateWarning,
   expiredBatchWarnings,
   expiryGuarded,
-  headerErrors,
   isExpiredOn,
 } from './can-document-be-posted';
 import { deleteOrphanAutoProducts } from './auto-products';
+import { isAutomaticBatchNumber, nextAutomaticBatchNumber } from './auto-batch';
 import { assertDocumentWriteAccess } from './document-access';
 import { findDuplicateDocument, lockDocumentNumber, type DuplicateDocument, type DuplicateKey } from './document-duplicates';
+import {
+  classifyDocumentLifecycle,
+  lifecycleMessages,
+  type LifecycleIssue,
+} from './document-lifecycle';
 import { REVERSAL_SUFFIX, planReversal, type OriginalMovement } from './reversal';
 import { onHandByKey, shortfallMessage, stockShortfalls } from './stock-availability';
 import { computeLineAmounts } from './document-pricing';
@@ -80,7 +87,7 @@ const lineInclude = {
 const siteSelect = { select: { id: true, name: true, type: true, isActive: true } } as const;
 
 const documentInclude = {
-  partner: { select: { id: true, name: true, kind: true, eik: true, vatNumber: true } },
+  partner: { select: { id: true, name: true, kind: true, eik: true, vatNumber: true, verified: true } },
   site: siteSelect,
   targetSite: siteSelect,
   lines: { orderBy: { position: 'asc' as const }, include: lineInclude },
@@ -114,9 +121,15 @@ type PrintedInput = {
 
 type PostingChecks = {
   errors: string[];
+  /** Issues that block post but still allow Staff to submit for review (SKL-01/03/08). */
+  reviewWarnings: string[];
+  /** True when submit-for-review is allowed (no future date / empty lines). */
+  canSubmit: boolean;
   expired: string[];
   expiredLineIds: Set<string>;
   dateWarning: string | null;
+  /** date=expiry and old-date confirmations (SKL-01). */
+  dateConfirmations: string[];
   duplicate: DuplicateDocument | null;
   totals: TotalsCheck | null;
 };
@@ -149,7 +162,7 @@ export class DocumentsService {
         type: query.type ?? { not: 'SALE' },
       },
       include: {
-        partner: { select: { id: true, name: true, kind: true, eik: true, vatNumber: true } },
+        partner: { select: { id: true, name: true, kind: true, eik: true, vatNumber: true, verified: true } },
         site: siteSelect,
         targetSite: siteSelect,
         createdBy: { select: { id: true, name: true } },
@@ -247,6 +260,7 @@ export class DocumentsService {
           direction,
           status: 'DRAFT',
           number,
+          numberKey: normalizeDocumentNumber(number),
           issuedOn: new Date(dto.issuedOn),
           deliveryAddress: dto.deliveryAddress?.trim() || null,
           notes: dto.notes?.trim() || null,
@@ -297,7 +311,11 @@ export class DocumentsService {
         data.direction = defaultStockDirection(dto.type);
       }
     }
-    if (dto.documentNumber !== undefined) data.number = dto.documentNumber.trim();
+    if (dto.documentNumber !== undefined) {
+      const next = dto.documentNumber.trim();
+      data.number = next;
+      data.numberKey = normalizeDocumentNumber(next);
+    }
     if (dto.issuedOn !== undefined) data.issuedOn = new Date(dto.issuedOn);
     if (dto.deliveryAddress !== undefined) data.deliveryAddress = dto.deliveryAddress?.trim() || null;
     if (dto.notes !== undefined) data.notes = dto.notes?.trim() || null;
@@ -419,23 +437,33 @@ export class DocumentsService {
     // Staff never set purchase prices (Section C recommended default); write-off cost is applied at post from the book.
     const unitPrice = seesFinancials(user.role) ? dto.unitPrice ?? 0 : 0;
     const amounts = computeLineAmounts(quantity, unitPrice, seesFinancials(user.role) ? (dto.discountPercent ?? 0) : 0);
-    await this.prisma.documentLine.create({
-      data: {
+    await this.prisma.$transaction(async (tx) => {
+      const resolved = await this.resolveBatchNumber(tx, {
         companyId: user.companyId,
-        documentId: existing.id,
+        siteId: existing.siteId,
         productId: product.id,
-        position,
-        quantity,
-        unitPrice,
-        discountPercent: amounts.discountPercent,
-        finalUnitPrice: amounts.finalUnitPrice,
-        lineTotal: amounts.lineTotal,
-        vatRate: dto.vatRate ?? toNumber(product.vatRate),
-        unit: product.unit,
-        ocrDescription: product.name,
-        ocrBatchNumber: dto.batchNumber?.trim() || null,
-        ocrExpiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
-      },
+        batchTracking: product.batchTracking,
+        batchNumber: dto.batchNumber,
+        expiryDate: dto.expiryDate,
+      });
+      await tx.documentLine.create({
+        data: {
+          companyId: user.companyId,
+          documentId: existing.id,
+          productId: product.id,
+          position,
+          quantity,
+          unitPrice,
+          discountPercent: amounts.discountPercent,
+          finalUnitPrice: amounts.finalUnitPrice,
+          lineTotal: amounts.lineTotal,
+          vatRate: dto.vatRate ?? toNumber(product.vatRate),
+          unit: product.unit,
+          ocrDescription: product.name,
+          ocrBatchNumber: resolved.batchNumber,
+          ocrExpiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+        },
+      });
     });
     await this.log(user, existing, 'LINE_ADD', { line: position + 1 }, {
       before: {},
@@ -495,6 +523,18 @@ export class DocumentsService {
 
     const amounts = computeLineAmounts(quantity, unitPrice, discountPercent);
     await this.prisma.$transaction(async (tx) => {
+      const tracked = product ?? line.product;
+      const resolved =
+        tracked?.batchTracking
+          ? await this.resolveBatchNumber(tx, {
+              companyId: user.companyId,
+              siteId: existing.siteId,
+              productId: tracked.id,
+              batchTracking: true,
+              batchNumber,
+              expiryDate,
+            })
+          : { batchNumber: null as string | null, automatic: false };
       await tx.documentLine.update({
         where: { id: line.id },
         data: {
@@ -505,9 +545,17 @@ export class DocumentsService {
           discountPercent: amounts.discountPercent,
           finalUnitPrice: amounts.finalUnitPrice,
           lineTotal: amounts.lineTotal,
+          ...(dto.freeOfCharge !== undefined ? { freeOfCharge: dto.freeOfCharge } : {}),
           ...(dto.vatRate !== undefined ? { vatRate: dto.vatRate } : {}),
-          ...(dto.batchNumber !== undefined ? { ocrBatchNumber: dto.batchNumber?.trim() || null } : {}),
-          ...(dto.expiryDate !== undefined ? { ocrExpiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null } : {}),
+          ...(tracked?.batchTracking
+            ? {
+                ocrBatchNumber: resolved.batchNumber,
+                ocrExpiryDate: expiryDate ? new Date(expiryDate) : null,
+              }
+            : {
+                ...(dto.batchNumber !== undefined ? { ocrBatchNumber: dto.batchNumber?.trim() || null } : {}),
+                ...(dto.expiryDate !== undefined ? { ocrExpiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null } : {}),
+              }),
         },
       });
       if (!productChanged || !product) return;
@@ -531,28 +579,42 @@ export class DocumentsService {
     this.assertWritable(existing.status);
     const line = existing.lines.find((row) => row.id === lineId);
     if (!line) throw new NotFoundException('Line not found');
-    const name = dto.name.trim();
-    if (!name) throw new BadRequestException('name is required');
+    // SKL-03: strip batch/expiry patterns that OCR left in the name.
+    const name = splitProductText(dto.name.trim(), line.supplierProductCode).name || dto.name.trim();
+    if (!name) throw apiBadRequest('PRODUCT_NAME_REQUIRED', 'Името на продукта е задължително');
+    if (dto.unit === 'OTHER') {
+      throw apiBadRequest('PRODUCT_UNIT_REQUIRED', 'Изберете мярка — „друго“ не е допустимо по подразбиране от сканиране');
+    }
+    const group = await this.prisma.productGroup.findFirst({ where: { id: dto.groupId, companyId: user.companyId }, select: { id: true } });
+    if (!group) throw apiBadRequest('PRODUCT_GROUP_REQUIRED', 'Групата на продукта е задължителна');
 
     const product = await this.prisma.$transaction(async (tx) => {
       const code = dto.code?.trim() || (await nextProductCode(tx, user.companyId));
       const barcode = line.ocrBarcode?.trim() || null;
       const barcodeFree =
-        barcode && !(await tx.productBarcode.findFirst({ where: { companyId: user.companyId, barcode }, select: { id: true } }));
+        barcode &&
+        barcodeForMatching(barcode) &&
+        !(await tx.productBarcode.findFirst({ where: { companyId: user.companyId, barcode: barcodeForMatching(barcode)! }, select: { id: true } }));
       const unitPrice = toNumber(line.finalUnitPrice ?? line.unitPrice);
+      // SKL-03: batch ON when the scan has a lot or expiry; selling price left empty (not copied from purchase).
+      const batchTracking = dto.batchTracking ?? Boolean(line.ocrBatchNumber || line.ocrExpiryDate);
       const created = await tx.product
         .create({
           data: {
             companyId: user.companyId,
+            groupId: group.id,
             name,
             code,
             unit: dto.unit,
             vatRate: dto.vatRate,
             purchasePrice: unitPrice,
-            sellingPrice: dto.sellingPrice ?? unitPrice,
-            batchTracking: dto.batchTracking ?? Boolean(line.ocrBatchNumber || line.ocrExpiryDate),
+            sellingPrice: dto.sellingPrice ?? null,
+            batchTracking,
             status: 'ACTIVE',
-            ...(barcodeFree ? { barcodes: { create: { companyId: user.companyId, barcode: barcode! } } } : {}),
+            createdFromDocumentId: existing.id,
+            ...(barcodeFree
+              ? { barcodes: { create: { companyId: user.companyId, barcode: barcodeForMatching(barcode)! } } }
+              : {}),
           },
         })
         .catch((error: unknown) => {
@@ -676,6 +738,18 @@ export class DocumentsService {
     if (existing.status !== 'DRAFT') {
       throw new BadRequestException('Only a draft can be submitted for review');
     }
+    // SKL-02 / SKL-10: future date and empty lines block submit on the server, not only in the UI.
+    const checks = await this.postingChecks(existing, user);
+    if (!checks.canSubmit) {
+      const blockSubmit = checks.errors.filter(
+        (message) => message.includes('бъдещето') || message.includes('Добавете поне един ред') || /future/i.test(message),
+      );
+      const first = blockSubmit[0] ?? checks.errors[0] ?? 'Документът не може да бъде изпратен за преглед';
+      throw apiBadRequest(
+        first.includes('бъдещето') || /future/i.test(first) ? 'DOCUMENT_DATE_FUTURE' : 'DOCUMENT_EMPTY_LINES',
+        first,
+      );
+    }
     const document = await this.prisma.document.update({
       where: { id: existing.id },
       data: { status: 'REVIEW' },
@@ -692,7 +766,7 @@ export class DocumentsService {
       throw new BadRequestException('Submit the document for review before posting');
     }
     if (existing.type === 'OPENING_BALANCE') await this.assertOpeningBalanceAllowed(user, existing.siteId);
-    const checks = await this.postingChecks(existing);
+    const checks = await this.postingChecks(existing, user);
     if (checks.duplicate) this.throwDuplicate(checks.duplicate);
     if (checks.errors.length) {
       throw new BadRequestException(checks.errors.join('. '));
@@ -703,8 +777,13 @@ export class DocumentsService {
     if (checks.expired.length && !options.confirmExpired) {
       throw new BadRequestException(`${checks.expired.join('. ')}. Confirm to post it with expired stock.`);
     }
-    if (checks.dateWarning && !options.confirmDate) {
-      throw new BadRequestException(`${checks.dateWarning}. Confirm the date to post.`);
+    if (checks.dateConfirmations.length && !options.confirmDate) {
+      throw apiBadRequest(
+        'DOCUMENT_DATE_CONFIRM',
+        `${checks.dateConfirmations.join('. ')}. Потвърдете датата, за да осчетоводите.`,
+        undefined,
+        { warnings: checks.dateConfirmations },
+      );
     }
 
     const posted = await this.prisma.$transaction(
@@ -756,7 +835,7 @@ export class DocumentsService {
       lines: posted.lines.length,
       ...(checks.totals ? { totals: checks.totals.calculated, printedTotal: checks.totals.printed.total } : {}),
       ...(checks.expired.length ? { confirmedExpired: checks.expired } : {}),
-      ...(checks.dateWarning ? { confirmedDate: checks.dateWarning } : {}),
+      ...(checks.dateConfirmations.length ? { confirmedDate: checks.dateConfirmations } : {}),
     }, { before: { status: existing.status }, after: { status: posted.status } });
     return this.detail(user, posted);
   }
@@ -876,7 +955,10 @@ export class DocumentsService {
               direction: transfer ? 'OUT' : original.direction === 'IN' ? 'OUT' : 'IN',
               status: 'POSTED',
               number,
+              numberKey: normalizeDocumentNumber(number),
               issuedOn: new Date(`${businessDate(now)}T00:00:00Z`),
+              // ACC-13: one clock reading for both timestamps so createdAt <= postedAt.
+              createdAt: now,
               postedAt: now,
               notes: reason,
               writeOffReason: original.writeOffReason,
@@ -1033,6 +1115,7 @@ export class DocumentsService {
           direction: defaultStockDirection(dto.type),
           status: 'DRAFT',
           number: `SCAN-${documentId.slice(0, 8).toUpperCase()}`,
+          numberKey: normalizeDocumentNumber(`SCAN-${documentId.slice(0, 8).toUpperCase()}`),
           issuedOn: new Date(dto.issuedOn),
           createdById: user.id,
           clientRequestId: dto.clientRequestId,
@@ -1160,9 +1243,17 @@ export class DocumentsService {
   private async resolveBatch(tx: Prisma.TransactionClient, companyId: string, line: LineRow) {
     if (!line.product!.batchTracking) return null;
     const batchNumber = line.ocrBatchNumber!.trim();
+    const automatic = isAutomaticBatchNumber(batchNumber);
     const batch = await tx.batch.upsert({
       where: { companyId_productId_batchNumber: { companyId, productId: line.productId!, batchNumber } },
-      create: { companyId, productId: line.productId!, batchNumber, expiryDate: line.ocrExpiryDate! },
+      create: {
+        companyId,
+        productId: line.productId!,
+        batchNumber,
+        expiryDate: line.ocrExpiryDate!,
+        isAutomatic: automatic,
+      },
+      // Keep an existing manual flag; mark automatic only when creating.
       update: {},
     });
     return batch.id;
@@ -1388,9 +1479,67 @@ export class DocumentsService {
     expiryDate?: string | null,
   ) {
     if (!product.batchTracking) return;
-    if (!batchNumber?.trim() || !expiryDate) {
-      throw new BadRequestException(`Batch number and expiry date are required for ${product.name}`);
+    // SKL-15: batch may be empty when expiry is set — we auto-generate A-YYYYMMDD-NN.
+    if (!expiryDate && !batchNumber?.trim()) {
+      throw apiBadRequest(
+        'BATCH_FIELDS_REQUIRED',
+        `За „${product.name}“ са нужни партиден номер и срок на годност (или само срок — бутон „Авто“)`,
+        { product: product.name },
+      );
     }
+    if (!expiryDate) {
+      throw apiBadRequest('BATCH_EXPIRY_REQUIRED', `За „${product.name}“ е нужен срок на годност`, { product: product.name });
+    }
+  }
+
+  /** Resolve batch: use typed value, or auto-generate when expiry is present and batch empty (SKL-15). */
+  private async resolveBatchNumber(
+    tx: Prisma.TransactionClient,
+    args: {
+      companyId: string;
+      siteId: string;
+      productId: string;
+      batchTracking: boolean;
+      batchNumber?: string | null;
+      expiryDate?: string | null;
+    },
+  ): Promise<{ batchNumber: string | null; automatic: boolean }> {
+    if (!args.batchTracking) return { batchNumber: null, automatic: false };
+    const typed = args.batchNumber?.trim() || '';
+    if (typed) return { batchNumber: typed, automatic: isAutomaticBatchNumber(typed) };
+    if (!args.expiryDate) return { batchNumber: null, automatic: false };
+    const generated = await nextAutomaticBatchNumber(tx, {
+      companyId: args.companyId,
+      productId: args.productId,
+      siteId: args.siteId,
+      expiryDate: args.expiryDate,
+    });
+    return { batchNumber: generated, automatic: true };
+  }
+
+  /** Preview next automatic batch for the UI "Авто" button (SKL-15). */
+  async suggestAutoBatch(
+    user: AuthUser,
+    documentId: string,
+    input: { productId: string; expiryDate: string },
+  ) {
+    const doc = await this.findInCompany(user, documentId, true);
+    assertDocumentWriteAccess(user, 'edit', doc);
+    const product = await this.assertProduct(user.companyId, input.productId);
+    if (!product.batchTracking) {
+      throw apiBadRequest('BATCH_NOT_TRACKED', 'Продуктът не се следи по партиди');
+    }
+    const expiry = input.expiryDate?.trim();
+    if (!expiry) {
+      throw apiBadRequest('BATCH_EXPIRY_REQUIRED', 'Въведете срок на годност преди автоматична партида');
+    }
+    const batchNumber = await nextAutomaticBatchNumber(this.prisma, {
+      companyId: user.companyId,
+      productId: product.id,
+      siteId: doc.siteId,
+      expiryDate: expiry,
+    });
+    return { batchNumber, expiryDate: expiry, isAutomatic: true };
   }
 
   private assertWriteOffReason(type: DocumentType, reason: string | null) {
@@ -1473,33 +1622,78 @@ export class DocumentsService {
   }
 
   /** A misread or mistyped ЕИК / VAT number would go into the VAT ledgers, so paperwork waits until it is fixed. */
-  private partnerIdErrors(doc: DocumentRow) {
+  private partnerMasterDataIssues(doc: DocumentRow, forStaff: boolean): LifecycleIssue[] {
     if (!doc.partner || !isPaperDocumentType(doc.type)) return [];
-    return taxIdProblems(doc.partner).map(
-      (problem) => `${taxIdProblemMessage(problem, `Partner ${doc.partner!.name}`)}. Correct it in Settings → Partners`,
-    );
+    // SKL-08: block post only (blockPost). Staff: never link to /settings; managers: Настройки → Партньори.
+    const contact = forStaff
+      ? 'Свържете се с мениджър.'
+      : 'Отворете Настройки → Партньори, за да коригирате данните.';
+    const issues: LifecycleIssue[] = taxIdProblems(doc.partner).map((problem) => ({
+      code: problem.code,
+      message: `${taxIdProblemMessage(problem, `Партньор ${doc.partner!.name}`)}. ${contact}`,
+      params: { partner: doc.partner!.name, value: problem.value },
+    }));
+    if (!doc.partner.verified) {
+      issues.push({
+        code: 'PARTNER_UNVERIFIED',
+        message: `Партньор „${doc.partner.name}“ е непроверен (потвърден от сканиране без съвпадение). ${contact}`,
+        params: { partner: doc.partner.name },
+      });
+    }
+    return issues;
   }
 
-  private async postingChecks(doc: DocumentRow): Promise<PostingChecks> {
+  private async postingChecks(doc: DocumentRow, user?: AuthUser): Promise<PostingChecks> {
     const today = businessDate();
     const issuedOn = isoDate(doc.issuedOn);
     const totals = this.totalsCheck(doc);
+    const forStaff = Boolean(user && !isDocumentManager(user.role));
     const [expiry, duplicate] = await Promise.all([
       this.expiryCheck(doc),
       findDuplicateDocument(this.prisma, this.duplicateKey(doc)),
     ]);
-    const errors = [
-      ...canDocumentBePosted(doc).errors,
-      ...headerErrors({ type: doc.type, issuedOn, partnerId: doc.partnerId, totals }, today),
-      ...this.partnerIdErrors(doc),
-      ...this.quantityPrecisionErrors(doc),
-      ...(duplicate ? [this.duplicateMessage(duplicate)] : []),
-    ];
+
+    const lifecycle = classifyDocumentLifecycle(
+      {
+        type: doc.type,
+        direction: doc.direction,
+        siteId: doc.siteId,
+        targetSiteId: doc.targetSiteId,
+        number: doc.number,
+        issuedOn,
+        partnerId: doc.partnerId,
+        totals,
+        lines: doc.lines,
+        masterDataIssues: this.partnerMasterDataIssues(doc, forStaff),
+        scanFirstLineNumber: doc.scanFirstLineNumber,
+        amountInWordsParsed: doc.amountInWordsParsed === null ? null : toNumber(doc.amountInWordsParsed),
+      },
+      today,
+      { forStaff },
+    );
+
+    const precision = this.quantityPrecisionErrors(doc).map((message) => ({
+      code: 'QUANTITY_PRECISION',
+      message,
+    }));
+    const blockPost = [...lifecycle.blockPost, ...precision];
+    if (duplicate) {
+      blockPost.push({ code: 'DUPLICATE_DOCUMENT', message: this.duplicateMessage(duplicate) });
+    }
+
+    const dateConfirmations = lifecycleMessages(lifecycle.needsConfirm);
+    const blockBothMessages = lifecycleMessages(lifecycle.blockBoth);
+    const blockPostMessages = lifecycleMessages(blockPost);
+
     return {
-      errors,
+      // Post requires no blockBoth and no blockPost (duplicates, pending products, totals, …).
+      errors: [...blockBothMessages, ...blockPostMessages],
+      reviewWarnings: blockPostMessages,
+      canSubmit: lifecycle.blockBoth.length === 0,
       expired: expiry.warnings,
       expiredLineIds: expiry.expiredLineIds,
-      dateWarning: dateWarning({ type: doc.type, issuedOn }, today),
+      dateWarning: dateConfirmations[0] ?? null,
+      dateConfirmations,
       duplicate,
       totals,
     };
@@ -1677,7 +1871,7 @@ export class DocumentsService {
     const writable = WRITABLE.has(doc.status);
     const [shortfalls, checks, preview, suggestions] = await Promise.all([
       doc.direction === 'OUT' && writable && doc.type !== 'STOCKTAKE' ? this.outShortfalls(this.prisma, doc) : [],
-      writable ? this.postingChecks(doc) : null,
+      writable ? this.postingChecks(doc, user) : null,
       doc.type === 'STOCKTAKE' && writable ? this.stocktakePreview(doc) : new Map<string, StocktakeLinePreview>(),
       writable ? this.productSuggestions(doc) : new Map<string, ProductSuggestion[]>(),
     ]);
@@ -1738,15 +1932,20 @@ export class DocumentsService {
       ...shortfalls.map(shortfallMessage),
     ];
     const expired = checks?.expired ?? [];
+    const dateConfirmations = checks?.dateConfirmations ?? [];
     const dateWarning = checks?.dateWarning ?? null;
+    const reviewWarnings = checks?.reviewWarnings ?? [];
+    const canSubmit = checks?.canSubmit ?? errors.length === 0;
     const posting = {
-      ok: errors.length === 0,
+      ok: errors.length === 0 && shortfalls.length === 0,
+      canSubmit,
       errors,
-      warnings: [...expired, ...(dateWarning ? [dateWarning] : [])],
+      reviewWarnings,
+      warnings: [...reviewWarnings, ...expired, ...dateConfirmations],
       expired,
       dateWarning,
       confirmExpired: expired.length > 0,
-      confirmDate: dateWarning !== null,
+      confirmDate: dateConfirmations.length > 0,
       duplicateOf: checks?.duplicate ? this.duplicateRef(checks.duplicate) : null,
     };
     const captures = doc.captures.map((capture) => ({
@@ -1783,6 +1982,8 @@ export class DocumentsService {
       suggestions: suggestions.get(line.id) ?? [],
       quantity: toNumber(line.quantity),
       unitPrice: toNumber(line.unitPrice),
+      freeOfCharge: line.freeOfCharge,
+      missingPrice: !line.freeOfCharge && !(toNumber(line.unitPrice) > 0),
       discountPercent: toNumber(line.discountPercent),
       finalUnitPrice: line.finalUnitPrice === null ? null : toNumber(line.finalUnitPrice),
       lineTotal: line.lineTotal === null ? null : toNumber(line.lineTotal),

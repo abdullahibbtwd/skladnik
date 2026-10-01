@@ -69,6 +69,14 @@ export class CompanyProfileDto {
   @MaxLength(120)
   mol?: string | null;
 
+  /** Person signing the VAT return (НАП field 00-04). ACC-06. */
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf(present)
+  @IsString()
+  @MaxLength(50)
+  declarant?: string | null;
+
   @IsOptional()
   @Transform(emptyToNull)
   @ValidateIf(present)

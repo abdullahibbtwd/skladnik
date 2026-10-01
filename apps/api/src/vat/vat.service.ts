@@ -98,7 +98,10 @@ export class VatService {
 
   async settings(companyId: string): Promise<VatSettingsRecord> {
     const [company, row] = await Promise.all([
-      this.prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true, vatNumber: true } }),
+      this.prisma.company.findUniqueOrThrow({
+        where: { id: companyId },
+        select: { name: true, vatNumber: true, declarant: true },
+      }),
       this.prisma.vatSettings.findUnique({ where: { companyId } }),
     ]);
     return this.settingsRecord(company, row);
@@ -112,17 +115,24 @@ export class VatService {
       salesGrouping: dto.salesGrouping,
       coefficient: new Prisma.Decimal(dto.coefficient),
     };
-    await this.prisma.vatSettings.upsert({ where: { companyId: user.companyId }, create: { companyId: user.companyId, ...data }, update: data });
+    await this.prisma.$transaction([
+      this.prisma.vatSettings.upsert({ where: { companyId: user.companyId }, create: { companyId: user.companyId, ...data }, update: data }),
+      // ACC-06: company profile is the canonical Settings → Фирма declarant.
+      this.prisma.company.update({ where: { id: user.companyId }, data: { declarant: dto.declarant } }),
+    ]);
     await this.log(user, 'VatSettings', user.companyId, 'UPDATE', { after: { ...dto } });
     return this.settings(user.companyId);
   }
 
-  /** The VAT number lives on the company profile (Settings → Company); the rest is VAT-specific. */
-  private settingsRecord(company: { name: string; vatNumber: string | null }, row: VatSettingsRow | null): VatSettingsRecord {
+  /** The VAT number and declarant live on the company profile (Settings → Фирма); the rest is VAT-specific. */
+  private settingsRecord(
+    company: { name: string; vatNumber: string | null; declarant: string | null },
+    row: VatSettingsRow | null,
+  ): VatSettingsRecord {
     return {
       vatNumber: company.vatNumber,
       legalName: row?.legalName ?? null,
-      declarant: row?.declarant ?? null,
+      declarant: company.declarant ?? row?.declarant ?? null,
       branch: row?.branch ?? 0,
       salesGrouping: (row?.salesGrouping as VatSalesGrouping | undefined) ?? 'MONTH',
       coefficient: row ? toNumber(row.coefficient) : 0,
@@ -166,7 +176,7 @@ export class VatService {
     const today = businessDate();
     const sales = businessRange(range.from, range.to);
     const [company, settingsRow, sites, documents, saleDocs, entryRows, inputsRow, filings, unposted, receipts, reversed] = await Promise.all([
-      this.prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true, vatNumber: true } }),
+      this.prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { name: true, vatNumber: true, declarant: true } }),
       this.prisma.vatSettings.findUnique({ where: { companyId } }),
       this.prisma.site.findMany({ where: { companyId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, name: true } }),
       this.prisma.document.findMany({

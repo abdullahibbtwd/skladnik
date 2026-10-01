@@ -14,8 +14,17 @@ type CameraError = 'denied' | 'unsupported' | 'insecure' | 'failed';
 type CameraMode = 'choose' | 'camera';
 
 const VIDEO_CONSTRAINTS: MediaStreamConstraints[] = [
-  { audio: false, video: { facingMode: { ideal: 'environment' } } },
-  { audio: false, video: { facingMode: { ideal: 'user' } } },
+  // SKL-19: request the highest still the camera will give — default preview streams are ~900×1600.
+  {
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 4032 },
+      height: { ideal: 3024 },
+    },
+  },
+  { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+  { audio: false, video: { facingMode: { ideal: 'user' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
   { audio: false, video: true },
 ];
 
@@ -119,28 +128,41 @@ export function CameraCapture({ open, onClose, onCapture }: CameraCaptureProps) 
 
   if (!open) return null;
 
-  const takePhoto = () => {
+  const takePhoto = async () => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d')?.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const file = new File([blob], `invoice-${Date.now()}.jpg`, { type: 'image/jpeg' });
-        stopStream(streamRef.current);
-        streamRef.current = null;
-        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-        const url = URL.createObjectURL(blob);
-        previewUrlRef.current = url;
-        setPreviewFile(file);
-        setPreviewUrl(url);
-      },
-      'image/jpeg',
-      0.92,
-    );
+
+    // SKL-19: prefer ImageCapture for a full-resolution still; canvas of the preview is a fallback.
+    let blob: Blob | null = null;
+    const track = streamRef.current?.getVideoTracks()[0];
+    const ImageCaptureCtor = (window as unknown as { ImageCapture?: new (track: MediaStreamTrack) => { takePhoto: () => Promise<Blob> } }).ImageCapture;
+    if (track && ImageCaptureCtor) {
+      try {
+        const capture = new ImageCaptureCtor(track);
+        blob = await capture.takePhoto();
+      } catch {
+        blob = null;
+      }
+    }
+    if (!blob) {
+      blob = await new Promise<Blob | null>((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d')?.drawImage(video, 0, 0);
+        // quality 0.92 is encoding only — dimensions stay at the stream's native size (no downscale).
+        canvas.toBlob((result) => resolve(result), 'image/jpeg', 0.92);
+      });
+    }
+    if (!blob) return;
+    const file = new File([blob], `invoice-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    const url = URL.createObjectURL(blob);
+    previewUrlRef.current = url;
+    setPreviewFile(file);
+    setPreviewUrl(url);
   };
 
   const usePhoto = async () => {

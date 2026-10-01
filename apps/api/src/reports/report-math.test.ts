@@ -30,10 +30,12 @@ expectEqual(periodKeys('2026-09-28', '2026-10-02', 'day'), ['2026-09-28', '2026-
 expectEqual(periodKeys('2026-09-20', '2026-10-05', 'week'), ['2026-W38', '2026-W39', '2026-W40', '2026-W41'], 'weeks');
 expectEqual(periodKeys('2026-08-31', '2026-10-01', 'month'), ['2026-08', '2026-09', '2026-10'], 'months');
 
-// VAT split of till prices.
+// VAT split of till prices (ACC-03: base rounded, vat = gross − base; always sums to gross).
 const split = splitGross(12, 20);
-expectEqual([round2(split.net), round2(split.vat)], [10, 2], '20% VAT');
-expectEqual(round2(splitGross(10.9, 9).net), 10, '9% VAT');
+expectEqual([split.net, split.vat], [10, 2], '20% VAT');
+expectEqual(split.net + split.vat, 12, '20% sums to gross');
+expectEqual(splitGross(10.9, 9), { net: 10, vat: 0.9 }, '9% VAT');
+expectEqual(splitGross(10.9, 9).net + splitGross(10.9, 9).vat, 10.9, '9% sums to gross');
 expectEqual([rateKey(20), rateKey(9.0), rateKey(4.5)], ['20', '9', '4.5'], 'rate keys');
 
 expectEqual([expiryStatus(-1), expiryStatus(0), expiryStatus(7), expiryStatus(8), expiryStatus(31), expiryStatus(null)],

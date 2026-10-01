@@ -129,7 +129,7 @@ export const StockRulesSettings: React.FC = () => {
       <PageHeader eyebrow={t('pages.companyEyebrow')} title={t('pages.stockRulesTitle')} description={t('pages.stockRulesDesc')} />
       <GlassPanel title={t('stockRules.windowsTitle')}>
         {settings ? (
-          <ExpiryWindowsForm windows={settings.expiryWindows} canEdit={permissions.companySettings} />
+          <ExpiryWindowsForm windows={settings.expiryWindows} canEdit={permissions.companySettingsWrite} />
         ) : (
           <p className="font-sans text-sm text-slate-500">{t('common.loading')}</p>
         )}

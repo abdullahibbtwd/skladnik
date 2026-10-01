@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ReportCell, ReportColumnType, ReportLang } from '@skladnik/shared';
 import { businessToday, shiftDate } from '../../lib/business-date';
@@ -22,7 +22,9 @@ export const dateInputClass =
 
 export type DateRange = { from: string; to: string };
 
-export function periodPresets(today: string) {
+export type PeriodPresetKey = 'today' | 'thisMonth' | 'lastMonth' | 'last30' | 'thisYear';
+
+export function periodPresets(today: string): Record<PeriodPresetKey, DateRange> {
   const lastMonthEnd = shiftDate(monthStart(today), -1);
   return {
     today: { from: today, to: today },
@@ -33,29 +35,40 @@ export function periodPresets(today: string) {
   };
 }
 
+/**
+ * ACC-12: highlight only the chip the user chose. Do not infer the preset from the date range
+ * (on the 1st of the month "Днес" and "Този месец" are the same range).
+ */
 export function PeriodPicker({ value, onChange }: { value: DateRange; onChange: (range: DateRange) => void }) {
   const { t } = useTranslation();
   const today = businessToday();
   const presets = periodPresets(today);
+  const [chosen, setChosen] = useState<PeriodPresetKey | null>(null);
   return (
     <div className="flex flex-col gap-2">
       <DateRangeFields
         from={value.from}
         to={value.to}
-        onChange={onChange}
+        onChange={(range) => {
+          setChosen(null);
+          onChange(range);
+        }}
         max={today}
         fromLabel={t('reports.from')}
         toLabel={t('reports.to')}
       />
       <div className="flex flex-wrap gap-1.5">
-        {(Object.keys(presets) as (keyof typeof presets)[]).map((key) => {
+        {(Object.keys(presets) as PeriodPresetKey[]).map((key) => {
           const preset = presets[key];
-          const active = value.from === preset.from && value.to === preset.to;
+          const active = chosen === key;
           return (
             <button
               key={key}
               type="button"
-              onClick={() => onChange(preset)}
+              onClick={() => {
+                setChosen(key);
+                onChange(preset);
+              }}
               className={cn(
                 'rounded-lg border px-2.5 py-1 font-display text-[0.74rem] font-medium',
                 active ? 'border-ops-accent/30 bg-indigo-50 text-ops-accent' : 'border-slate-200 bg-white text-slate-600 hover:border-ops-accent/20',

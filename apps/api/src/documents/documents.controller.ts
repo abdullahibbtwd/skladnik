@@ -34,12 +34,12 @@ import {
 import { DocumentsService } from './documents.service';
 import { isImageUpload, isPdfUpload } from './pdf-to-images';
 
-/** Draft create/edit/submit — Staff included; service enforces type + own-draft rules. */
-const DRAFT_WRITE_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER', 'STAFF'] as const;
-/** Post (Staff: write-offs only), cancel, reverse, stocktake, create-product — managers; service re-checks Staff. */
-const MANAGER_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER'] as const;
+/** Draft create/edit/submit — Staff included; ACC-01 Accountant excluded (read-only). */
+const DRAFT_WRITE_ROLES = ['OWNER', 'SITE_MANAGER', 'STAFF'] as const;
+/** Post (Staff: write-offs only), cancel, reverse, stocktake, create-product — managers. */
+const MANAGER_ROLES = ['OWNER', 'SITE_MANAGER'] as const;
 /** Post allowed for Staff write-offs (recommended default: no approval threshold). */
-const POST_ROLES = ['OWNER', 'ACCOUNTANT', 'SITE_MANAGER', 'STAFF'] as const;
+const POST_ROLES = ['OWNER', 'SITE_MANAGER', 'STAFF'] as const;
 
 const captureUpload = () =>
   FileInterceptor('file', {
@@ -165,9 +165,19 @@ export class DocumentsController {
   }
 
   @Post(':id/cancel')
-  @Roles(...MANAGER_ROLES)
+  @Roles(...DRAFT_WRITE_ROLES)
   cancel(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.documents.cancel(user, id);
+  }
+
+  @Post(':id/suggest-auto-batch')
+  @Roles(...DRAFT_WRITE_ROLES)
+  suggestAutoBatch(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { productId: string; expiryDate: string },
+  ) {
+    return this.documents.suggestAutoBatch(user, id, body);
   }
 
   @Post(':id/reverse')

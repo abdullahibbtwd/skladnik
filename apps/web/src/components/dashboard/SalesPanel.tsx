@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banknote, ChevronLeft, ChevronRight, CreditCard, Percent, Receipt, ShoppingCart, TrendingUp, Undo2, Wallet } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { isSalesManager } from '@skladnik/shared';
+import { canUsePos, isSalesManager } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
 import { businessToday, formatBusinessTime, formatDay, shiftDate } from '../../lib/business-date';
 import { cn } from '../../lib/cn';
@@ -83,6 +83,7 @@ export const SalesPanel: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const role = useAuthRole();
   const manager = isSalesManager(role);
+  const till = canUsePos(role);
   const { siteId } = useDashboard();
   const sitesQuery = useSitesQuery();
   const today = businessToday();
@@ -112,7 +113,7 @@ export const SalesPanel: React.FC = () => {
         action={
           <div className="flex gap-2">
             {manager && <ActionButton icon={Percent} label={t('app.margins')} onClick={() => navigate('/app/sales/margins')} />}
-            <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} primary />
+            {till && <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} primary />}
           </div>
         }
       />

@@ -33,10 +33,23 @@ export function periodKeys(from: string, to: string, by: PeriodGrouping) {
   return keys;
 }
 
-/** Till prices include VAT: split a gross amount into tax base and VAT. */
-export function splitGross(gross: number, rate: number) {
-  const net = gross / (1 + rate / 100);
-  return { net, vat: gross - net };
+/**
+ * ACC-03 / ACC-10: ONE VAT rounding rule for the whole app.
+ *
+ * Sales (gross includes VAT): base = round(gross / (1 + rate/100), 2), vat = gross − base.
+ * That guarantees base + vat === gross to the cent for every receipt × rate bucket.
+ * Purchases: prefer printed per-rate amounts from the document header; otherwise the same rule
+ * applied to line nets (see documentTotals).
+ *
+ * Confirm this with the company accountant before changing.
+ */
+export function splitGross(gross: number, rate: number): { net: number; vat: number } {
+  const roundedGross = round2(gross);
+  if (!(roundedGross > 0) || !(rate > 0)) {
+    return { net: roundedGross, vat: 0 };
+  }
+  const net = round2(roundedGross / (1 + rate / 100));
+  return { net, vat: round2(roundedGross - net) };
 }
 
 /** 20 → "20", 4.5 → "4.5"; used in per-rate column keys such as net_20. */

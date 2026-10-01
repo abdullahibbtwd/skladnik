@@ -57,7 +57,7 @@ type RecipeSeed = {
 
 type TenantSeed = {
   company: string;
-  profile: { eik: string; address: string; city: string; mol: string };
+  profile: { eik: string; address: string; city: string; mol: string; declarant: string };
   sites: { name: string; type: SiteType; address: string }[];
   users: UserSeed[];
   groups: string[];
@@ -89,7 +89,7 @@ function mulberry32(seed: number) {
 
 const MARKET: TenantSeed = {
   company: 'Demo Mini Market',
-  profile: { eik: '206400170', address: 'ул. Витоша 12', city: 'София', mol: 'Maria Petrova' },
+  profile: { eik: '206400170', address: 'ул. Витоша 12', city: 'София', mol: 'Maria Petrova', declarant: 'Maria Petrova' },
   sites: [
     { name: 'Основен магазин', type: SiteType.STORE, address: 'София, бул. Витоша 112' },
     { name: 'Склад', type: SiteType.WAREHOUSE, address: 'София, промишлена зона Илиянци, склад 7' },
@@ -97,7 +97,7 @@ const MARKET: TenantSeed = {
   users: [
     { email: 'demo-owner@skladnik.dev', name: 'Maria Petrova', role: UserRole.OWNER },
     { email: 'demo-manager@skladnik.dev', name: 'Georgi Ivanov', role: UserRole.SITE_MANAGER, sites: ['Основен магазин'] },
-    { email: 'demo-cashier@skladnik.dev', name: 'Elena Dimitrova', role: UserRole.STAFF, sites: ['Основен магазин'] },
+    { email: 'demo-cashier@skladnik.dev', name: 'Elena Dimitrova', role: UserRole.CASHIER, sites: ['Основен магазин'] },
     { email: 'demo-storekeeper@skladnik.dev', name: 'Nikolay Stoyanov', role: UserRole.STAFF, sites: ['Склад'] },
     { email: 'demo-accountant@skladnik.dev', name: 'Vesela Koleva', role: UserRole.ACCOUNTANT },
   ],
@@ -188,6 +188,16 @@ const MARKET: TenantSeed = {
       lines: [{ code: 'M-020', qty: 48, price: 0.35 }, { code: 'M-021', qty: 24, price: 0.7 }],
     },
     {
+      daysAgo: 4, site: 'Склад', type: 'RECEIPT', number: 'QA-FEFO-WH', status: 'POSTED', partnerEik: '203998410',
+      // SKL-G Acceptance #3: posted batches at Warehouse for FEFO / expired-sale confirmation (Staff cannot post).
+      notes: 'QA FEFO fixture — one expired + two unexpired batches',
+      lines: [
+        { code: 'M-001', qty: 10, batch: 'QA-EXP-01', expiresInDays: -5 },
+        { code: 'M-001', qty: 20, batch: 'QA-NEAR-01', expiresInDays: 7 },
+        { code: 'M-001', qty: 30, batch: 'QA-FAR-01', expiresInDays: 40 },
+      ],
+    },
+    {
       daysAgo: 3, site: 'Основен магазин', type: 'WRITE_OFF', number: 'ПБ-0001', status: 'POSTED', writeOffReason: 'EXPIRED',
       notes: 'Expired yoghurt removed from the fridge',
       lines: [{ code: 'M-002', qty: 6, batch: 'MP-0815', expiresInDays: -1 }],
@@ -219,7 +229,7 @@ const MARKET: TenantSeed = {
 
 const CAFE: TenantSeed = {
   company: 'Demo Café',
-  profile: { eik: '207188457', address: 'ул. Княз Александър I 21', city: 'Пловдив', mol: 'Dimitar Nikolov' },
+  profile: { eik: '207188457', address: 'ул. Княз Александър I 21', city: 'Пловдив', mol: 'Dimitar Nikolov', declarant: 'Dimitar Nikolov' },
   sites: [{ name: 'Кафе-бар', type: SiteType.BAR, address: 'Пловдив, ул. Княз Александър I 21' }],
   users: [
     { email: 'cafe-owner@skladnik.dev', name: 'Dimitar Nikolov', role: UserRole.OWNER },
@@ -307,9 +317,19 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
   const company =
     (await prisma.company.findFirst({ where: { name: tenant.company } })) ??
     (await prisma.company.create({ data: { name: tenant.company } }));
-  if (!company.eik) {
-    await prisma.company.update({ where: { id: company.id }, data: { ...tenant.profile, vatNumber: `BG${tenant.profile.eik}` } });
-  }
+  // ACC-06: always refresh company tax IDs + declarant so demo VAT/Annex 38 are not blocked.
+  await prisma.company.update({
+    where: { id: company.id },
+    data: {
+      ...tenant.profile,
+      vatNumber: `BG${tenant.profile.eik}`,
+    },
+  });
+  await prisma.vatSettings.upsert({
+    where: { companyId: company.id },
+    create: { companyId: company.id, declarant: tenant.profile.declarant },
+    update: { declarant: tenant.profile.declarant },
+  });
   await seedUnitAliases(prisma, company.id);
 
   const siteIds = new Map<string, string>();

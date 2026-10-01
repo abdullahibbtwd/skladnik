@@ -85,7 +85,7 @@ function costRecipe(recipe: RecipeRow, book: CostBook) {
   return recipeCosting({
     yieldPortions: toNumber(recipe.yieldPortions),
     markupPercent: toNumber(recipe.markupPercent),
-    sellingPrice: toNumber(recipe.product.sellingPrice),
+    sellingPrice: toNumber(recipe.product.sellingPrice ?? 0),
     vatRate: toNumber(recipe.product.vatRate),
     ingredients: recipe.ingredients.map((row) => ({
       quantity: stockNetQty(toNumber(row.quantity), row.quantityUnit as ContentUnit | null, row.product),
@@ -96,7 +96,11 @@ function costRecipe(recipe: RecipeRow, book: CostBook) {
 }
 
 function dishView(product: Prisma.ProductGetPayload<{ select: typeof dishSelect }>) {
-  return { ...product, sellingPrice: toNumber(product.sellingPrice), vatRate: toNumber(product.vatRate) };
+  return {
+    ...product,
+    sellingPrice: product.sellingPrice === null ? null : toNumber(product.sellingPrice),
+    vatRate: toNumber(product.vatRate),
+  };
 }
 
 /**

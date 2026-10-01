@@ -1,9 +1,23 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Camera, ClipboardList, Package, PackageMinus, ShoppingCart, Timer, Truck, Wallet } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Camera,
+  ClipboardList,
+  FileCode2,
+  FileSpreadsheet,
+  Landmark,
+  Package,
+  PackageMinus,
+  ShoppingCart,
+  Timer,
+  Truck,
+  Wallet,
+} from 'lucide-react';
 import { businessToday } from '../../lib/business-date';
 import { formatEuro } from '../../lib/dashboard-data';
-import { useRequiredUser } from '../../lib/auth-store';
+import { useAuthRole, useRequiredUser } from '../../lib/auth-store';
 import { usePermissions } from '../../lib/permissions';
 import { documentPath } from '../../lib/workspace-api';
 import { useSalesReportQuery } from '../../lib/workspace-session';
@@ -20,10 +34,11 @@ export const OverviewPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const user = useRequiredUser();
+  const role = useAuthRole();
   const { data, siteId, onScan, startDocument } = useDashboard();
-  const { createDocuments, seeFinancials } = usePermissions();
+  const { createDocuments, seeFinancials, pos, reports, vat, audit, salesRead } = usePermissions();
   const today = businessToday();
-  const todaySales = useSalesReportQuery(siteId, today, today).data?.summary;
+  const todaySales = useSalesReportQuery(salesRead ? siteId : '', today, today).data?.summary;
   const qtyFormat = useMemo(() => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 3 }), [i18n.language]);
 
   const ready = data.stockReady;
@@ -48,14 +63,35 @@ export const OverviewPanel: React.FC = () => {
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
       <section className="hidden flex-wrap gap-2.5 md:flex">
-        {createDocuments && (
+        {/* ACC-01: Accountant quick actions → Справки / ДДС / Одит (no write ops). */}
+        {role === 'ACCOUNTANT' && (
+          <>
+            {reports && <ActionButton icon={FileSpreadsheet} label={t('app.reports')} onClick={() => navigate('/app/reports')} primary />}
+            {vat && <ActionButton icon={Landmark} label={t('app.vat')} onClick={() => navigate('/app/vat')} />}
+            {audit && <ActionButton icon={FileCode2} label={t('app.audit')} onClick={() => navigate('/app/audit')} />}
+          </>
+        )}
+        {createDocuments && role === 'STAFF' && (
+          <>
+            {/* SKL-16: Staff quick actions — five buttons, no till. */}
+            <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
+            <ActionButton icon={Truck} label={t('overview.receiveGoods')} onClick={() => startDocument('RECEIPT')} />
+            <ActionButton icon={Package} label={t('overview.checkStock')} onClick={() => navigate('/app/stock')} />
+            <ActionButton icon={Timer} label={t('overview.expiringSoon')} onClick={() => navigate('/app/expiry')} />
+            <ActionButton icon={PackageMinus} label={t('overview.writeOff')} onClick={() => startDocument('WRITE_OFF')} />
+          </>
+        )}
+        {createDocuments && role !== 'STAFF' && role !== 'ACCOUNTANT' && (
           <>
             <ActionButton icon={Camera} label={t('app.photographInvoice')} onClick={onScan} primary />
             <ActionButton icon={Truck} label={t('overview.receiveGoods')} onClick={() => startDocument('RECEIPT')} />
             <ActionButton icon={PackageMinus} label={t('overview.writeOff')} onClick={() => startDocument('WRITE_OFF')} />
+            {pos && <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} />}
           </>
         )}
-        <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} primary={!createDocuments} />
+        {pos && !createDocuments && role !== 'ACCOUNTANT' && (
+          <ActionButton icon={ShoppingCart} label={t('sales.openTill')} onClick={() => navigate('/app/pos')} primary />
+        )}
       </section>
 
       <section className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-5 [&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1">

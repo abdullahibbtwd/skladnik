@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Put, Query, UseGuards } from '@nestjs/common';
-import { SALES_MANAGER_ROLES, type AuthUser } from '@skladnik/shared';
+import { OPERATIONAL_MANAGER_ROLES, type AuthUser } from '@skladnik/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SiteScoped } from '../auth/decorators/site-scoped.decorator';
@@ -7,13 +7,13 @@ import { SiteAccessGuard } from '../auth/guards/site-access.guard';
 import { RecipeSiteQueryDto, SaveRecipeDto } from './dto/recipe.dto';
 import { RecipesService } from './recipes.service';
 
-/** Cards and their costs are for managers; the till only reads the menu (no costs). */
+/** Cards and their costs are for operational managers; ACC-01 Accountant excluded. Till uses /menu. */
 @Controller('recipes')
 export class RecipesController {
   constructor(private readonly recipes: RecipesService) {}
 
   @Get()
-  @Roles(...SALES_MANAGER_ROLES)
+  @Roles(...OPERATIONAL_MANAGER_ROLES)
   @UseGuards(SiteAccessGuard)
   @SiteScoped('siteId')
   list(@CurrentUser() user: AuthUser, @Query() query: RecipeSiteQueryDto) {
@@ -28,7 +28,7 @@ export class RecipesController {
   }
 
   @Get(':productId')
-  @Roles(...SALES_MANAGER_ROLES)
+  @Roles(...OPERATIONAL_MANAGER_ROLES)
   @UseGuards(SiteAccessGuard)
   @SiteScoped('siteId')
   get(
@@ -40,13 +40,13 @@ export class RecipesController {
   }
 
   @Put(':productId')
-  @Roles(...SALES_MANAGER_ROLES)
+  @Roles(...OPERATIONAL_MANAGER_ROLES)
   save(@CurrentUser() user: AuthUser, @Param('productId', ParseUUIDPipe) productId: string, @Body() dto: SaveRecipeDto) {
     return this.recipes.save(user, productId, dto);
   }
 
   @Delete(':productId')
-  @Roles(...SALES_MANAGER_ROLES)
+  @Roles(...OPERATIONAL_MANAGER_ROLES)
   remove(@CurrentUser() user: AuthUser, @Param('productId', ParseUUIDPipe) productId: string) {
     return this.recipes.remove(user, productId);
   }

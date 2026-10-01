@@ -8,19 +8,23 @@ import {
 import { Prisma } from '@prisma/client';
 import {
   canOverridePrice,
+  canReadSales,
+  canUsePos,
   grossQuantity,
   ingredientIssue,
   isBelowCost,
+  isDocumentManager,
   isSalesManager,
   quantityPrecisionProblem,
   recipeQtyToStock,
   recipeUnitProblem,
+  seesOwnSalesOnly,
   type AuthUser,
   type ContentUnit,
   type PaymentMethod,
 } from '@skladnik/shared';
 import { recordActivity } from '../activity/record-activity';
-import { apiBadRequest } from '../common/api-error';
+import { apiBadRequest, apiForbidden } from '../common/api-error';
 import { toNumber } from '../common/decimal';
 import { PrismaService } from '../prisma/prisma.service';
 import { loadCostBook, lockSites, saveAverages } from '../stock/ledger';
@@ -66,6 +70,10 @@ export class SalesService {
    * `at` is for seed/backfill only — FEFO and timestamps use that instant instead of now.
    */
   async create(user: AuthUser, dto: CreateSaleDto, options: { at?: Date } = {}) {
+    // SKL-07: STAFF has no till; CASHIER + managers only.
+    if (!canUsePos(user.role)) {
+      throw apiForbidden('STAFF_CANNOT_SELL', 'Персоналът няма достъп до касата — ползва се ролята Касиер');
+    }
     if (dto.clientRequestId) {
       const existing = await this.findByRequest(user.companyId, dto.clientRequestId);
       if (existing) return this.receipt(user, existing);
@@ -117,6 +125,13 @@ export class SalesService {
       const product = productById.get(item.productId);
       if (!product) throw new NotFoundException('Product not found');
       if (product.status === 'ARCHIVED') throw new BadRequestException(`${product.name} is archived`);
+      // SKL-03: pending scan products and products without a selling price cannot be sold.
+      if (product.status === 'PENDING_REVIEW') {
+        throw apiBadRequest('PENDING_PRODUCT', `„${product.name}“ е непрегледан продукт от сканиране и не може да се продава`);
+      }
+      if (product.sellingPrice === null || product.sellingPrice === undefined) {
+        throw apiBadRequest('SELLING_PRICE_REQUIRED', `„${product.name}“ няма продажна цена — задайте я преди продажба`);
+      }
       const precision = quantityPrecisionProblem(item.quantity, product.unit, product.name);
       if (precision) throw new BadRequestException(precision);
       const listPrice = toNumber(product.sellingPrice);
@@ -405,10 +420,13 @@ export class SalesService {
 
   /** Sales and voids posted at a site on one local day, newest first. Staff see only their own (CASHIER F-07). */
   async list(user: AuthUser, query: SalesListQueryDto) {
+    if (!canReadSales(user.role)) {
+      throw apiForbidden('STAFF_CANNOT_SELL', 'Персоналът няма достъп до продажби — ползва се ролята Касиер');
+    }
     const date = query.date ?? businessDate();
     if (!isBusinessDate(date)) throw new BadRequestException('date must be a valid YYYY-MM-DD');
     const { start, end } = businessRange(date, date);
-    const ownOnly = user.role === 'STAFF';
+    const ownOnly = seesOwnSalesOnly(user.role);
     const documents = await this.prisma.document.findMany({
       where: {
         companyId: user.companyId,
@@ -453,7 +471,7 @@ export class SalesService {
   async get(user: AuthUser, id: string) {
     const receipt = await this.receipt(user, id);
     // Staff may only open their own receipts (CASHIER F-07).
-    if (user.role === 'STAFF' && receipt.sale.cashier?.id !== user.id) {
+    if (seesOwnSalesOnly(user.role) && receipt.sale.cashier?.id !== user.id) {
       throw new NotFoundException('Sale not found');
     }
     return receipt;
@@ -555,9 +573,12 @@ export class SalesService {
 
   /** Turnover, tickets, average ticket, cash / card, VAT and (for managers) cost and profit over local dates. */
   async report(user: AuthUser, query: SalesReportQueryDto) {
+    if (!canReadSales(user.role)) {
+      throw apiForbidden('STAFF_CANNOT_SELL', 'Персоналът няма достъп до продажби — ползва се ролята Касиер');
+    }
     const { from, to } = this.period(query);
-    // Product decision (CASHIER F-07): Staff see only their own daily totals, never site-wide turnover.
-    const createdById = user.role === 'STAFF' ? user.id : undefined;
+    // Product decision (SKL-07): CASHIER see only their own daily totals, never site-wide turnover.
+    const createdById = seesOwnSalesOnly(user.role) ? user.id : undefined;
     const documents = await this.reportDocuments(user.companyId, query.siteId, from, to, createdById);
     const summary = summarizeSales(documents);
     const topProducts = marginRows(documents, 'product').slice(0, 10);
@@ -760,7 +781,7 @@ export class SalesService {
           .sort((a, b) => b.rate - a.rate)
           .map((row) => ({ rate: row.rate, gross: round2(row.gross), net: round2(row.net), vat: round2(row.gross - row.net) })),
         ...(manager ? { cost: round2(cost), profit: round2(net - cost) } : {}),
-        canVoid: manager && !doc.reversalOfId && !doc.reversedBy,
+        canVoid: isDocumentManager(user.role) && !doc.reversalOfId && !doc.reversedBy,
         lines,
       },
     };

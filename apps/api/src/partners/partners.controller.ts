@@ -28,15 +28,15 @@ export class PartnersController {
     return this.partners.lookup(user, filtered, q);
   }
 
-  /** Site managers create a supplier from an invoice screen; they still cannot open Partners settings. */
+  /** Site managers create a supplier from an invoice screen; they still cannot open Partners settings. ACC-01: no Accountant. */
   @Post()
-  @Roles('OWNER', 'ACCOUNTANT', 'SITE_MANAGER')
+  @Roles('OWNER', 'SITE_MANAGER')
   create(@CurrentUser() user: AuthUser, @Body() dto: CreatePartnerDto) {
     return this.partners.create(user, dto);
   }
 
   @Patch(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -46,7 +46,7 @@ export class PartnersController {
   }
 
   @Delete(':id')
-  @Roles('OWNER', 'ACCOUNTANT')
+  @Roles('OWNER')
   remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.partners.remove(user, id);
   }

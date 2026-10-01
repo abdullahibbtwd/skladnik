@@ -3,7 +3,6 @@ import {
   ANNEX38_KIND,
   hasBlockingIssues,
   isVatPeriod,
-  vatPeriodRange,
   type Annex38PaymentCode,
   type Annex38View,
   type AuthUser,
@@ -12,16 +11,12 @@ import {
   type EShopType,
 } from '@skladnik/shared';
 import { recordActivity } from '../activity/record-activity';
-import { toNumber } from '../common/decimal';
 import { ComplianceFilingsService } from '../compliance/filings.service';
 import { stableHash } from '../compliance/hash';
 import { PrismaService } from '../prisma/prisma.service';
 import { businessDate } from '../sales/business-day';
 import { annex38File, annex38FileName, buildAnnex38, type Annex38SaleInput } from './annex38-file';
 import type { Annex38SubmittedDto, EShopSettingsDto } from './annex38.dto';
-
-const isoDate = (value: Date) => value.toISOString().slice(0, 10);
-const dateValue = (value: string) => new Date(`${value}T00:00:00Z`);
 
 type EShopRow = { number: string; webAddress: string; type: number; cashPayment: number; cardPayment: number; posTerminal: string | null; paymentProvider: string | null };
 
@@ -105,50 +100,25 @@ export class Annex38Service {
 
   private async compute(user: AuthUser, siteId: string, period: string) {
     const site = await this.site(user, siteId);
-    const range = vatPeriodRange(period);
     const today = businessDate();
-    const [company, eShop, docs, filings] = await Promise.all([
+    const [company, eShop, filings] = await Promise.all([
       this.prisma.company.findUniqueOrThrow({ where: { id: user.companyId }, select: { name: true, eik: true } }),
       this.prisma.eShop.findUnique({ where: { siteId } }),
-      this.prisma.document.findMany({
-        where: { companyId: user.companyId, siteId, type: 'SALE', status: 'POSTED', issuedOn: { gte: dateValue(range.from), lte: dateValue(range.to) } },
-        orderBy: [{ issuedOn: 'asc' }, { postedAt: 'asc' }, { number: 'asc' }],
-        select: {
-          id: true,
-          number: true,
-          issuedOn: true,
-          direction: true,
-          paymentMethod: true,
-          paymentReference: true,
-          reversalOf: { select: { id: true, number: true, issuedOn: true } },
-          lines: {
-            select: { position: true, quantity: true, unitPrice: true, lineTotal: true, vatRate: true, ocrDescription: true, product: { select: { name: true } } },
-          },
-        },
-      }),
       this.filings.list(user.companyId, ANNEX38_KIND, period, siteId),
     ]);
     const settings = settingsOf(eShop);
-    const sales: Annex38SaleInput[] = docs.map((doc) => ({
-      id: doc.id,
-      number: doc.number,
-      date: isoDate(doc.issuedOn),
-      direction: doc.direction,
-      paymentMethod: doc.paymentMethod,
-      paymentReference: doc.paymentReference,
-      reversalOf: doc.reversalOf ? { id: doc.reversalOf.id, number: doc.reversalOf.number, date: isoDate(doc.reversalOf.issuedOn) } : null,
-      lines: doc.lines.map((line) => ({
-        position: line.position,
-        name: line.product?.name ?? line.ocrDescription ?? '—',
-        quantity: toNumber(line.quantity),
-        unitPrice: toNumber(line.unitPrice),
-        lineTotal: toNumber(line.lineTotal ?? 0),
-        vatRate: toNumber(line.vatRate),
-      })),
-    }));
+    // ACC-05: no e-shop order model yet — never feed till receipts into Annex 38.
+    const sales: Annex38SaleInput[] = [];
 
     const built = buildAnnex38({ period, today, company, settings, sales });
     const issues: ComplianceIssue[] = [...built.issues];
+    if (settings) {
+      issues.push({
+        severity: 'error',
+        code: 'ESHOP_ORDERS_UNAVAILABLE',
+        ref: { kind: 'eshop' },
+      });
+    }
     const sourceHash = stableHash({ eik: company.eik, settings, orders: built.orders, returns: built.returns });
     const latest = filings[0] ?? null;
     const changedSinceFiling = latest !== null && latest.sourceHash !== sourceHash;

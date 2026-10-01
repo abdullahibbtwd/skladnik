@@ -33,7 +33,7 @@ export const InvoicesPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  const canWrite = role === 'OWNER' || role === 'SITE_MANAGER';
   const { siteId } = useDashboard();
   const sitesQuery = useSitesQuery();
   const [statusFilter, setStatusFilter] = useState<'ALL' | DocumentStatus>('ALL');
@@ -52,7 +52,8 @@ export const InvoicesPanel: React.FC = () => {
   const documents = documentsQuery.data?.documents ?? [];
   const sites = (sitesQuery.data?.sites ?? []).filter((site) => site.isActive);
   const currentSite = sites.find((site) => site.id === siteId);
-  const reviewCount = documents.filter((doc) => doc.status === 'REVIEW' || doc.status === 'DRAFT').length;
+  // SKL-18: same rule as dashboard/bell — only SUBMITTED (REVIEW), never drafts.
+  const reviewCount = documents.filter((doc) => doc.status === 'REVIEW').length;
   const postedCount = documents.filter((doc) => doc.status === 'POSTED').length;
 
   return (

@@ -17,6 +17,7 @@ export class Annex38Controller {
   }
 
   @Put('sites/:siteId')
+  @Roles('OWNER')
   saveSettings(@CurrentUser() user: AuthUser, @Param('siteId', ParseUUIDPipe) siteId: string, @Body() dto: EShopSettingsDto) {
     return this.annex38.saveSettings(user, siteId, dto);
   }

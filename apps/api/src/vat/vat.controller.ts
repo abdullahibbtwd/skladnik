@@ -17,6 +17,7 @@ export class VatController {
   }
 
   @Put('settings')
+  @Roles('OWNER')
   saveSettings(@CurrentUser() user: AuthUser, @Body() dto: VatSettingsDto) {
     return this.vat.saveSettings(user, dto);
   }
@@ -54,21 +55,25 @@ export class VatController {
   }
 
   @Patch('documents/:id')
+  @Roles('OWNER')
   setTreatment(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VatDocumentTreatmentDto) {
     return this.vat.setTreatment(user, id, dto);
   }
 
   @Post('entries')
+  @Roles('OWNER')
   createEntry(@CurrentUser() user: AuthUser, @Body() dto: VatEntryDto) {
     return this.vat.createEntry(user, dto);
   }
 
   @Put('entries/:id')
+  @Roles('OWNER')
   updateEntry(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VatEntryDto) {
     return this.vat.updateEntry(user, id, dto);
   }
 
   @Delete('entries/:id')
+  @Roles('OWNER')
   deleteEntry(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.vat.deleteEntry(user, id);
   }

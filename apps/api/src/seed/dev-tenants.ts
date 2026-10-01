@@ -65,7 +65,7 @@ export async function seedDevTenants(prisma: PrismaClient, passwordHash: string)
 
   const staffA = await upsertUser(prisma, {
     email: 'staff-a@skladnik.dev',
-    name: 'Casey Cashier',
+    name: 'Casey Staff',
     role: UserRole.STAFF,
     companyId: metro.id,
     passwordHash,
@@ -75,6 +75,21 @@ export async function seedDevTenants(prisma: PrismaClient, passwordHash: string)
     where: { userId_siteId: { userId: staffA.id, siteId: mainStore.id } },
     update: {},
     create: { userId: staffA.id, siteId: mainStore.id },
+  });
+
+  // SKL-07: separate CASHIER for POS proofs (prove-roles.mjs).
+  const cashierA = await upsertUser(prisma, {
+    email: 'cashier-a@skladnik.dev',
+    name: 'Casey Cashier',
+    role: UserRole.CASHIER,
+    companyId: metro.id,
+    passwordHash,
+  });
+
+  await prisma.userSite.upsert({
+    where: { userId_siteId: { userId: cashierA.id, siteId: mainStore.id } },
+    update: {},
+    create: { userId: cashierA.id, siteId: mainStore.id },
   });
 
   await upsertUser(prisma, {
@@ -100,6 +115,7 @@ export async function seedDevTenants(prisma: PrismaClient, passwordHash: string)
     { email: 'owner-a@skladnik.dev', company: metro.name, role: 'OWNER, all sites' },
     { email: 'manager-a@skladnik.dev', company: metro.name, role: 'SITE_MANAGER, Main Store only' },
     { email: 'staff-a@skladnik.dev', company: metro.name, role: 'STAFF, Main Store only' },
+    { email: 'cashier-a@skladnik.dev', company: metro.name, role: 'CASHIER, Main Store only' },
     { email: 'accountant-a@skladnik.dev', company: metro.name, role: 'ACCOUNTANT, all sites' },
     { email: 'owner-b@skladnik.dev', company: riverside.name, role: 'OWNER, all sites' },
   ];

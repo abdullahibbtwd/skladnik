@@ -1,5 +1,5 @@
 /**
- * Role × endpoint matrix (Group 7) + STAFF write/read cells (CASHIER Section F).
+ * Role × endpoint matrix (Group 7) + STAFF write/read cells (CASHIER Section F / SKL-07).
  * Needs seeded dual companies:
  *   owner-a / manager-a / staff-a / accountant-a @ Metro, owner-b @ Riverside
  *   (see apps/api/src/seed/dev-tenants.ts).
@@ -10,7 +10,8 @@
  * - Staff may GET documents (read) including others' REVIEW docs at assigned sites.
  * - Staff GET /partners → 403; GET /partners/lookup → 200 (id+name only).
  * - Staff may POST WRITE_OFF and post it; may POST RECEIPT draft + submit; cannot post RECEIPT.
- * - Staff sales list/report scoped to own cashier id.
+ * - SKL-07: Staff cannot use POS/sales (403); CASHIER gets own-sales scope.
+ * - SKL-11: Staff may cancel own DRAFT only (not REVIEW).
  */
 const API = process.env.API_URL ?? 'http://localhost:3003';
 const PASSWORD = process.env.SEED_PASSWORD ?? 'DevPassword123!';
@@ -104,6 +105,12 @@ try {
   staffA = await login('staff-a@skladnik.dev');
 } catch {
   console.warn('staff-a missing — re-seed dev tenants (staff-a@skladnik.dev)');
+}
+let cashierA = null;
+try {
+  cashierA = await login('cashier-a@skladnik.dev');
+} catch {
+  console.warn('cashier-a missing — re-seed dev tenants (cashier-a@skladnik.dev)');
 }
 let accountantA = null;
 try {
@@ -226,13 +233,22 @@ if (staffA) {
   expectStatus(staffDocs, 200, 'staff documents list');
   assertNoForbiddenFields(staffDocs.body, 'GET /documents');
 
+  // SKL-07: STAFF loses POS — sales endpoints are 403
   const staffSales = await call(staffA, 'GET', `/sales?siteId=${mainStore.id}&date=${today}`);
-  expectStatus(staffSales, 200, 'staff sales list');
-  assertNoForbiddenFields(staffSales.body, 'GET /sales');
+  expectStatus(staffSales, 403, 'staff sales list blocked');
 
   const staffReport = await call(staffA, 'GET', `/sales/report?siteId=${mainStore.id}&from=${today}&to=${today}`);
-  expectStatus(staffReport, 200, 'staff sales report');
-  assertNoForbiddenFields(staffReport.body, 'GET /sales/report');
+  expectStatus(staffReport, 403, 'staff sales report blocked');
+
+  expectStatus(
+    await call(staffA, 'POST', '/sales', {
+      siteId: mainStore.id,
+      paymentMethod: 'CASH',
+      items: [{ productId: product.id, quantity: 1 }],
+    }),
+    403,
+    'staff cannot create sale',
+  );
 
   // Partners directory blocked; lookup allowed
   const staffPartners = await call(staffA, 'GET', '/partners');
@@ -245,7 +261,18 @@ if (staffA) {
     assert(!('phone' in partner) && !('eik' in partner), 'lookup must be id+name(+kind)');
   }
 
-  // WRITE: receipt draft + submit OK; post RECEIPT forbidden
+  // WRITE: receipt draft — SKL-11 cancel own DRAFT OK; after submit cancel forbidden
+  const draftOnly = await call(staffA, 'POST', '/documents', {
+    type: 'RECEIPT',
+    siteId: mainStore.id,
+    issuedOn: today,
+    documentNumber: `STAFF-DRAFT-${Date.now()}`,
+  });
+  expectStatus(draftOnly, 200, 'staff create DRAFT for cancel');
+  const draftOnlyId = draftOnly.body.document?.id;
+  assert(draftOnlyId, 'draft-only id');
+  expectStatus(await call(staffA, 'POST', `/documents/${draftOnlyId}/cancel`), 200, 'staff cancel own DRAFT');
+
   const receipt = await call(staffA, 'POST', '/documents', {
     type: 'RECEIPT',
     siteId: mainStore.id,
@@ -272,9 +299,19 @@ if (staffA) {
 
   const postReceipt = await call(staffA, 'POST', `/documents/${receiptId}/post`, {});
   expectStatus(postReceipt, 403, 'staff cannot post RECEIPT');
+  assert(
+    postReceipt.body?.code === 'STAFF_CANNOT_POST' || /не осчетоводява|STAFF_CANNOT_POST/i.test(JSON.stringify(postReceipt.body)),
+    `staff post expects STAFF_CANNOT_POST, got ${JSON.stringify(postReceipt.body)}`,
+  );
+
+  expectStatus(
+    await call(staffA, 'PATCH', `/documents/${receiptId}`, { notes: 'hack' }),
+    403,
+    'staff edit after submit',
+  );
 
   const cancelReceipt = await call(staffA, 'POST', `/documents/${receiptId}/cancel`);
-  expectStatus(cancelReceipt, 403, 'staff cannot cancel');
+  expectStatus(cancelReceipt, 403, 'staff cannot cancel REVIEW');
 
   // WRITE: transfer / stocktake / opening forbidden
   expectStatus(
@@ -321,7 +358,6 @@ if (staffA) {
   // Warehouse site (if present): Staff assigned only to Main Store → stock 403
   if (warehouse) {
     expectStatus(await call(staffA, 'GET', `/stock?siteId=${warehouse.id}`), 403, 'staff warehouse stock');
-    expectStatus(await call(staffA, 'GET', `/sales?siteId=${warehouse.id}&date=${today}`), 403, 'staff warehouse sales');
   }
 
   const staffSites = await call(staffA, 'GET', '/sites');
@@ -333,5 +369,93 @@ if (staffA) {
   console.warn('STAFF matrix skipped — no staff-a session');
 }
 
+// --- CASHIER matrix (SKL-07) ---
+if (cashierA) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  expectStatus(await call(cashierA, 'GET', `/sales?siteId=${mainStore.id}&date=${today}`), 200, 'cashier sales list');
+  expectStatus(await call(cashierA, 'GET', `/sales/report?siteId=${mainStore.id}&from=${today}&to=${today}`), 200, 'cashier sales report');
+  expectStatus(await call(cashierA, 'GET', `/stock?siteId=${mainStore.id}`), 200, 'cashier stock');
+  expectStatus(await call(cashierA, 'GET', '/sales/margins?siteId=' + mainStore.id), 403, 'cashier margins');
+
+  expectStatus(
+    await call(cashierA, 'POST', '/documents', {
+      type: 'RECEIPT',
+      siteId: mainStore.id,
+      issuedOn: today,
+      documentNumber: `CASH-R-${Date.now()}`,
+    }),
+    403,
+    'cashier cannot create RECEIPT',
+  );
+  expectStatus(await call(cashierA, 'GET', '/partners'), 403, 'cashier partners');
+  expectStatus(await call(cashierA, 'GET', '/users'), 403, 'cashier users');
+  expectStatus(await call(cashierA, 'GET', '/activity'), 403, 'cashier activity');
+  expectStatus(await call(cashierA, 'GET', '/reports/turnover?from=2026-01-01&to=2026-01-31'), 403, 'cashier reports');
+  expectStatus(await call(cashierA, 'GET', '/vat/settings'), 403, 'cashier vat');
+
+  if (warehouse) {
+    expectStatus(await call(cashierA, 'GET', `/stock?siteId=${warehouse.id}`), 403, 'cashier warehouse stock');
+    expectStatus(await call(cashierA, 'GET', `/sales?siteId=${warehouse.id}&date=${today}`), 403, 'cashier warehouse sales');
+  }
+} else {
+  console.warn('CASHIER matrix skipped — no cashier-a session');
+}
+
+// --- ACCOUNTANT matrix (ACC-01 / ACC-02) ---
+if (accountantA) {
+  const today = new Date().toISOString().slice(0, 10);
+  const forbid = async (method, path, body, label) => {
+    const res = await call(accountantA, method, path, body);
+    assert(res.status === 403, `${label}: expected 403, got ${res.status} ${JSON.stringify(res.body)}`);
+    return res;
+  };
+  const allow = async (method, path, body, label, statuses = [200, 201]) => {
+    const res = await call(accountantA, method, path, body);
+    assert(statuses.includes(res.status), `${label}: expected ${statuses}, got ${res.status} ${JSON.stringify(res.body)}`);
+    return res;
+  };
+
+  // Reads still work
+  await allow('GET', '/documents', undefined, 'accountant GET documents');
+  await allow('GET', `/stock?siteId=${mainStore.id}`, undefined, 'accountant GET stock');
+  await allow('GET', '/products', undefined, 'accountant GET products');
+  await allow('GET', '/partners', undefined, 'accountant GET partners');
+  await allow('GET', '/activity', undefined, 'accountant GET activity');
+  await allow('GET', '/vat/settings', undefined, 'accountant GET vat settings');
+  await allow('GET', '/reports/turnover?from=2026-09-01&to=2026-09-30', undefined, 'accountant GET turnover');
+  await allow('GET', '/reports/archive/preview?from=2026-09-01&to=2026-09-30', undefined, 'accountant archive preview');
+  await allow('GET', `/sales?siteId=${mainStore.id}&date=${today}`, undefined, 'accountant GET sales');
+  await allow('GET', `/sales/report?siteId=${mainStore.id}&from=${today}&to=${today}`, undefined, 'accountant sales report');
+
+  // Writes the audit exercised + settings/master-data/ops the audit did not try
+  await forbid('POST', '/documents', { type: 'RECEIPT', siteId: mainStore.id, issuedOn: today, documentNumber: `ACC-R-${Date.now()}` }, 'accountant create doc');
+  await forbid('POST', '/documents/scan', { type: 'INVOICE', siteId: mainStore.id }, 'accountant scan');
+  await forbid('POST', '/sales', { siteId: mainStore.id, paymentMethod: 'CASH', items: [{ productId: product.id, quantity: 1 }] }, 'accountant till sale');
+  await forbid('POST', '/products', { name: 'X', code: `A-${Date.now()}`, unit: 'PCS', vatRate: 20, purchasePrice: 1, sellingPrice: 2 }, 'accountant create product');
+  await forbid('PATCH', `/products/${product.id}`, { minStock: 1 }, 'accountant patch product');
+  await forbid('POST', '/partners', { name: 'Hack', kind: 'SUPPLIER' }, 'accountant create partner');
+  await forbid('PUT', '/company/profile', { name: 'Hacked', eik: null, vatNumber: null, address: null, city: null, mol: null, phone: null, email: null }, 'accountant company profile');
+  await forbid('PUT', '/vat/settings', { declarant: 'Hack' }, 'accountant vat settings');
+  await forbid('POST', '/documents', { type: 'TRANSFER', siteId: mainStore.id, issuedOn: today, targetSiteId: warehouse?.id }, 'accountant transfer');
+  await forbid('POST', '/documents', { type: 'STOCKTAKE', siteId: mainStore.id, issuedOn: today }, 'accountant stocktake');
+  await forbid('POST', '/documents', { type: 'WRITE_OFF', siteId: mainStore.id, issuedOn: today, writeOffReason: 'EXPIRED' }, 'accountant write-off');
+  await forbid('POST', '/product-groups', { name: 'Hack' }, 'accountant product group');
+  await forbid('POST', '/unit-aliases', { raw: 'брр', unit: 'PCS' }, 'accountant unit alias');
+
+  // Cross-company: accountant A cannot read company B
+  const docsB = await call(accountantA, 'GET', '/documents');
+  expectStatus(docsB, 200, 'accountant A documents (own company)');
+  const foreignDocs = await call(ownerB, 'GET', '/documents');
+  const foreignId = (foreignDocs.body.documents ?? [])[0]?.id;
+  if (foreignId) {
+    const leak = await call(accountantA, 'GET', `/documents/${foreignId}`);
+    assert(leak.status === 404 || leak.status === 403, `accountant cross-company doc expected 404/403, got ${leak.status}`);
+  }
+  expectStatus(await call(accountantA, 'GET', '/activity'), 200, 'accountant activity own company');
+} else {
+  console.warn('ACCOUNTANT matrix skipped — no accountant-a session');
+}
+
 console.log('Role matrix proof passed.');
-console.log('  manager minStock OK; archive ZIP Owner/Accountant; opening Owner-only; Staff field-filter + write matrix OK; cross-company isolated');
+console.log('  manager minStock OK; archive ZIP Owner/Accountant; opening Owner-only; Staff field-filter + write matrix OK; CASHIER POS-only; ACCOUNTANT read-only; cross-company isolated');

@@ -19,6 +19,8 @@ export type PostingLine = {
   productId: string | null;
   product: PostingProduct | null;
   quantity: { toString(): string } | number;
+  unitPrice?: { toString(): string } | number;
+  freeOfCharge?: boolean;
   countedQuantity?: { toString(): string } | number | null;
   ocrBatchNumber: string | null;
   ocrExpiryDate: Date | string | null;

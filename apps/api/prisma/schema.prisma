@@ -19,6 +19,8 @@ enum UserRole {
   SITE_MANAGER
   STAFF
   ACCOUNTANT
+  /// SKL-07: till operator — POS + own sales only; no document creation.
+  CASHIER
 }
 
 enum SiteType {
@@ -140,6 +142,8 @@ model Company {
   city      String?
   /// Материално отговорно лице / manager printed on documents.
   mol       String?
+  /// Person who signs the VAT return (НАП field 00-04). Edited in Settings → Фирма.
+  declarant String?
   phone     String?
   email     String?
   /// Days before expiry for the watch / plan / sell now / pull warnings, largest first.
@@ -156,6 +160,7 @@ model Company {
   productGroups   ProductGroup[]
   products        Product[]
   productBarcodes ProductBarcode[]
+  productSiteMins ProductSiteMin[]
   partners        Partner[]
   batches         Batch[]
   documents       Document[]
@@ -218,6 +223,7 @@ model Site {
   stockMovements  StockMovement[]
   stockCosts      StockCost[]
   invitationSites InvitationSite[]
+  productSiteMins ProductSiteMin[]
   eShop           EShop?
 
   @@unique([companyId, name])
@@ -357,7 +363,8 @@ model Product {
   netContentUnit ContentUnit?
   vatRate        Decimal       @db.Decimal(5, 2)
   purchasePrice  Decimal       @db.Decimal(12, 4)
-  sellingPrice   Decimal       @db.Decimal(12, 4)
+  /// Null until a manager sets a selling price — POS and sales refuse products without one (SKL-03).
+  sellingPrice   Decimal?      @db.Decimal(12, 4)
   minStock       Decimal       @default(0) @db.Decimal(12, 3)
   /// "Order up to" level for purchase suggestions; null means twice minStock.
   maxStock       Decimal?      @db.Decimal(12, 3)
@@ -373,6 +380,7 @@ model Product {
   createdFrom    Document?        @relation("ProductsCreatedFromDocument", fields: [createdFromDocumentId], references: [id], onDelete: SetNull)
   barcodes       ProductBarcode[]
   supplierCodes  SupplierProductCode[]
+  siteMins       ProductSiteMin[]
   batches        Batch[]
   documentLines  DocumentLine[]
   stockMovements StockMovement[]
@@ -386,6 +394,26 @@ model Product {
   @@index([companyId, status])
   @@index([groupId])
   @@index([createdFromDocumentId])
+}
+
+/// SKL-12/18: per-site reorder minimum; falls back to Product.minStock when absent.
+/// Site managers may change only their own site's row (Group 7).
+model ProductSiteMin {
+  id        String   @id @default(uuid())
+  companyId String
+  productId String
+  siteId    String
+  minStock  Decimal  @db.Decimal(12, 3)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, siteId])
+  @@index([companyId])
+  @@index([siteId])
 }
 
 model ProductBarcode {
@@ -417,6 +445,8 @@ model Partner {
   phone       String?
   email       String?
   bankAccount String?
+  /// False when the partner was confirmed from a scan without a prior match ("непроверен", SKL-05).
+  verified  Boolean     @default(true)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
@@ -474,6 +504,8 @@ model Batch {
   productId   String
   batchNumber String
   expiryDate  DateTime? @db.Date
+  /// SKL-15: true when generated as A-YYYYMMDD-NN (Staff "Авто" / empty batch + expiry).
+  isAutomatic Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -511,6 +543,8 @@ model Document {
   direction        StockDirection @default(IN)
   /// Printed "№" — documentNumber on the paper.
   number           String
+  /// SKL-09: normalised form of `number` for duplicate detection (trim, case, separators, leading zeros).
+  numberKey        String         @default("")
   issuedOn         DateTime       @db.Date
   deliveryAddress  String?
   notes            String?
@@ -525,6 +559,11 @@ model Document {
   printedTaxableBase Decimal?     @db.Decimal(14, 2)
   printedVatAmount   Decimal?     @db.Decimal(14, 2)
   printedTotal       Decimal?     @db.Decimal(14, 2)
+  /// ACC-04: lowest printed line № on the captured page (e.g. 19 → missing previous page).
+  scanFirstLineNumber Int?
+  /// ACC-04: raw “Словом” text from OCR; amountInWordsParsed is null when parsing fails (no false block).
+  amountInWords       String?
+  amountInWordsParsed Decimal?    @db.Decimal(12, 2)
   /// Who created it (the cashier for a sale).
   createdById      String?
   /// Set on the document that reverses another: a sale void, or the reversal of a posted document. One per document.
@@ -551,8 +590,9 @@ model Document {
   productsCreated  Product[]       @relation("ProductsCreatedFromDocument")
   stockMovements   StockMovement[]
 
-  /// Duplicates are same partner + type + number among non-cancelled documents, checked under a lock in DocumentsService.
+  /// Duplicates are same partner + type + numberKey among non-cancelled documents, checked under a lock in DocumentsService.
   @@index([companyId, number])
+  @@index([companyId, partnerId, type, numberKey])
   @@unique([companyId, clientRequestId])
   @@index([companyId, type, postedAt])
   @@index([siteId, type, postedAt])
@@ -606,6 +646,8 @@ model DocumentLine {
   unit                 UnitOfMeasure?
   quantity             Decimal        @db.Decimal(12, 3)
   unitPrice            Decimal        @db.Decimal(12, 4)
+  /// ACC-14: manager marked the line as free goods / sample — zero price may post without entering cost.
+  freeOfCharge         Boolean        @default(false)
   discountPercent      Decimal        @default(0) @db.Decimal(5, 2)
   /// Always quantity × unitPrice × (1 − discount), worked out by the server.
   finalUnitPrice       Decimal?       @db.Decimal(12, 4)

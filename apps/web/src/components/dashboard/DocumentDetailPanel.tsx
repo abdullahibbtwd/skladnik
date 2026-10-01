@@ -86,7 +86,8 @@ export const DocumentDetailPanel: React.FC = () => {
   const role = useAuthRole();
   const user = useRequiredUser();
   const { seeFinancials } = usePermissions();
-  const isManager = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER';
+  // ACC-01: Accountant is read-only — no post / cancel / reverse / edit.
+  const isManager = role === 'OWNER' || role === 'SITE_MANAGER';
   const detailQuery = useDocumentQuery(id);
   const reachable = useConnectivity((state) => state.reachable);
   const document = detailQuery.data?.document;
@@ -103,7 +104,7 @@ export const DocumentDetailPanel: React.FC = () => {
       document?.type === 'WRITE_OFF' &&
       document.createdBy?.id === user.id &&
       (document.status === 'DRAFT' || document.status === 'REVIEW'));
-  const canCancel = isManager;
+  const canCancel = isManager || ownStaffDraft;
   const canReverse = isManager;
   const updateDocument = useUpdateDocument(id ?? '');
   const addLine = useAddDocumentLine(id ?? '');
@@ -330,10 +331,11 @@ export const DocumentDetailPanel: React.FC = () => {
   };
 
   const runCancel = async () => {
+    const staffDraft = ownStaffDraft;
     const ok = await confirm({
-      title: t('doc.cancelTitle'),
-      description: t('doc.cancelBody'),
-      confirmLabel: t('doc.cancelConfirm'),
+      title: staffDraft ? t('doc.cancelDraftTitle') : t('doc.cancelTitle'),
+      description: staffDraft ? t('doc.cancelDraftBody') : t('doc.cancelBody'),
+      confirmLabel: staffDraft ? t('doc.cancelDraftConfirm') : t('doc.cancelConfirm'),
       cancelLabel: t('common.back'),
       danger: true,
     });
@@ -341,6 +343,7 @@ export const DocumentDetailPanel: React.FC = () => {
     try {
       await cancelDocument.mutateAsync();
       toast.success(t('doc.cancelled'));
+      if (staffDraft) navigate('/app/invoices');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('doc.cancelFailed'));
     }
@@ -386,7 +389,9 @@ export const DocumentDetailPanel: React.FC = () => {
         ? t('doc.linesToFix', { count: linesToFix })
         : posting?.ok
           ? t('doc.readyToPost')
-          : (posting?.errors[0] ?? '');
+          : posting?.canSubmit && document.status === 'DRAFT'
+            ? t('doc.readyToSubmitWithWarnings')
+            : (posting?.errors[0] ?? '');
 
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
@@ -504,6 +509,12 @@ export const DocumentDetailPanel: React.FC = () => {
           )}
 
           <GlassPanel title={t('doc.header')}>
+            {document.notes?.trim() && (
+              <div className="mb-3 rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                <p className="font-display text-[0.72rem] font-semibold text-slate-600">{t('doc.notes')}</p>
+                <p className="mt-0.5 whitespace-pre-wrap font-sans text-[0.8rem] text-ops-ink">{document.notes.trim()}</p>
+              </div>
+            )}
             <form className={cn('grid gap-3 sm:grid-cols-2', !hasCaptures && 'md:grid-cols-3')} onSubmit={saveHeader}>
               <div>
                 <FieldLabel htmlFor="hdr-type">{t('doc.type')}</FieldLabel>
@@ -676,6 +687,7 @@ export const DocumentDetailPanel: React.FC = () => {
 
             {hasLines && (
               <DocumentLines
+                documentId={document.id}
                 lines={lines}
                 editable={editable}
                 selectedLineId={selectedLineId}
@@ -720,6 +732,7 @@ export const DocumentDetailPanel: React.FC = () => {
             {editable && manualAdd && (
               <div className="border-t border-slate-100 p-4 sm:px-5">
                 <LineForm
+                  documentId={document.id}
                   saving={addLine.isPending}
                   expiryGuardDate={expiryGuardDate}
                   onCancel={() => setManualAdd(false)}
@@ -757,6 +770,31 @@ export const DocumentDetailPanel: React.FC = () => {
 
           {writable && posting?.duplicateOf && <DuplicateNotice duplicate={posting.duplicateOf} blocking />}
 
+          {writable && (posting?.reviewWarnings?.length ?? 0) > 0 && (
+            <div className="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3">
+              <p className="flex items-center gap-2 font-display text-[0.8rem] font-semibold text-amber-800">
+                <TriangleAlert size={15} /> {t('doc.reviewWarningsTitle')}
+              </p>
+              <ul className="mt-1.5 list-disc pl-6 font-sans text-[0.76rem] text-amber-800">
+                {posting!.reviewWarnings.map((warning) => (
+                  <li key={warning} className="break-words">{warning}</li>
+                ))}
+              </ul>
+              {isManager && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/settings/partners')}
+                  className="mt-1.5 font-display text-[0.74rem] font-medium text-ops-accent hover:underline"
+                >
+                  {t('doc.openPartnersSettings')}
+                </button>
+              )}
+              {document.status === 'DRAFT' && (
+                <p className="mt-1.5 font-sans text-[0.74rem] text-amber-700">{t('doc.reviewWarningsSubmitHint')}</p>
+              )}
+            </div>
+          )}
+
           {editable && expiredWarnings.length > 0 && (
             <div className="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3">
               <p className="flex items-center gap-2 font-display text-[0.8rem] font-semibold text-amber-800">
@@ -785,7 +823,7 @@ export const DocumentDetailPanel: React.FC = () => {
                   {postStatus}
                 </p>
               </div>
-              {document.status === 'DRAFT' && posting?.ok && !reading && (
+              {document.status === 'DRAFT' && posting?.canSubmit && !reading && (
                 <GhostButton onClick={runSubmit}>{t('doc.sendForReview')}</GhostButton>
               )}
               {canPost && (
@@ -800,10 +838,10 @@ export const DocumentDetailPanel: React.FC = () => {
             </div>
           )}
 
-          {editable && canCancel && (
+          {((isManager && writable) || ownStaffDraft) && canCancel && (
             <div className="flex justify-end">
               <GhostButton danger onClick={runCancel}>
-                {t('doc.cancelDocument')}
+                {ownStaffDraft ? t('doc.cancelDraft') : t('doc.cancelDocument')}
               </GhostButton>
             </div>
           )}

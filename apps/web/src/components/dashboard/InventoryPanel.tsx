@@ -196,7 +196,7 @@ export const InventoryPanel: React.FC = () => {
     setError(null);
     try {
       if (editing && !canCatalog) {
-        await updateProduct.mutateAsync({ id: editing.id, minStock: Number(form.minStock) });
+        await updateProduct.mutateAsync({ id: editing.id, minStock: Number(form.minStock), siteId });
         toast.success(t('inventory.updated'));
         setModal(null);
         return;

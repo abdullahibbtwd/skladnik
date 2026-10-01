@@ -18,6 +18,7 @@ const toForm = (profile: CompanyProfile): ProfileForm => ({
   address: profile.address ?? '',
   city: profile.city ?? '',
   mol: profile.mol ?? '',
+  declarant: profile.declarant ?? '',
   phone: profile.phone ?? '',
   email: profile.email ?? '',
 });
@@ -29,13 +30,14 @@ const toProfile = (form: ProfileForm): CompanyProfile => ({
   address: form.address.trim() || null,
   city: form.city.trim() || null,
   mol: form.mol.trim() || null,
+  declarant: form.declarant.trim() || null,
   phone: form.phone.trim() || null,
   email: form.email.trim() || null,
 });
 
 export const CompanySettings: React.FC = () => {
   const { t } = useTranslation();
-  const canEdit = usePermissions().companySettings;
+  const canEdit = usePermissions().companySettingsWrite;
   const settingsQuery = useCompanySettingsQuery();
   const saveProfile = useSaveCompanyProfile();
   const [form, setForm] = useState<ProfileForm | null>(null);
@@ -99,6 +101,7 @@ export const CompanySettings: React.FC = () => {
               {field('address', t('common.address'), { className: 'sm:col-span-2', placeholder: 'ул. Витоша 12' })}
               {field('city', t('company.city'), { placeholder: 'София' })}
               {field('mol', t('company.mol'))}
+              {field('declarant', t('company.declarant'), { placeholder: t('company.declarantPlaceholder'), className: 'sm:col-span-2' })}
               {field('phone', t('common.phone'), { type: 'tel' })}
               {field('email', t('common.email'), { type: 'email' })}
             </div>

@@ -21,7 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CompanyProfileDto, DocumentSeriesDto, PrintTemplateDto } from './company.dto';
 import { seriesRecords } from './document-series';
 
-const PROFILE_FIELDS = ['name', 'eik', 'vatNumber', 'address', 'city', 'mol', 'phone', 'email'] as const;
+const PROFILE_FIELDS = ['name', 'eik', 'vatNumber', 'address', 'city', 'mol', 'declarant', 'phone', 'email'] as const;
 
 type CompanyRow = Prisma.CompanyGetPayload<object>;
 
@@ -46,12 +46,21 @@ export class CompanyService {
       address: dto.address?.trim() || null,
       city: dto.city?.trim() || null,
       mol: dto.mol?.trim() || null,
+      declarant: dto.declarant?.trim() || null,
       phone: dto.phone?.trim() || null,
       email: dto.email?.trim() || null,
     };
     const problems = taxIdProblems(data);
     if (problems.length) throw new BadRequestException(problems.map((problem) => taxIdProblemMessage(problem)).join('. '));
-    await this.prisma.company.update({ where: { id: user.companyId }, data });
+    await this.prisma.$transaction([
+      this.prisma.company.update({ where: { id: user.companyId }, data }),
+      // Keep VatSettings.declarant in sync so existing VAT generation keeps working.
+      this.prisma.vatSettings.upsert({
+        where: { companyId: user.companyId },
+        create: { companyId: user.companyId, declarant: data.declarant },
+        update: { declarant: data.declarant },
+      }),
+    ]);
     await this.log(user, 'UPDATE_PROFILE', existing, data, PROFILE_FIELDS);
     return this.settings(user.companyId);
   }
@@ -132,6 +141,7 @@ export class CompanyService {
         address: company.address,
         city: company.city,
         mol: company.mol,
+        declarant: company.declarant,
         phone: company.phone,
         email: company.email,
       },

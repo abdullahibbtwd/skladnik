@@ -49,31 +49,20 @@ export class StockService {
     const minOnly = await this.prisma.product.findMany({
       where: {
         companyId: user.companyId,
-        status: { not: 'ARCHIVED' },
-        minStock: { gt: 0 },
+        status: { notIn: ['ARCHIVED', 'PENDING_REVIEW'] },
+        OR: [{ minStock: { gt: 0 } }, { siteMins: { some: { siteId, minStock: { gt: 0 } } } }],
         ...(onHand.size ? { id: { notIn: [...onHand.keys()] } } : {}),
       },
       select: { id: true },
     });
-    const elsewhere = minOnly.map((product) => product.id);
-    const movedElsewhere = new Set(
-      elsewhere.length
-        ? (
-            await this.prisma.stockMovement.groupBy({
-              by: ['productId'],
-              where: { companyId: user.companyId, productId: { in: elsewhere } },
-            })
-          ).map((row) => row.productId)
-        : [],
-    );
+    // SKL-12: include products with a minimum even if they never moved at this site (and even if they moved elsewhere).
     for (const product of minOnly) {
-      if (movedElsewhere.has(product.id)) continue;
       onHand.set(product.id, { onHand: 0, lastMovementAt: null });
     }
 
     if (onHand.size === 0) return { siteId, items: [] };
 
-    const [products, batchRows] = await Promise.all([
+    const [products, batchRows, siteMins] = await Promise.all([
       this.prisma.product.findMany({
         where: { companyId: user.companyId, id: { in: [...onHand.keys()] } },
         select: {
@@ -95,16 +84,21 @@ export class StockService {
       batchIds.length
         ? this.prisma.batch.findMany({
             where: { companyId: user.companyId, id: { in: batchIds } },
-            select: { id: true, batchNumber: true, expiryDate: true },
+            select: { id: true, batchNumber: true, expiryDate: true, isAutomatic: true },
           })
         : Promise.resolve([]),
+      this.prisma.productSiteMin.findMany({
+        where: { companyId: user.companyId, siteId, productId: { in: [...onHand.keys()] } },
+        select: { productId: true, minStock: true },
+      }),
     ]);
     const batchById = new Map(batchRows.map((batch) => [batch.id, batch]));
+    const siteMinByProduct = new Map(siteMins.map((row) => [row.productId, toNumber(row.minStock)]));
 
     const items = products
       .map((product) => {
         const level = onHand.get(product.id)!;
-        const minStock = toNumber(product.minStock);
+        const minStock = siteMinByProduct.get(product.id) ?? toNumber(product.minStock);
         const maxStock = product.maxStock === null ? null : toNumber(product.maxStock);
         const value = book.value(product.id);
         const batches = [...(batchOnHand.get(product.id) ?? new Map<string, number>())]
@@ -118,6 +112,7 @@ export class StockService {
                 batchId,
                 batchNumber: batch.batchNumber,
                 expiryDate: batch.expiryDate ? isoDate(batch.expiryDate) : null,
+                isAutomatic: batch.isAutomatic,
                 onHand: quantity,
                 unitCost,
                 value: round2(quantity * unitCost),
@@ -137,7 +132,7 @@ export class StockService {
           minStock,
           maxStock,
           purchasePrice: toNumber(product.purchasePrice),
-          sellingPrice: toNumber(product.sellingPrice),
+          sellingPrice: product.sellingPrice === null ? null : toNumber(product.sellingPrice),
           vatRate: toNumber(product.vatRate),
           avgCost: level.onHand > 0 ? round4(value / level.onHand) : book.average(product.id),
           value: round2(value),
@@ -253,17 +248,22 @@ export class StockService {
   }
 
   /**
-   * Products below their minimum at this site, grouped by the supplier we last bought them from
-   * (else a supplier with a mapped code). Products that never moved anywhere are included so a new
-   * catalog item with a minimum shows up; products that only live at other sites are not.
+   * Products below their minimum at this site (SKL-12).
+   * Built from product (+ per-site) minimums LEFT JOIN site stock — never-moved products are included.
    */
   async reorder(user: AuthUser, siteId: string) {
     const rows = await siteLedger(this.prisma, user.companyId, siteId);
     const onHand = new Map<string, number>();
     for (const row of rows) onHand.set(row.productId, round3((onHand.get(row.productId) ?? 0) + row.onHand));
 
+    const siteMins = await this.prisma.productSiteMin.findMany({
+      where: { companyId: user.companyId, siteId },
+      select: { productId: true, minStock: true },
+    });
+    const siteMinByProduct = new Map(siteMins.map((row) => [row.productId, toNumber(row.minStock)]));
+
     const products = await this.prisma.product.findMany({
-      where: { companyId: user.companyId, status: { not: 'ARCHIVED' }, minStock: { gt: 0 } },
+      where: { companyId: user.companyId, status: { notIn: ['ARCHIVED', 'PENDING_REVIEW'] } },
       select: {
         id: true,
         name: true,
@@ -276,22 +276,11 @@ export class StockService {
       },
       orderBy: { name: 'asc' },
     });
-    const elsewhere = products.filter((product) => !onHand.has(product.id)).map((product) => product.id);
-    const movedElsewhere = new Set(
-      elsewhere.length
-        ? (
-            await this.prisma.stockMovement.groupBy({
-              by: ['productId'],
-              where: { companyId: user.companyId, productId: { in: elsewhere } },
-            })
-          ).map((row) => row.productId)
-        : [],
-    );
 
     const candidates = products.flatMap((product) => {
-      if (!onHand.has(product.id) && movedElsewhere.has(product.id)) return [];
+      const minStock = siteMinByProduct.get(product.id) ?? toNumber(product.minStock);
+      if (minStock <= 0) return [];
       const level = onHand.get(product.id) ?? 0;
-      const minStock = toNumber(product.minStock);
       const maxStock = product.maxStock === null ? null : toNumber(product.maxStock);
       const suggested = suggestedOrderQty(level, minStock, maxStock, product.unit);
       return suggested === null ? [] : [{ product, onHand: level, minStock, maxStock, suggested }];

@@ -27,7 +27,7 @@ export const WriteOffPanel: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const role = useAuthRole();
-  const canWrite = role === 'OWNER' || role === 'ACCOUNTANT' || role === 'SITE_MANAGER' || role === 'STAFF';
+  const canWrite = role === 'OWNER' || role === 'SITE_MANAGER' || role === 'STAFF';
   const seeFinancials = canSeeFinancials(role);
   const { siteId } = useDashboard();
   const sitesQuery = useSitesQuery();

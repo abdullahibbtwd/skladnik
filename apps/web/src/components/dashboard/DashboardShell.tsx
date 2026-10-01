@@ -49,13 +49,13 @@ const PRIMARY_NAV: NavItem[] = [
   { to: '/app/stock', labelKey: 'app.stock', icon: Package },
   { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'stockOps' },
   { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'stockOps' },
-  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
+  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket, requires: 'reorder' },
   { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags },
   { to: '/app/expiry', labelKey: 'app.expiry', icon: Timer },
-  { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart },
-  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
+  { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart, requires: 'pos' },
+  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3, requires: 'salesRead' },
   { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, requires: 'manage' },
-  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, requires: 'manage' },
+  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, requires: 'reports' },
   { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, requires: 'vat' },
 ];
 
@@ -70,13 +70,13 @@ const MOBILE_MENU: NavItem[] = [
   { to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList },
   { to: '/app/transfer', labelKey: 'app.transfer', icon: ArrowLeftRight, requires: 'stockOps' },
   { to: '/app/stocktake', labelKey: 'app.stocktake', icon: ClipboardCheck, requires: 'stockOps' },
-  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket },
+  { to: '/app/reorder', labelKey: 'app.reorder', icon: ShoppingBasket, requires: 'reorder' },
   { to: '/app/opening-stock', labelKey: 'app.openingStock', icon: PackageOpen, requires: 'openingStock' },
   { to: '/app/inventory', labelKey: 'app.inventory', icon: Tags },
-  { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart },
-  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
+  { to: '/app/pos', labelKey: 'app.pos', icon: ShoppingCart, requires: 'pos' },
+  { to: '/app/sales', labelKey: 'app.sales', icon: BarChart3, requires: 'salesRead' },
   { to: '/app/recipes', labelKey: 'app.recipes', icon: ChefHat, requires: 'manage' },
-  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, requires: 'manage' },
+  { to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet, requires: 'reports' },
   { to: '/app/vat', labelKey: 'app.vat', icon: Landmark, requires: 'vat' },
   { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2, requires: 'audit' },
 ];
@@ -96,8 +96,32 @@ const DOCK: DockItem[] = [
   { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
 ];
 
-/** Same layout as managers: stock / receive / scan / write-off / expiry. Till stays in nav (§5). */
-const STAFF_DOCK: DockItem[] = DOCK;
+/** Spec §5 Staff dock: check stock / receive / scan / write-off / expiry — no till (SKL-16). */
+const STAFF_DOCK: DockItem[] = [
+  { kind: 'link', to: '/app/stock', labelKey: 'app.checkStock', icon: Package },
+  { kind: 'start', type: 'RECEIPT', labelKey: 'app.receive', icon: PackagePlus },
+  { kind: 'center', action: 'scan' },
+  { kind: 'start', type: 'WRITE_OFF', labelKey: 'app.writeOff', icon: PackageMinus },
+  { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
+];
+
+/** Cashier dock: stock / expiry / till focus (no document create). */
+const CASHIER_DOCK: DockItem[] = [
+  { kind: 'link', to: '/app/stock', labelKey: 'app.stock', icon: Package },
+  { kind: 'link', to: '/app/expiry', labelKey: 'app.expiring', icon: Timer },
+  { kind: 'center', action: 'till' },
+  { kind: 'link', to: '/app/sales', labelKey: 'app.sales', icon: BarChart3 },
+  { kind: 'link', to: '/app', labelKey: 'app.overview', icon: LayoutDashboard },
+];
+
+/** ACC-01: Accountant dock — reporting focus, no write actions. */
+const ACCOUNTANT_DOCK: DockItem[] = [
+  { kind: 'link', to: '/app/reports', labelKey: 'app.reports', icon: FileSpreadsheet },
+  { kind: 'link', to: '/app/vat', labelKey: 'app.vat', icon: Landmark },
+  { kind: 'link', to: '/app/audit', labelKey: 'app.audit', icon: FileCode2 },
+  { kind: 'link', to: '/app/invoices', labelKey: 'app.documents', icon: ClipboardList },
+  { kind: 'link', to: '/app', labelKey: 'app.overview', icon: LayoutDashboard },
+];
 
 interface DashboardShellProps {
   siteId: string;
@@ -117,7 +141,14 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const user = useRequiredUser();
   const permissions = permissionsFor(user.role);
   const allowed = (item: NavItem) => !item.requires || permissions[item.requires];
-  const dock = permissions.createDocuments ? DOCK : STAFF_DOCK;
+  const dock =
+    user.role === 'ACCOUNTANT'
+      ? ACCOUNTANT_DOCK
+      : user.role === 'CASHIER'
+        ? CASHIER_DOCK
+        : user.role === 'STAFF'
+          ? STAFF_DOCK
+          : DOCK;
   const dockPaths = new Set(dock.flatMap((item) => (item.kind === 'link' ? [item.to] : item.kind === 'center' && item.action === 'till' ? ['/app/pos'] : [])));
   const mobileMenu = MOBILE_MENU.filter((item) => allowed(item) && !dockPaths.has(item.to));
   const { t } = useTranslation();

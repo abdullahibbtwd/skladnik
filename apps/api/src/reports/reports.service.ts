@@ -30,6 +30,7 @@ import { STANDING_DOCUMENT } from '../documents/reversal';
 import { PrismaService } from '../prisma/prisma.service';
 import { addDays, businessDate, businessRange, dayStart, daysBetween, isBusinessDate } from '../sales/business-day';
 import { IN_BASIS_QTY, IN_BASIS_VALUE } from '../stock/ledger';
+import { stockAsOfEnd } from '../stock/stock-as-of';
 import type { ReportExportQueryDto, ReportQueryDto } from './dto/report.dto';
 import { formatDate } from './export/cells';
 import { buildCsv } from './export/csv';
@@ -55,7 +56,7 @@ type Scope = { companyId: string; company: string; sites: Site[]; siteIds: strin
 type Ctx = { lang: ReportLang; scope: Scope; query: ReportQueryDto };
 type Built = { columns: string[]; rows: ReportRow[]; totals: ReportRow | null; notes: string[]; from?: string; to?: string; date?: string };
 
-type ProductInfo = { code: string; name: string; unit: string; sellingPrice: number; groupId: string | null; groupName: string | null };
+type ProductInfo = { code: string; name: string; unit: string; sellingPrice: number | null; groupId: string | null; groupName: string | null };
 
 type SaleFact = {
   documentId: string;
@@ -408,7 +409,7 @@ export class ReportsService {
     if (!isBusinessDate(date)) throw new BadRequestException('date must be a valid YYYY-MM-DD');
     const by = (ctx.query.groupBy ?? 'product') as StockValueGrouping;
     if (!STOCK_VALUE_GROUPINGS.includes(by)) throw new BadRequestException(`Stock value groups by ${STOCK_VALUE_GROUPINGS.join(', ')}`);
-    const end = dayStart(addDays(date, 1));
+    const end = stockAsOfEnd(date);
     const rows = await this.prisma.$queryRaw<{ siteId: string; productId: string; qty: number; value: number }[]>`
       SELECT "siteId", "productId",
         SUM(CASE WHEN "direction" = 'IN' THEN "quantity" ELSE -"quantity" END)::float8 AS "qty",
@@ -422,7 +423,7 @@ export class ReportsService {
       .filter((row) => round3(row.qty) !== 0 || round2(row.value) !== 0)
       .filter((row) => this.productInGroup(products.get(row.productId), ctx.query.groupId))
       .map((row) => ({ ...row, product: products.get(row.productId)! }));
-    const retail = (row: (typeof held)[number]) => row.qty * row.product.sellingPrice;
+    const retail = (row: (typeof held)[number]) => row.qty * (row.product.sellingPrice ?? 0);
     const totals = {
       value: round2(held.reduce((sum, row) => sum + row.value, 0)),
       retailValue: round2(held.reduce((sum, row) => sum + retail(row), 0)),
@@ -443,7 +444,7 @@ export class ReportsService {
           onHand: round3(row.qty),
           avgCost: row.qty > 0 ? round4(row.value / row.qty) : null,
           value: round2(row.value),
-          sellingPrice: round2(row.product.sellingPrice),
+          sellingPrice: row.product.sellingPrice == null ? null : round2(row.product.sellingPrice),
           retailValue: round2(retail(row)),
           _productId: row.productId,
         })),
@@ -1201,7 +1202,7 @@ export class ReportsService {
           code: row.code,
           name: row.name,
           unit: row.unit,
-          sellingPrice: toNumber(row.sellingPrice),
+          sellingPrice: row.sellingPrice === null ? null : toNumber(row.sellingPrice),
           groupId: row.groupId,
           groupName: row.group?.name ?? null,
         },
