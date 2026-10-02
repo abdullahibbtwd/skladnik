@@ -144,9 +144,13 @@ RESEND_FROM_EMAIL=Skladnik <noreply@your-domain>
 
 Push, then redeploy. If it fails, open the **api** logs and look for `skladnik-api: port=`, `prisma generate failed`, or `prisma migrate deploy failed`.
 
-To load demo data on a server, open a terminal in the `api` container (or use `docker compose exec`). The image has no TypeScript sources, so the seed runs the compiled copy in `dist/seed/`, and it refuses to run in production without `SEED_DEMO=1`:
+To load seed users on a server, open a terminal in the `api` container (or use `docker compose exec`). The image has no TypeScript sources, so the seed runs the compiled copy in `dist/seed/`. Empty tenants always seed; demo companies need `SEED_DEMO=1` when `NODE_ENV=production`. One password covers every seed user:
 
 ```bash
+# Empty tenants only (Metro / Riverside — no stock history)
+docker compose exec -e SEED_PASSWORD='choose-one' api npm run db:seed
+
+# Empty tenants + demo companies (same password for all)
 docker compose exec -e SEED_DEMO=1 -e SEED_PASSWORD='choose-one' api npm run db:seed
 ```
 
@@ -164,7 +168,7 @@ One `.env` at the repo root, read by the API in local dev (see `.env.example`).
 | Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES` (15m), `JWT_REFRESH_EXPIRES` (7d), `COOKIE_SECURE`, `GOOGLE_CLIENT_ID` (optional) |
 | OCR | `GLM_API_KEY` or `ZAI_API_KEY`, `GLM_BASE_URL`, `GLM_MODEL` |
 | Email | `RESEND_API_KEY` (optional), `RESEND_FROM_EMAIL` |
-| Seed | `SEED_PASSWORD`, `SEED_RESET=1`, `SEED_DEMO=1` (required when `NODE_ENV=production`) |
+| Seed | `SEED_PASSWORD` (shared by every seed user), `SEED_RESET=1`, `SEED_DEMO=1` (include demo companies when `NODE_ENV=production`) |
 
 ## Auth, tenancy, and roles
 
