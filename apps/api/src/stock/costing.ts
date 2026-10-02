@@ -32,12 +32,12 @@ export class CostBook {
     for (const row of rows) {
       const product = this.product(row.productId);
       if (row.batchId === null) {
-        product.loose = round3(product.loose + row.onHand);
+        product.loose = round3(product.loose + (Number(row.onHand) || 0));
       } else {
         const batch = this.batch(row.productId, row.batchId);
-        batch.onHand = round3(batch.onHand + row.onHand);
-        batch.inQty += row.inQty;
-        batch.inValue += row.inValue;
+        batch.onHand = round3(batch.onHand + (Number(row.onHand) || 0));
+        batch.inQty += Number(row.inQty) || 0;
+        batch.inValue += Number(row.inValue) || 0;
       }
     }
   }
@@ -75,13 +75,17 @@ export class CostBook {
   }
 
   average(productId: string): number {
-    return this.averages.get(productId) ?? this.fallback.get(productId) ?? 0;
+    const avg = this.averages.get(productId) ?? this.fallback.get(productId) ?? 0;
+    return Number.isFinite(avg) ? avg : 0;
   }
 
   unitCost(productId: string, batchId: string | null): number {
     if (batchId) {
       const batch = this.products.get(productId)?.batches.get(batchId);
-      if (batch && batch.inQty > 0) return round4(batch.inValue / batch.inQty);
+      if (batch && batch.inQty > 0) {
+        const cost = round4(batch.inValue / batch.inQty);
+        if (Number.isFinite(cost)) return cost;
+      }
     }
     return this.average(productId);
   }

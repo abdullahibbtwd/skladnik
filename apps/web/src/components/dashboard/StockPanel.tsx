@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/cn';
 import type { StockLevel, StockLevelStatus } from '../../lib/workspace-api';
 import { formatBusinessDateTime } from '../../lib/business-date';
-import { formatDate, formatQty } from '../../lib/format';
+import { formatDate, formatQty, asMoney } from '../../lib/format';
 import { usePermissions } from '../../lib/permissions';
 import { FRESH_DATA_MS } from '../../lib/pwa-constants';
 import { useSiteChoices, useStockQuery } from '../../lib/workspace-session';
@@ -58,7 +58,7 @@ export const StockPanel: React.FC = () => {
     if (filter === 'ON_HAND') return item.onHand > 0;
     return item.status === filter;
   });
-  const totalValue = visible.reduce((sum, item) => sum + (item.value ?? 0), 0);
+  const totalValue = visible.reduce((sum, item) => sum + asMoney(item.value), 0);
 
   const filters: { id: Filter; label: string }[] = [
     { id: 'ALL', label: t('stock.all') },
@@ -237,8 +237,8 @@ export const StockPanel: React.FC = () => {
                         {formatQty(item.onHand, i18n.language)}
                       </p>
                       <p className="mt-1 font-sans text-[0.72rem] text-slate-400">{t(`labels.unit.${item.unit}`)}</p>
-                      {seeFinancials && (item.value ?? 0) > 0 && (
-                        <p className="font-mono text-[0.68rem] text-slate-500">{formatEuro(item.value ?? 0)}</p>
+                      {seeFinancials && asMoney(item.value) > 0 && (
+                        <p className="font-mono text-[0.68rem] text-slate-500">{formatEuro(asMoney(item.value))}</p>
                       )}
                     </div>
                     <ChevronRight size={16} className="text-slate-300" />

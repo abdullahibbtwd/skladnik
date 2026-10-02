@@ -114,12 +114,13 @@ export class StockService {
                 expiryDate: batch.expiryDate ? isoDate(batch.expiryDate) : null,
                 isAutomatic: batch.isAutomatic,
                 onHand: quantity,
-                unitCost,
-                value: round2(quantity * unitCost),
+                unitCost: Number.isFinite(unitCost) ? unitCost : 0,
+                value: round2(quantity * (Number.isFinite(unitCost) ? unitCost : 0)),
               },
             ];
           })
           .sort(compareBatchExpiry);
+        const safeValue = Number.isFinite(value) ? value : 0;
         return presentStockItemForRole(user.role, {
           productId: product.id,
           name: product.name,
@@ -134,8 +135,8 @@ export class StockService {
           purchasePrice: toNumber(product.purchasePrice),
           sellingPrice: product.sellingPrice === null ? null : toNumber(product.sellingPrice),
           vatRate: toNumber(product.vatRate),
-          avgCost: level.onHand > 0 ? round4(value / level.onHand) : book.average(product.id),
-          value: round2(value),
+          avgCost: level.onHand > 0 ? round4(safeValue / level.onHand) : book.average(product.id),
+          value: round2(safeValue),
           onHand: level.onHand,
           status: stockLevelStatus(level.onHand, minStock),
           suggestedOrder: suggestedOrderQty(level.onHand, minStock, maxStock, product.unit),

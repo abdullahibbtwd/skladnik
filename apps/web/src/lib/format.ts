@@ -92,10 +92,16 @@ export function formatMoney(value: number, lang?: string) {
   return new Intl.NumberFormat(appLocale(lang), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
+/** Coerce API money (number, numeric string, null) to a finite amount; junk → 0. */
+export function asMoney(value: unknown): number {
+  const n = typeof value === 'number' ? value : value == null || value === '' ? 0 : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /** Bulgaria has used the euro since 1 Jan 2026. */
 export function formatEuro(value: number, lang?: string) {
   const locale = isBg(lang) ? 'bg-BG' : 'en-IE';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(value);
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(asMoney(value));
 }
 
 export function formatPercent(value: number, lang?: string) {

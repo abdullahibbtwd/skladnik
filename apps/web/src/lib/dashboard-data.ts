@@ -1,6 +1,6 @@
 import { DEFAULT_EXPIRY_WINDOWS, expiryBucketCounts, expiryLevel, type DocumentStatus, type DocumentType, type UnitOfMeasure, type WriteOffReason } from '@skladnik/shared';
 import i18n from '../i18n';
-import { formatEuro as formatEuroValue, formatShortDay } from './format';
+import { asMoney, formatEuro as formatEuroValue, formatShortDay } from './format';
 import type { DocumentListItem, StockLevel } from './workspace-api';
 
 /** One batch with stock left at the active site. */
@@ -137,7 +137,8 @@ export function buildDashboardState(
       reason: doc.status,
       createdById: doc.createdBy?.id ?? null,
     })),
-    stockValue: inStock.reduce((sum, item) => sum + (item.value ?? 0), 0),
+    // asMoney: `?? 0` misses NaN, and string Decimals from JSON would concatenate into "€NaN".
+    stockValue: inStock.reduce((sum, item) => sum + asMoney(item.value), 0),
     reorderCount: items.filter((item) => item.suggestedOrder !== null).length,
     inStockCount: inStock.length,
     expiring,
