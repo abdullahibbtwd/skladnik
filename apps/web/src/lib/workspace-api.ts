@@ -629,6 +629,10 @@ export type DocumentLineRecord = {
   unit: UnitOfMeasure | null;
   batchNumber: string | null;
   expiryDate: string | null;
+  /** CAF-01 / CAF-03 flags from the server. Absent on older responses. */
+  quantityCheck?: boolean;
+  unitCheck?: boolean;
+  batchNotTracked?: boolean;
   batch: { id: string; batchNumber: string; expiryDate: string | null } | null;
   verified: boolean;
   /** Only on stocktake documents. Expected is live until posting, then frozen. */
@@ -739,6 +743,9 @@ export type DocumentLineWriteInput = {
   expiryDate?: string;
   /** Stocktake only; null means not counted yet. */
   countedQuantity?: number | null;
+  /** CAF-01: confirm the stored quantity or the product unit. */
+  confirmQuantity?: boolean;
+  confirmUnit?: boolean;
 };
 
 /** Stocktakes open on their count sheet, sales on their receipt; every other document in the document editor. */
@@ -771,6 +778,17 @@ export function updateDocument(id: string, input: DocumentUpdateInput) {
 
 export function addDocumentLine(id: string, input: DocumentLineWriteInput) {
   return requestJson<DocumentDetailResponse>(`/documents/${id}/lines`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function enableProductBatchTracking(id: string) {
+  return requestJson<{ product: ProductRecord }>(`/products/${id}/enable-batch-tracking`, { method: 'POST' });
+}
+
+export function mergePendingProduct(id: string, intoProductId: string) {
+  return requestJson<{ productId: string }>(`/products/${id}/merge`, {
+    method: 'POST',
+    body: JSON.stringify({ productId: intoProductId }),
+  });
 }
 
 export function createProductFromLine(id: string, lineId: string, input: CreateProductFromLineInput) {

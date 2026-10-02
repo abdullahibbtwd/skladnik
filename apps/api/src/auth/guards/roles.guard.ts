@@ -1,6 +1,7 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { AuthUser, UserRole } from '@skladnik/shared';
+import { apiForbidden } from '../../common/api-error';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
@@ -27,7 +28,7 @@ export class RolesGuard implements CanActivate {
 
     const user = context.switchToHttp().getRequest<{ user?: AuthUser }>().user;
     if (!user || !roles.includes(user.role)) {
-      throw new ForbiddenException('Insufficient role for this action');
+      throw apiForbidden('INSUFFICIENT_ROLE', 'Нямате права за това действие');
     }
     return true;
   }

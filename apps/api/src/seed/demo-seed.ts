@@ -233,18 +233,21 @@ const CAFE: TenantSeed = {
   sites: [{ name: 'Кафе-бар', type: SiteType.BAR, address: 'Пловдив, ул. Княз Александър I 21' }],
   users: [
     { email: 'cafe-owner@skladnik.dev', name: 'Dimitar Nikolov', role: UserRole.OWNER },
+    { email: 'cafe-manager@skladnik.dev', name: 'Nikolay Petrov', role: UserRole.SITE_MANAGER, sites: ['Кафе-бар'] },
+    { email: 'cafe-cashier@skladnik.dev', name: 'Elena Stoyanova', role: UserRole.CASHIER, sites: ['Кафе-бар'] },
     { email: 'cafe-barista@skladnik.dev', name: 'Iva Hristova', role: UserRole.STAFF, sites: ['Кафе-бар'] },
   ],
   groups: ['Съставки', 'Кафе напитки', 'Печива и напитки'],
   products: [
+    // CAF-03: batch tracking ON for fresh milk and pastry. Coffee, sugar, syrup and bottled water stay off.
     { code: 'C-001', name: 'Кафе на зърна Арабика', group: 'Съставки', unit: 'KG', cost: 16, price: 0, minStock: 2 },
-    { code: 'C-002', name: 'Прясно мляко 3.5%', group: 'Съставки', unit: 'L', cost: 0.95, price: 0, minStock: 10 },
+    { code: 'C-002', name: 'Прясно мляко 3.5%', group: 'Съставки', unit: 'L', cost: 0.95, price: 0, minStock: 10, batch: true },
     { code: 'C-003', name: 'Захар', group: 'Съставки', unit: 'KG', cost: 0.65, price: 0 },
     { code: 'C-004', name: 'Сироп ванилия', group: 'Съставки', unit: 'L', cost: 7.5, price: 0 },
     { code: 'C-010', name: 'Еспресо', group: 'Кафе напитки', unit: 'PCS', cost: 0, price: 1.5 },
     { code: 'C-011', name: 'Капучино', group: 'Кафе напитки', unit: 'PCS', cost: 0, price: 2.2 },
     { code: 'C-012', name: 'Лате с ванилия', group: 'Кафе напитки', unit: 'PCS', cost: 0, price: 2.8 },
-    { code: 'C-020', name: 'Кроасан с масло', group: 'Печива и напитки', unit: 'PCS', cost: 0.35, price: 1.2 },
+    { code: 'C-020', name: 'Кроасан с масло', group: 'Печива и напитки', unit: 'PCS', cost: 0.35, price: 1.2, batch: true },
     { code: 'C-021', name: 'Минерална вода 0.5 л', group: 'Печива и напитки', unit: 'PCS', cost: 0.22, price: 1, barcode: ean13('380200000021') },
   ],
   partners: [
@@ -266,14 +269,18 @@ const CAFE: TenantSeed = {
     {
       daysAgo: 12, site: 'Кафе-бар', type: 'INVOICE', number: '0000007731', status: 'POSTED', partnerEik: '206117343',
       lines: [
-        { code: 'C-001', qty: 5 }, { code: 'C-002', qty: 40 }, { code: 'C-003', qty: 5 }, { code: 'C-004', qty: 3 },
-        { code: 'C-020', qty: 80 }, { code: 'C-021', qty: 96 },
+        { code: 'C-001', qty: 5 },
+        { code: 'C-002', qty: 40, batch: 'SEED-ML', expiresInDays: 10 },
+        { code: 'C-003', qty: 5 },
+        { code: 'C-004', qty: 3 },
+        { code: 'C-020', qty: 80, batch: 'SEED-KR', expiresInDays: 3 },
+        { code: 'C-021', qty: 96 },
       ],
     },
   ],
   sales: {
     site: 'Кафе-бар',
-    cashier: 'cafe-barista@skladnik.dev',
+    cashier: 'cafe-cashier@skladnik.dev',
     days: 10,
     perDay: [8, 14],
     items: ['C-010', 'C-010', 'C-011', 'C-011', 'C-011', 'C-012', 'C-020', 'C-021'],
@@ -332,6 +339,20 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
   });
   await seedUnitAliases(prisma, company.id);
 
+  // CAF-06: an older seed stored these in English. Rename the rows in place so a later
+  // seed does not create a second site or a second empty group. Only these exact names.
+  const legacyLabels: Record<string, string> = {
+    'Coffee drinks': 'Кафе напитки',
+    Ingredients: 'Съставки',
+    'Pastry & drinks': 'Печива и напитки',
+    'Café Bar': 'Кафе-бар',
+    'Cafe Bar': 'Кафе-бар',
+  };
+  for (const [from, to] of Object.entries(legacyLabels)) {
+    await prisma.productGroup.updateMany({ where: { companyId: company.id, name: from }, data: { name: to } });
+    await prisma.site.updateMany({ where: { companyId: company.id, name: from }, data: { name: to } });
+  }
+
   const siteIds = new Map<string, string>();
   for (const site of tenant.sites) {
     const row = await prisma.site.upsert({
@@ -373,6 +394,16 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
     company: tenant.company,
     role: seed.sites ? `${seed.role}, ${seed.sites.join(', ')} only` : `${seed.role}, all sites`,
   }));
+
+  // CAF-06: correct demo partner ЕИК / VAT even when documents already exist. Does not touch stock or documents.
+  for (const seed of tenant.partners) {
+    const data = { ...seed, vatNumber: `BG${seed.eik}` };
+    const existing = await prisma.partner.findFirst({
+      where: { companyId: company.id, OR: [{ eik: seed.eik }, { name: seed.name }] },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (existing) await prisma.partner.update({ where: { id: existing.id }, data });
+  }
 
   // Master data is upserted every run; the history below is written only once.
   if ((await prisma.document.count({ where: { companyId: company.id } })) > 0) {
@@ -590,6 +621,19 @@ async function seedSales(
     }
   }
   return { made, skipped };
+}
+
+/** Every demo company, for the seed test. History is not included. */
+export function demoMasterData() {
+  return [MARKET, CAFE].map((tenant) => ({
+    company: tenant.company,
+    profile: tenant.profile,
+    vatNumber: `BG${tenant.profile.eik}`,
+    sites: tenant.sites.map((site) => site.name),
+    groups: [...tenant.groups],
+    partners: tenant.partners.map((partner) => ({ name: partner.name, eik: partner.eik })),
+    batchTracked: tenant.products.filter((product) => product.batch).map((product) => product.name),
+  }));
 }
 
 /** Demo dates are relative to the day of the run; `reset` rebuilds the demo companies so the history is current again. */

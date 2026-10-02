@@ -3,7 +3,8 @@
  * One function drives both submit-for-review and post so the API cannot bypass the UI.
  */
 import { documentDateIssue, documentNumbersMatch, normalizeDocumentNumber, type TotalsCheck } from '@skladnik/shared';
-import { dateWarning, headerErrors, postingErrors, type PostingDocument } from './can-document-be-posted';
+import { scanLineChecks } from '../extraction/quantity-cell';
+import { dateWarning, headerErrors, postingErrors, type PostingDocument, type PostingLine } from './can-document-be-posted';
 
 export type LifecycleIssue = {
   code: string;
@@ -107,6 +108,47 @@ function pendingProductIssues(document: PostingDocument, forStaff: boolean): Lif
     });
   }
   return issues;
+}
+
+function lineAmount(value: { toString(): string } | number | undefined) {
+  if (value == null) return 0;
+  const parsed = typeof value === 'number' ? value : Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * CAF-01 decision: a totals mismatch stays a warning on submit and blocks posting
+ * (Group 13). Staff cannot see prices, so a price-caused mismatch is not theirs to fix.
+ * A quantity cell that disagrees with the stored number blocks submit until confirmed.
+ */
+function scanQuantityIssues(lines: PostingLine[]): { blockBoth: LifecycleIssue[]; blockPost: LifecycleIssue[] } {
+  const blockBoth: LifecycleIssue[] = [];
+  const blockPost: LifecycleIssue[] = [];
+  for (const line of lines) {
+    if (!line.ocrUnit) continue;
+    const flags = scanLineChecks({
+      printed: line.ocrUnit,
+      quantity: lineAmount(line.quantity),
+      productUnit: line.product?.unit ?? line.unit ?? null,
+      quantityConfirmed: line.quantityConfirmed,
+      unitConfirmed: line.unitConfirmed,
+    });
+    if (flags.quantityCheck) {
+      blockBoth.push({
+        code: 'QUANTITY_CHECK',
+        message: `Ред ${line.position + 1}: Проверете количеството. Отпечатаното „${line.ocrUnit}“ не съвпада със записаното. Потвърдете или коригирайте преди изпращане.`,
+        params: { line: line.position + 1, printed: line.ocrUnit },
+      });
+    }
+    if (flags.unitCheck) {
+      blockPost.push({
+        code: 'UNIT_CHECK',
+        message: `Ред ${line.position + 1}: Проверете мярката. Отпечатаното „${line.ocrUnit}“ не се превръща в мярката на продукта.`,
+        params: { line: line.position + 1, printed: line.ocrUnit },
+      });
+    }
+  }
+  return { blockBoth, blockPost };
 }
 
 function totalsIssues(totals: TotalsCheck | null): LifecycleIssue[] {
@@ -228,6 +270,12 @@ export function classifyDocumentLifecycle(
 
   if (document.type !== 'STOCKTAKE' && document.lines.length === 0) {
     blockBoth.push(EMPTY_LINES);
+  }
+
+  if (document.type !== 'STOCKTAKE') {
+    const scanned = scanQuantityIssues(document.lines);
+    blockBoth.push(...scanned.blockBoth);
+    blockPost.push(...scanned.blockPost);
   }
 
   blockPost.push(...numberEqualsBatchIssues(document.number, document.lines));

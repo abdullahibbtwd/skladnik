@@ -25,6 +25,7 @@ import {
   useCreateProductFromLine,
   useDeleteDocumentLine,
   useDocumentQuery,
+  useEnableBatchTracking,
   usePartnerLookupQuery,
   usePostDocument,
   useRetryDocumentExtraction,
@@ -112,6 +113,7 @@ export const DocumentDetailPanel: React.FC = () => {
   const deleteLine = useDeleteDocumentLine(id ?? '');
   const createProduct = useCreateProductFromLine(id ?? '');
   const confirmProduct = useConfirmPendingProduct(id ?? '');
+  const enableBatch = useEnableBatchTracking();
   const submitDocument = useSubmitDocument(id ?? '');
   const postDocument = usePostDocument(id ?? '');
   const cancelDocument = useCancelDocument(id ?? '');
@@ -696,6 +698,9 @@ export const DocumentDetailPanel: React.FC = () => {
                   await updateLine.mutateAsync({ lineId, ...input });
                 }}
                 onDelete={removeLine}
+                onEnableBatch={async (productId) => {
+                  await enableBatch.mutateAsync(productId);
+                }}
                 onCreateProduct={async (lineId, input) => {
                   await createProduct.mutateAsync({ lineId, ...input });
                   toast.success(t('scanMatch.created', { name: input.name }));
@@ -819,7 +824,7 @@ export const DocumentDetailPanel: React.FC = () => {
                     ? `${t('doc.linesSummary', { count: lines.length })} · ${formatEuro(lineTotal)}`
                     : t('doc.linesSummary', { count: lines.length })}
                 </p>
-                <p className={cn('truncate font-sans text-[0.72rem]', posting?.ok && !reading ? 'text-ops-teal' : 'text-ops-warn')}>
+                <p className={cn('font-sans text-[0.72rem] break-words', posting?.ok && !reading ? 'text-ops-teal' : 'text-ops-warn')}>
                   {postStatus}
                 </p>
               </div>

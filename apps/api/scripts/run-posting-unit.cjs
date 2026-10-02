@@ -3,6 +3,7 @@ require('ts-node/register/transpile-only');
 
 (async () => {
   require('../src/common/staff-view.test.ts');
+  require('../src/auth/cafe-role.test.ts');
   require('../src/auth/accountant-allowlist.test.ts');
   require('../src/documents/document-access.test.ts');
   require('../src/documents/amount-in-words-bg.test.ts');
@@ -22,8 +23,10 @@ require('ts-node/register/transpile-only');
   require('../src/extraction/ocr-errors.test.ts');
   require('../src/extraction/name-matching.test.ts');
   require('../src/extraction/product-text.test.ts');
+  require('../src/extraction/quantity-cell.test.ts');
   require('../src/extraction/parse-ocr-date.test.ts');
   require('../src/stock/stock-levels.test.ts');
+  require('../src/stock/batch-adoption.test.ts');
   require('../src/stock/stock-as-of.test.ts');
   require('../src/stock/quantity.test.ts');
   require('../src/stock/costing.test.ts');

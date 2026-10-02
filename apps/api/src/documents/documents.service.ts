@@ -11,8 +11,10 @@ import { Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import {
   DOCUMENT_TYPE_LABELS,
+  canCreatePendingProduct,
   defaultStockDirection,
   documentTotals,
+  isOperationalManager,
   isPaperDocumentType,
   isStockOperationType,
   isTillDocumentType,
@@ -30,7 +32,7 @@ import {
   type TotalsCheck,
 } from '@skladnik/shared';
 import { changes, recordActivity } from '../activity/record-activity';
-import { apiBadRequest, apiForbidden } from '../common/api-error';
+import { apiBadRequest, apiConflict, apiForbidden } from '../common/api-error';
 import { presentDocumentDetailForRole, seesFinancials } from '../common/staff-view';
 import { isRealPostedActivity, openingBalanceRoleAllowed } from './opening-balance';
 import { toNumber } from '../common/decimal';
@@ -38,6 +40,7 @@ import { takeSeriesNumber } from '../company/document-series';
 import { rememberSupplierCode } from '../extraction/extraction-apply.service';
 import { barcodeForMatching } from '../extraction/barcode';
 import { NameIndex, productKey } from '../extraction/name-matching';
+import { resolveScannedQuantity, scanLineChecks } from '../extraction/quantity-cell';
 import { OCR_JOB_EXTRACT, OCR_JOB_OPTIONS, OCR_QUEUE, ocrJobId, type OcrJobData } from '../extraction/ocr.constants';
 import { splitProductText } from '../extraction/product-text';
 import { PrismaService } from '../prisma/prisma.service';
@@ -504,12 +507,30 @@ export class DocumentsService {
     const productId = dto.productId ?? line.productId;
     const product = productId ? await this.assertProduct(user.companyId, productId) : null;
     const productChanged = Boolean(product && product.id !== line.productId);
-    const quantity =
-      dto.quantity !== undefined || dto.qty !== undefined
-        ? this.requireQuantity(dto, product ?? line.product ?? undefined)
-        : toNumber(line.quantity);
+    const explicitQty = dto.quantity !== undefined || dto.qty !== undefined;
+    // CAF-01: linking a suggestion re-reads the quantity cell. It must not fall back to 1.
+    const storedQty = toNumber(line.quantity);
+    const scanned = resolveScannedQuantity({
+      printed: line.ocrUnit,
+      modelQty: storedQty > 0 ? storedQty : 0,
+      productUnit: product?.unit ?? line.product?.unit ?? line.unit,
+      keepQuantity: explicitQty || line.quantityConfirmed || dto.confirmQuantity ? storedQty : null,
+    });
+    const quantity = explicitQty
+      ? this.requireQuantity(dto, product ?? line.product ?? undefined)
+      : scanned.quantity > 0
+        ? scanned.quantity
+        : storedQty;
+    const quantityConfirmed = explicitQty || dto.confirmQuantity || line.quantityConfirmed;
+    const unitConfirmed = Boolean(dto.confirmUnit) || line.unitConfirmed;
+    const unit =
+      dto.confirmUnit && product
+        ? product.unit
+        : scanned.unitCheck
+          ? (scanned.unit ?? line.unit)
+          : (scanned.unit ?? (productChanged && product ? product.unit : line.unit));
     if (product ?? line.product) {
-      this.assertQuantityPrecision(quantity, (product ?? line.product)!);
+      this.assertQuantityPrecision(quantity, { ...(product ?? line.product)!, unit: unit ?? (product ?? line.product)!.unit });
     }
     const unitPrice = seesFinancials(user.role)
       ? (dto.unitPrice ?? toNumber(line.unitPrice))
@@ -539,8 +560,11 @@ export class DocumentsService {
         where: { id: line.id },
         data: {
           // ocrDescription is what the supplier printed; keep it so review can compare against the photo.
-          ...(productChanged && product ? { productId: product.id, unit: product.unit } : {}),
+          ...(productChanged && product ? { productId: product.id } : {}),
+          ...(unit ? { unit } : {}),
           quantity,
+          quantityConfirmed,
+          unitConfirmed,
           unitPrice,
           discountPercent: amounts.discountPercent,
           finalUnitPrice: amounts.finalUnitPrice,
@@ -572,10 +596,19 @@ export class DocumentsService {
     if (diff) await this.log(user, doc, 'LINE_UPDATE', { lineId: before.id, line: before.position + 1 }, diff);
   }
 
-  /** Creates a product from an unmatched scanned line (only ever on the reviewer's say-so) and links it. */
+  /**
+   * Creates a product from an unmatched scanned line and links it.
+   * CAF-02: Staff may do this only as PENDING_REVIEW (not from the Products screen,
+   * and not as an edit of an existing product). Managers still create an active product.
+   */
   async createProductFromLine(user: AuthUser, id: string, lineId: string, dto: CreateProductFromLineDto) {
+    if (!canCreatePendingProduct(user.role)) {
+      throw apiForbidden('INSUFFICIENT_ROLE', 'Нямате права за това действие');
+    }
     const existing = await this.findInCompany(user, id, true);
-    assertDocumentWriteAccess(user, 'manage', existing);
+    // Staff: own draft only. The 'manage' action stays manager-only (document-access).
+    if (user.role === 'STAFF') assertDocumentWriteAccess(user, 'edit', existing);
+    else assertDocumentWriteAccess(user, 'manage', existing);
     this.assertWritable(existing.status);
     const line = existing.lines.find((row) => row.id === lineId);
     if (!line) throw new NotFoundException('Line not found');
@@ -585,8 +618,20 @@ export class DocumentsService {
     if (dto.unit === 'OTHER') {
       throw apiBadRequest('PRODUCT_UNIT_REQUIRED', 'Изберете мярка — „друго“ не е допустимо по подразбиране от сканиране');
     }
-    const group = await this.prisma.productGroup.findFirst({ where: { id: dto.groupId, companyId: user.companyId }, select: { id: true } });
-    if (!group) throw apiBadRequest('PRODUCT_GROUP_REQUIRED', 'Групата на продукта е задължителна');
+    const group = dto.groupId
+      ? await this.prisma.productGroup.findFirst({ where: { id: dto.groupId, companyId: user.companyId }, select: { id: true } })
+      : null;
+    if (dto.groupId && !group) throw apiBadRequest('PRODUCT_GROUP_REQUIRED', 'Групата на продукта е задължителна');
+    const similar = await this.similarProducts(user.companyId, name, dto.unit);
+    if (similar.length > 0) {
+      const list = similar.map((product) => `«${product.name}» (${product.code})`).join(', ');
+      throw apiConflict(
+        'PRODUCT_SIMILAR_EXISTS',
+        `Има подобен продукт със същата мярка: ${list}. Изберете го вместо нов.`,
+      );
+    }
+    // CAF-02: Staff products wait for a manager. They cannot be sold or posted until approved.
+    const pending = user.role === 'STAFF';
 
     const product = await this.prisma.$transaction(async (tx) => {
       const code = dto.code?.trim() || (await nextProductCode(tx, user.companyId));
@@ -596,21 +641,22 @@ export class DocumentsService {
         barcodeForMatching(barcode) &&
         !(await tx.productBarcode.findFirst({ where: { companyId: user.companyId, barcode: barcodeForMatching(barcode)! }, select: { id: true } }));
       const unitPrice = toNumber(line.finalUnitPrice ?? line.unitPrice);
-      // SKL-03: batch ON when the scan has a lot or expiry; selling price left empty (not copied from purchase).
-      const batchTracking = dto.batchTracking ?? Boolean(line.ocrBatchNumber || line.ocrExpiryDate);
+      // CAF-02 / CAF-03: batch tracking defaults ON for a product created from a scan line.
+      // Selling price stays empty (not copied from the purchase price) so it cannot be sold yet.
+      const batchTracking = dto.batchTracking ?? true;
       const created = await tx.product
         .create({
           data: {
             companyId: user.companyId,
-            groupId: group.id,
+            groupId: group?.id ?? null,
             name,
             code,
             unit: dto.unit,
             vatRate: dto.vatRate,
             purchasePrice: unitPrice,
-            sellingPrice: dto.sellingPrice ?? null,
+            sellingPrice: pending ? null : (dto.sellingPrice ?? null),
             batchTracking,
-            status: 'ACTIVE',
+            status: pending ? 'PENDING_REVIEW' : 'ACTIVE',
             createdFromDocumentId: existing.id,
             ...(barcodeFree
               ? { barcodes: { create: { companyId: user.companyId, barcode: barcodeForMatching(barcode)! } } }
@@ -623,13 +669,59 @@ export class DocumentsService {
           }
           throw error;
         });
-      await tx.documentLine.update({ where: { id: line.id }, data: { productId: created.id, unit: created.unit } });
+      const linked = resolveScannedQuantity({
+        printed: line.ocrUnit,
+        modelQty: toNumber(line.quantity),
+        productUnit: created.unit,
+        keepQuantity: line.quantityConfirmed ? toNumber(line.quantity) : null,
+      });
+      await tx.documentLine.update({
+        where: { id: line.id },
+        data: {
+          productId: created.id,
+          unit: linked.unitCheck ? (linked.unit ?? created.unit) : created.unit,
+          quantity: linked.quantity > 0 ? linked.quantity : toNumber(line.quantity),
+        },
+      });
       await rememberSupplierCode(tx, user.companyId, this.codeSupplierId(existing), created.id, line.supplierProductCode, true);
       await deleteOrphanAutoProducts(tx, user.companyId, existing.id);
       return created;
     });
     await this.log(user, existing, 'LINE_CREATE_PRODUCT', { lineId, productId: product.id, code: product.code });
+    await recordActivity(this.prisma, user, {
+      entityType: 'Product',
+      entityId: product.id,
+      action: 'CREATE',
+      label: product.name,
+      after: {
+        name: product.name,
+        code: product.code,
+        unit: product.unit,
+        status: product.status,
+        batchTracking: product.batchTracking,
+      },
+      metadata: { source: 'scan-line', documentId: existing.id, lineId, documentNumber: existing.number },
+    });
     return this.get(user, existing.id);
+  }
+
+  /** CAF-02: same unit and a fuzzy name match — return those instead of creating a second product. */
+  private async similarProducts(companyId: string, name: string, unit: string) {
+    const products = await this.prisma.product.findMany({
+      where: { companyId, unit: unit as never, status: { not: 'ARCHIVED' } },
+      select: { id: true, name: true, code: true },
+    });
+    const index = new NameIndex(products, productKey, 0.88, true);
+    const found = index.find(name);
+    const ranked = index.suggest(name, 3).filter((row) => row.score >= 0.85);
+    const seen = new Set<string>();
+    const matches: { id: string; name: string; code: string }[] = [];
+    for (const product of [found, ...ranked.map((row) => row.item)]) {
+      if (!product || seen.has(product.id)) continue;
+      seen.add(product.id);
+      matches.push(product);
+    }
+    return matches;
   }
 
   async removeLine(user: AuthUser, id: string, lineId: string) {
@@ -1640,6 +1732,16 @@ export class DocumentsService {
         params: { partner: doc.partner.name },
       });
     }
+    // CAF-06: the ЕИК printed on the invoice is not the one on the partner card.
+    const mismatch = eikMismatchFromCaptures(doc.captures);
+    if (mismatch) {
+      issues.push({
+        code: 'EIK_MISMATCH',
+        message:
+          `ЕИК ${mismatch.extracted} от фактурата не съвпада със записания ЕИК ${mismatch.partner} на партньор „${mismatch.partnerName}“. ${contact}`,
+        params: { partner: mismatch.partnerName, extracted: mismatch.extracted, recorded: mismatch.partner },
+      });
+    }
     return issues;
   }
 
@@ -1965,7 +2067,15 @@ export class DocumentsService {
       succeeded[0]?.confidence ??
       null;
 
-    const lines = doc.lines.map((line) => ({
+    const lines = doc.lines.map((line) => {
+      const scanFlags = scanLineChecks({
+        printed: line.ocrUnit,
+        quantity: toNumber(line.quantity),
+        productUnit: line.product?.unit ?? line.unit,
+        quantityConfirmed: line.quantityConfirmed,
+        unitConfirmed: line.unitConfirmed,
+      });
+      return {
       id: line.id,
       position: line.position,
       sourceCaptureId: line.sourceCaptureId,
@@ -1993,6 +2103,12 @@ export class DocumentsService {
       unit: line.unit,
       batchNumber: line.ocrBatchNumber,
       expiryDate: line.ocrExpiryDate ? isoDate(line.ocrExpiryDate) : null,
+      quantityCheck: scanFlags.quantityCheck,
+      unitCheck: scanFlags.unitCheck,
+      // CAF-03: batch and expiry stay on the line even when the product is not tracked.
+      batchNotTracked: Boolean(
+        line.product && !line.product.batchTracking && (line.ocrBatchNumber?.trim() || line.ocrExpiryDate),
+      ),
       batch: line.batch
         ? {
             id: line.batch.id,
@@ -2002,7 +2118,8 @@ export class DocumentsService {
         : null,
       verified: line.verified,
       ...(doc.type === 'STOCKTAKE' ? { stocktake: this.stocktakeLine(line, preview) } : {}),
-    }));
+    };
+    });
 
     const stocktake =
       doc.type === 'STOCKTAKE'
@@ -2059,4 +2176,25 @@ export class DocumentsService {
       ...(diff ?? {}),
     });
   }
+}
+
+/** Printed supplier ЕИК kept on the capture when it differs from the matched partner (CAF-06). */
+export function eikMismatchFromCaptures(
+  captures: { ocrRaw: Prisma.JsonValue | null }[],
+): { extracted: string; partner: string; partnerName: string } | null {
+  for (const capture of captures) {
+    const raw = capture.ocrRaw;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const mismatch = (raw as { partnerMatch?: { eikMismatch?: { extracted?: unknown; partner?: unknown; partnerName?: unknown } } })
+      .partnerMatch?.eikMismatch;
+    if (
+      mismatch &&
+      typeof mismatch.extracted === 'string' &&
+      typeof mismatch.partner === 'string' &&
+      typeof mismatch.partnerName === 'string'
+    ) {
+      return { extracted: mismatch.extracted, partner: mismatch.partner, partnerName: mismatch.partnerName };
+    }
+  }
+  return null;
 }

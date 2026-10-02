@@ -11,6 +11,7 @@ export type PostingProduct = {
   name: string;
   batchTracking: boolean;
   status: string;
+  unit?: string;
 };
 
 export type PostingLine = {
@@ -24,6 +25,11 @@ export type PostingLine = {
   countedQuantity?: { toString(): string } | number | null;
   ocrBatchNumber: string | null;
   ocrExpiryDate: Date | string | null;
+  /** CAF-01: printed quantity cell, stored quantity confirmation. */
+  ocrUnit?: string | null;
+  unit?: string | null;
+  quantityConfirmed?: boolean;
+  unitConfirmed?: boolean;
 };
 
 export type PostingDocument = {

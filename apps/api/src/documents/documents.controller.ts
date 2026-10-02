@@ -115,8 +115,9 @@ export class DocumentsController {
     return this.documents.updateLine(user, id, lineId, dto);
   }
 
+  /** CAF-02: Staff included — the service forces PENDING_REVIEW for that role. */
   @Post(':id/lines/:lineId/create-product')
-  @Roles(...MANAGER_ROLES)
+  @Roles('OWNER', 'SITE_MANAGER', 'STAFF')
   createProductFromLine(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

@@ -76,6 +76,57 @@ const pending = classifyDocumentLifecycle(
   },
   today,
 );
+// CAF-01: printed "12 л" stored as 1 blocks submit until confirmed. Totals stay post-only.
+const qtyBlock = classifyDocumentLifecycle(
+  {
+    ...base,
+    lines: [line({ ocrUnit: '12 л', quantity: 1, unit: 'L', product: { name: 'Milk', unit: 'L', batchTracking: true, status: 'ACTIVE' } })],
+  },
+  today,
+);
+assert(qtyBlock.blockBoth.some((issue) => issue.code === 'QUANTITY_CHECK'), `quantity blocks submit ${JSON.stringify(qtyBlock.blockBoth)}`);
+assert(qtyBlock.blockBoth.some((issue) => issue.message.includes('Проверете количеството')), 'Bulgarian quantity message');
+const qtyOk = classifyDocumentLifecycle(
+  {
+    ...base,
+    lines: [line({ ocrUnit: '12 л', quantity: 12, unit: 'L', product: { name: 'Milk', unit: 'L', batchTracking: true, status: 'ACTIVE' } })],
+  },
+  today,
+);
+assert(!qtyOk.blockBoth.some((issue) => issue.code === 'QUANTITY_CHECK'), 'matching quantity does not block');
+const qtyConfirmed = classifyDocumentLifecycle(
+  {
+    ...base,
+    lines: [
+      line({
+        ocrUnit: '12 л',
+        quantity: 1,
+        quantityConfirmed: true,
+        unit: 'L',
+        product: { name: 'Milk', unit: 'L', batchTracking: true, status: 'ACTIVE' },
+      }),
+    ],
+  },
+  today,
+);
+assert(!qtyConfirmed.blockBoth.some((issue) => issue.code === 'QUANTITY_CHECK'), 'confirmed quantity can be submitted');
+const unitFlag = classifyDocumentLifecycle(
+  {
+    ...base,
+    lines: [
+      line({
+        ocrUnit: '2 кашон',
+        quantity: 2,
+        unit: 'CARTON',
+        product: { name: 'Cups', unit: 'PCS', batchTracking: false, status: 'ACTIVE' },
+      }),
+    ],
+  },
+  today,
+);
+assert(unitFlag.blockBoth.length === 0, 'unit flag must not block Staff submit');
+assert(unitFlag.blockPost.some((issue) => issue.code === 'UNIT_CHECK' && issue.message.includes('Проверете мярката')), 'unit flag blocks post');
+
 assert(pending.blockBoth.length === 0, `pending should not block submit ${JSON.stringify(pending.blockBoth)}`);
 assert(pending.blockPost.some((i) => i.code === 'PENDING_PRODUCT'), `pending blockPost ${JSON.stringify(pending.blockPost)}`);
 

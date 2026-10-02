@@ -3,7 +3,7 @@ import { Loader2, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
-import { formatDate } from '../../lib/format';
+import { formatDate, formatQty } from '../../lib/format';
 import { usePermissions } from '../../lib/permissions';
 import type {
   CreateProductFromLineInput,
@@ -63,6 +63,7 @@ export function DocumentLines({
   onConfirmProduct,
   saving,
   expiryGuardDate,
+  onEnableBatch,
 }: {
   documentId: string;
   lines: DocumentLineRecord[];
@@ -76,9 +77,10 @@ export function DocumentLines({
   onCreateProduct: (lineId: string, input: CreateProductFromLineInput) => Promise<void>;
   onConfirmProduct: (productId: string) => Promise<void>;
   saving: boolean;
+  onEnableBatch?: (productId: string) => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
-  const { seeFinancials } = usePermissions();
+  const { seeFinancials, manage } = usePermissions();
   /** A suggestion that still needs batch details opens the line form with it already picked. */
   const [preset, setPreset] = useState<{ lineId: string; product: PickedProduct } | null>(null);
 
@@ -147,13 +149,73 @@ export function DocumentLines({
                   </span>
                 )}
                 <span className="mt-0.5 block font-mono text-[0.7rem] text-slate-500">
-                  {line.quantity} {line.unit ? t(`labels.unit.${line.unit}`) : ''}
+                  {formatQty(line.quantity, i18n.language)} {line.unit ? t(`labels.unit.${line.unit}`) : ''}
                   {seeFinancials
                     ? ` × ${formatEuro(line.finalUnitPrice ?? line.unitPrice ?? 0)}${line.discountPercent > 0 ? ` (−${line.discountPercent}%)` : ''}`
                     : ''}
-                  {line.product?.batchTracking && line.batchNumber ? ` · ${line.batchNumber}` : ''}
-                  {line.expiryDate && (line.product?.batchTracking || line.expired) ? ` · ${formatDate(line.expiryDate, i18n.language)}` : ''}
+                  {line.batchNumber ? ` · ${line.batchNumber}` : ''}
+                  {line.expiryDate ? ` · ${formatDate(line.expiryDate, i18n.language)}` : ''}
                 </span>
+                {(line.quantityCheck || line.unitCheck || line.batchNotTracked) && (
+                  <span className="mt-1 block font-sans text-[0.72rem] text-ops-warn">
+                    {line.quantityCheck && (
+                      <span className="mr-2 inline-flex items-center gap-1">
+                        <TriangleAlert size={11} />
+                        {t('doc.checkQuantity')}
+                        {editable && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="ml-1 font-display font-medium text-ops-accent hover:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void onUpdate(line.id, { confirmQuantity: true });
+                            }}
+                          >
+                            {t('doc.confirmQuantity')}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {line.unitCheck && (
+                      <span className="mr-2 inline-flex items-center gap-1">
+                        <TriangleAlert size={11} />
+                        {t('doc.checkUnit')}
+                        {editable && manage && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="ml-1 font-display font-medium text-ops-accent hover:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void onUpdate(line.id, { confirmUnit: true });
+                            }}
+                          >
+                            {t('doc.confirmUnit')}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {line.batchNotTracked && (
+                      <span className="mt-1 block">
+                        {t('doc.batchNotTracked')}
+                        {editable && manage && line.product && onEnableBatch && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="ml-1 font-display font-medium text-ops-accent hover:underline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void onEnableBatch(line.product!.id);
+                            }}
+                          >
+                            {t('doc.enableBatchTracking')}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </span>
+                )}
                 {issues.length > 0 && (
                   <span className="mt-1 flex items-center gap-1 font-display text-[0.7rem] font-medium text-ops-warn">
                     <TriangleAlert size={11} />
@@ -188,6 +250,7 @@ export function DocumentLines({
                   onChoose={() => onSelect(line.id)}
                   onCreate={(input) => onCreateProduct(line.id, input)}
                   onConfirmPending={onConfirmProduct}
+                  canApprovePending={manage}
                 />
               </div>
             )}

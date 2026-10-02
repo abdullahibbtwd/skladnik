@@ -332,6 +332,15 @@ if (staffA) {
 
   // WRITE: products / partners / void / reports / users / vat / settings
   expectStatus(await call(staffA, 'POST', '/products', { name: 'X', code: `S-${Date.now()}`, unit: 'PCS', vatRate: 20, purchasePrice: 1, sellingPrice: 2 }), 403, 'staff create product');
+  // CAF-02: the products screen stays closed. Pending products are created only from a scan line.
+  expectStatus(await call(staffA, 'POST', `/products/${product.id}/enable-batch-tracking`), 403, 'staff cannot enable batch tracking');
+  expectStatus(await call(staffA, 'POST', `/products/${product.id}/merge`, { productId: product.id }), 403, 'staff cannot merge products');
+  expectStatus(await call(staffA, 'GET', `/recipes?siteId=${mainStore.id}`), 403, 'staff recipes');
+  const staffMenu = await call(staffA, 'GET', `/recipes/menu?siteId=${mainStore.id}`);
+  expectStatus(staffMenu, 200, 'staff recipe menu');
+  assertNoForbiddenFields(staffMenu.body, 'GET /recipes/menu');
+  const staffCompany = await call(staffA, 'GET', '/company');
+  expectStatus(staffCompany, 200, 'staff company profile');
   expectStatus(await call(staffA, 'PATCH', `/products/${product.id}`, { minStock: 1 }), 403, 'staff patch product');
   expectStatus(await call(staffA, 'POST', '/partners', { name: 'Hack', kind: 'SUPPLIER' }), 403, 'staff create partner');
   expectStatus(await call(staffA, 'GET', '/users'), 403, 'staff users');

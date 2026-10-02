@@ -45,6 +45,8 @@ import {
   addDocumentLine,
   addSupplierCode,
   archiveProduct,
+  enableProductBatchTracking,
+  mergePendingProduct,
   cancelDocument,
   reverseDocument,
   createDocument,
@@ -576,6 +578,25 @@ export function useUpdateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...input }: { id: string } & Partial<ProductWriteInput>) => updateProduct(id, input),
+    onSuccess: () => invalidateCatalog(queryClient),
+  });
+}
+
+export function useEnableBatchTracking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => enableProductBatchTracking(id),
+    onSuccess: () => {
+      invalidateCatalog(queryClient);
+      invalidateDocuments(queryClient);
+    },
+  });
+}
+
+export function useMergePendingProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, intoProductId }: { id: string; intoProductId: string }) => mergePendingProduct(id, intoProductId),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }

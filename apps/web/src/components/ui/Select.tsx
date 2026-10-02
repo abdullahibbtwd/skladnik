@@ -18,6 +18,8 @@ type SelectProps<T extends string> = {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** CAF-04: below 640px show a full-width list so unit names are not clipped to one letter. */
+  expandOnNarrow?: boolean;
 };
 
 /** Leave room for the mobile dock + fixed action bars so menus open upward when needed. */
@@ -34,6 +36,7 @@ export function Select<T extends string>({
   placeholder = 'Select',
   disabled = false,
   className,
+  expandOnNarrow = false,
 }: SelectProps<T>) {
   const generatedId = useId();
   const triggerId = id ?? generatedId;
@@ -42,6 +45,16 @@ export function Select<T extends string>({
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const [narrow, setNarrow] = useState(false);
+
+  useEffect(() => {
+    if (!expandOnNarrow || typeof window === 'undefined') return;
+    const media = window.matchMedia('(max-width: 639px)');
+    const apply = () => setNarrow(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, [expandOnNarrow]);
 
   const selected = options.find((option) => option.value === value);
 
@@ -49,7 +62,7 @@ export function Select<T extends string>({
     const trigger = rootRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
-    const width = rect.width;
+    const width = expandOnNarrow ? Math.max(rect.width, 240) : rect.width;
     const spaceBelow = window.innerHeight - rect.bottom - bottomReserve();
     const openUp = spaceBelow < 240 && rect.top > spaceBelow;
     setMenuStyle({
@@ -92,6 +105,35 @@ export function Select<T extends string>({
     };
   }, [open]);
 
+  if (expandOnNarrow && narrow) {
+    return (
+      <div role="listbox" aria-label={placeholder} className={cn('flex flex-col gap-1', className)}>
+        {options.map((option) => {
+          const isSelected = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              disabled={disabled || option.disabled}
+              onClick={() => {
+                if (disabled || option.disabled) return;
+                onChange(option.value);
+              }}
+              className={cn(
+                'w-full rounded-lg border px-3 py-2.5 text-left font-display text-[0.84rem] font-medium',
+                isSelected ? 'border-ops-teal bg-teal-50 text-ops-teal' : 'border-slate-200 bg-white text-ops-ink',
+              )}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div ref={rootRef} className={cn('relative', className)}>
       <button
@@ -113,7 +155,7 @@ export function Select<T extends string>({
           disabled && 'cursor-not-allowed opacity-55 hover:border-slate-200 hover:bg-ops-canvas',
         )}
       >
-        <span className={cn('min-w-0 truncate', selected ? 'text-ops-ink' : 'text-slate-400')}>
+        <span className={cn('min-w-0', expandOnNarrow ? 'whitespace-normal' : 'truncate', selected ? 'text-ops-ink' : 'text-slate-400')}>
           {selected?.label ?? placeholder}
         </span>
         <ChevronDown
@@ -156,7 +198,9 @@ export function Select<T extends string>({
                     )}
                   >
                     <span className="min-w-0">
-                      <span className="block truncate font-display text-[0.84rem] font-medium">{option.label}</span>
+                      <span className={cn('block font-display text-[0.84rem] font-medium', expandOnNarrow ? 'whitespace-normal' : 'truncate')}>
+                        {option.label}
+                      </span>
                       {option.hint && (
                         <span className="mt-0.5 block truncate font-sans text-[0.72rem] text-slate-400">{option.hint}</span>
                       )}

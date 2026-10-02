@@ -18,6 +18,7 @@ import {
   useProductsQuery,
   useRemoveSupplierCode,
   useStockQuery,
+  useMergePendingProduct,
   useUpdateProduct,
 } from '../../lib/workspace-session';
 import { usePermissions } from '../../lib/permissions';
@@ -77,7 +78,8 @@ const emptyForm: ProductForm = {
   sellingPrice: '0',
   minStock: '0',
   maxStock: '',
-  batchTracking: 'no',
+  // SKL-03: a new product tracks batches unless the person turns it off.
+  batchTracking: 'yes',
   status: 'ACTIVE',
   barcodes: '',
 };
@@ -116,6 +118,9 @@ export const InventoryPanel: React.FC = () => {
   });
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
+  const mergePending = useMergePendingProduct();
+  const [mergeOf, setMergeOf] = useState<ProductRecord | null>(null);
+  const canReviewPending = permissions.manage;
   const archiveProduct = useArchiveProduct();
   const addSupplierCode = useAddSupplierCode();
   const removeSupplierCode = useRemoveSupplierCode();
@@ -195,7 +200,7 @@ export const InventoryPanel: React.FC = () => {
     event.preventDefault();
     setError(null);
     try {
-      if (editing && !canCatalog) {
+      if (editing && !canCatalog && editing.status !== 'PENDING_REVIEW') {
         await updateProduct.mutateAsync({ id: editing.id, minStock: Number(form.minStock), siteId });
         toast.success(t('inventory.updated'));
         setModal(null);
@@ -212,6 +217,15 @@ export const InventoryPanel: React.FC = () => {
       setModal(null);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : t('inventory.saveFailed'));
+    }
+  };
+
+  const approvePending = async (product: ProductRecord) => {
+    try {
+      await updateProduct.mutateAsync({ id: product.id, status: 'ACTIVE' });
+      toast.success(t('inventory.approved'));
+    } catch (approveError) {
+      toast.error(approveError instanceof Error ? approveError.message : t('inventory.saveFailed'));
     }
   };
 
@@ -236,7 +250,7 @@ export const InventoryPanel: React.FC = () => {
   };
 
   const title = useMemo(() => {
-    if (editing && !canCatalog) return t('inventory.editMinStock');
+    if (editing && !canCatalog && editing.status !== 'PENDING_REVIEW') return t('inventory.editMinStock');
     return editing ? t('inventory.editProduct') : t('inventory.addProduct');
   }, [editing, canCatalog, t]);
   const saving = createProduct.isPending || updateProduct.isPending;
@@ -375,9 +389,15 @@ export const InventoryPanel: React.FC = () => {
                         <RowActionsMenu
                           actions={[
                             {
-                              label: canCatalog ? t('common.edit') : t('inventory.editMinStock'),
+                              label: canCatalog || product.status === 'PENDING_REVIEW' ? t('common.edit') : t('inventory.editMinStock'),
                               onClick: () => openEdit(product),
                             },
+                            ...(canReviewPending && product.status === 'PENDING_REVIEW'
+                              ? [
+                                  { label: t('inventory.approve'), onClick: () => void approvePending(product) },
+                                  { label: t('inventory.merge'), onClick: () => setMergeOf(product) },
+                                ]
+                              : []),
                             ...(canCatalog && product.status !== 'ARCHIVED'
                               ? [{ label: t('common.archive'), onClick: () => void archive(), danger: true }]
                               : []),
@@ -460,8 +480,14 @@ export const InventoryPanel: React.FC = () => {
                         <td className="px-5 py-3.5 text-right">
                           <div className="flex justify-end gap-1.5">
                             <GhostButton onClick={() => openEdit(product)}>
-                              {canCatalog ? t('common.edit') : t('inventory.editMinStock')}
+                              {canCatalog || product.status === 'PENDING_REVIEW' ? t('common.edit') : t('inventory.editMinStock')}
                             </GhostButton>
+                            {canReviewPending && product.status === 'PENDING_REVIEW' && (
+                              <>
+                                <GhostButton onClick={() => void approvePending(product)}>{t('inventory.approve')}</GhostButton>
+                                <GhostButton onClick={() => setMergeOf(product)}>{t('inventory.merge')}</GhostButton>
+                              </>
+                            )}
                             {canCatalog && product.status !== 'ARCHIVED' && (
                               <GhostButton
                                 danger
@@ -498,7 +524,7 @@ export const InventoryPanel: React.FC = () => {
 
       <WorkspaceModal title={title} isOpen={modal !== null} onClose={() => setModal(null)} wide={canCatalog}>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          {!canCatalog && editing ? (
+          {!canCatalog && editing && editing.status !== 'PENDING_REVIEW' ? (
             <>
               <p className="font-sans text-[0.82rem] text-slate-600">
                 {editing.name}
@@ -558,6 +584,7 @@ export const InventoryPanel: React.FC = () => {
               <Select
                 id="product-unit"
                 value={form.unit}
+                expandOnNarrow
                 onChange={(unit) => setForm((prev) => ({ ...prev, unit }))}
                 options={UNITS_OF_MEASURE.map((item) => ({ value: item, label: t(`labels.unit.${item}`) }))}
               />
@@ -779,6 +806,35 @@ export const InventoryPanel: React.FC = () => {
             {supplierError && <FieldError>{supplierError}</FieldError>}
           </div>
         )}
+      </WorkspaceModal>
+      <WorkspaceModal title={t('inventory.merge')} isOpen={mergeOf !== null} onClose={() => setMergeOf(null)}>
+        <ul className="flex max-h-80 flex-col gap-1 overflow-y-auto">
+          {products
+            .filter((product) => product.status === 'ACTIVE' && product.id !== mergeOf?.id)
+            .map((product) => (
+              <li key={product.id}>
+                <button
+                  type="button"
+                  className="w-full rounded-lg px-3 py-2 text-left font-sans text-[0.84rem] hover:bg-ops-canvas"
+                  onClick={async () => {
+                    if (!mergeOf) return;
+                    try {
+                      await mergePending.mutateAsync({ id: mergeOf.id, intoProductId: product.id });
+                      toast.success(t('inventory.mergeDone'));
+                      setMergeOf(null);
+                    } catch (mergeError) {
+                      toast.error(mergeError instanceof Error ? mergeError.message : t('inventory.saveFailed'));
+                    }
+                  }}
+                >
+                  {product.name}
+                  <span className="ml-2 font-mono text-[0.72rem] text-slate-400">
+                    {product.code} · {t(`labels.unit.${product.unit}`)}
+                  </span>
+                </button>
+              </li>
+            ))}
+        </ul>
       </WorkspaceModal>
     </div>
   );

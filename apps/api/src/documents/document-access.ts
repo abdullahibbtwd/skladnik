@@ -12,7 +12,9 @@ import { apiForbidden } from '../common/api-error';
  * - May edit / submit OWN drafts until submitted (DRAFT only for edit).
  * - SKL-11: may cancel OWN DRAFT only (not REVIEW / POSTED).
  * - Write-offs: recommended default = Staff posts directly (no cost threshold approval).
- * - May NOT post paper docs, reverse, transfer, stocktake, opening stock, or create products.
+ * - May NOT post paper docs, reverse, transfer, stocktake, or opening stock.
+ * - CAF-02: may create a PENDING_REVIEW product from a scan line on their own draft
+ *   (createProductFromLine). They still cannot edit or archive existing products.
  * - CASHIER has no document write access (POS only — SKL-07).
  */
 export type StaffDocAction = 'create' | 'edit' | 'submit' | 'post' | 'cancel' | 'reverse' | 'manage';

@@ -327,6 +327,16 @@ export class UpdateDocumentLineDto {
   @Min(0.001)
   quantity?: number;
 
+  /** CAF-01: the stored quantity was checked against the printed cell. */
+  @IsOptional()
+  @IsBoolean()
+  confirmQuantity?: boolean;
+
+  /** CAF-01: accept the product unit for the current quantity. */
+  @IsOptional()
+  @IsBoolean()
+  confirmUnit?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -386,9 +396,10 @@ export class CreateProductFromLineDto {
   @IsIn(UNITS_OF_MEASURE)
   unit!: UnitOfMeasure;
 
-  /** Required product group (SKL-03). */
+  /** Optional. Staff leave it empty; the manager sets the group on approval (CAF-02). */
+  @IsOptional()
   @IsUUID()
-  groupId!: string;
+  groupId?: string;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

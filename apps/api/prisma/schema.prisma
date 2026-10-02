@@ -663,6 +663,10 @@ model DocumentLine {
   expectedQuantity     Decimal?       @db.Decimal(12, 3)
   /// Staff checkmark on paper / line-level confirm on the review screen.
   verified             Boolean        @default(false)
+  /// CAF-01: reviewer confirmed the stored quantity against the printed quantity cell.
+  quantityConfirmed    Boolean        @default(false)
+  /// CAF-01: reviewer accepted the line unit when it does not convert onto the product unit.
+  unitConfirmed        Boolean        @default(false)
   sourceCaptureId      String?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt

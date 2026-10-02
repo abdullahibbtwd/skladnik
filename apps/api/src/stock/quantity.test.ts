@@ -15,6 +15,9 @@ expect(isQuantityPrecisionOk(3, 'CASE'), 'whole case');
 expect(!isQuantityPrecisionOk(0.5, 'PCS'), 'fractional pcs rejected');
 expect(isQuantityPrecisionOk(0.5, 'KG'), 'kg allows decimals');
 expect(isQuantityPrecisionOk(1.25, 'L'), 'litres allow decimals');
+// CAF barista write-off: 0,5 л of milk is accepted; 0,5 бр of a piece product is not.
+expect(isQuantityPrecisionOk(0.5, 'L'), '0,5 л of milk');
+expect(!isQuantityPrecisionOk(0.5, 'PCS'), '0,5 бр rejected');
 expect(!isQuantityPrecisionOk(1.2345, 'KG'), 'kg max 3 dp');
 expect(Boolean(quantityPrecisionProblem(0.5, 'PCS', 'Beer')?.includes('Beer')), 'names the product');
 

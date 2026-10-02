@@ -15,6 +15,7 @@ import { businessDate } from '../sales/business-day';
 import { barcodeForMatching } from './barcode';
 import type { ExtractedDocument } from './extracted-document.schema';
 import { counterpartyFromExtracted, linePricing, resolveUnit } from './match-extracted';
+import { resolveScannedQuantity } from './quantity-cell';
 import { NameIndex, partnerKey, productKey } from './name-matching';
 import { cleanDocumentNumber, parseOcrDate } from './parse-ocr-date';
 import { postProcessExtraction } from './post-process-extraction';
@@ -139,8 +140,19 @@ export class ExtractionApplyService {
         });
         via[match?.via ?? 'none'] += 1;
         const matched = match?.product ?? null;
-        const quantity = line.qty > 0 ? line.qty : 0;
-        const { unitPrice, discountPercent } = linePricing(line);
+        // CAF-01: the quantity cell ("12 л") wins over a model qty of 1. Matching does not
+        // replace that number with 1 or with the product's unit when the units don't convert.
+        const scanned = resolveScannedQuantity({
+          printed: line.ocrUnit,
+          modelQty: line.qty,
+          productUnit: matched?.unit ?? null,
+        });
+        const quantity = scanned.quantity > 0 ? scanned.quantity : 0;
+        const unit = scanned.unitCheck
+          ? (scanned.unit ?? 'OTHER')
+          : (scanned.unit ?? matched?.unit ?? resolveUnit(line.ocrUnit, aliases));
+        const priced = { ...line, qty: quantity };
+        const { unitPrice, discountPercent } = linePricing(priced);
         const amounts = computeLineAmounts(quantity, unitPrice, discountPercent);
         await tx.documentLine.create({
           data: {
@@ -153,7 +165,7 @@ export class ExtractionApplyService {
             ocrBarcode: rawBarcode,
             ocrDescription: line.ocrDescription || text.name,
             ocrUnit: line.ocrUnit,
-            unit: matched?.unit ?? resolveUnit(line.ocrUnit, aliases),
+            unit,
             quantity,
             unitPrice,
             discountPercent: amounts.discountPercent,

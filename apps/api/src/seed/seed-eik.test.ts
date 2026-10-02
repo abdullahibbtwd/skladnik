@@ -1,9 +1,37 @@
 /**
- * ACC-06: every ЕИК in the demo / cafe seed must pass the official 9-digit check digit.
- * Fails the unit suite if a bad number is re-introduced.
+ * ACC-06 / CAF-06: every demo company — profile, partners, groups and sites.
+ * Fails if any ЕИК is invalid, the profile is empty, or an English seed name comes back.
  */
 import assert from 'node:assert/strict';
 import { isValidEik, taxIdProblems } from '@skladnik/shared';
+import { demoMasterData } from './demo-seed';
+
+const ENGLISH_SEED_NAMES = ['Coffee drinks', 'Ingredients', 'Pastry & drinks', 'Café Bar', 'Cafe Bar'];
+
+for (const tenant of demoMasterData()) {
+  const { profile } = tenant;
+  assert.equal(isValidEik(profile.eik), true, `${tenant.company}: ЕИК ${profile.eik}`);
+  assert.ok(profile.address.trim(), `${tenant.company}: address`);
+  assert.ok(profile.city.trim(), `${tenant.company}: city`);
+  assert.ok(profile.mol.trim(), `${tenant.company}: mol`);
+  assert.ok(profile.declarant.trim(), `${tenant.company}: declarant`);
+  assert.equal(taxIdProblems({ eik: profile.eik, vatNumber: tenant.vatNumber }).length, 0, `${tenant.company} VAT`);
+  assert.ok(tenant.sites.length > 0, `${tenant.company}: site`);
+  assert.ok(tenant.groups.length > 0, `${tenant.company}: groups`);
+  for (const name of [...tenant.sites, ...tenant.groups]) {
+    assert.equal(ENGLISH_SEED_NAMES.includes(name), false, `${tenant.company}: English seed name „${name}“`);
+  }
+  for (const partner of tenant.partners) {
+    assert.equal(isValidEik(partner.eik), true, `${partner.name}: ЕИК ${partner.eik}`);
+    assert.equal(taxIdProblems({ eik: partner.eik, vatNumber: `BG${partner.eik}` }).length, 0, partner.name);
+  }
+}
+
+const cafe = demoMasterData().find((tenant) => tenant.company === 'Demo Café');
+assert.ok(cafe, 'Demo Café');
+assert.deepEqual(cafe!.groups, ['Съставки', 'Кафе напитки', 'Печива и напитки']);
+assert.deepEqual(cafe!.sites, ['Кафе-бар']);
+assert.deepEqual(cafe!.batchTracked, ['Прясно мляко 3.5%', 'Кроасан с масло']);
 
 /** Keep in sync with apps/api/src/seed/demo-seed.ts partner + company profiles. */
 const SEED_EIKS: ReadonlyArray<{ label: string; eik: string }> = [

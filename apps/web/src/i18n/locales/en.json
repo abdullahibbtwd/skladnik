@@ -565,6 +565,12 @@
       "pending": "Unreviewed product from a scan"
     },
     "printed": "On the invoice",
+    "checkQuantity": "Check the quantity",
+    "confirmQuantity": "Confirm",
+    "checkUnit": "Check the unit",
+    "confirmUnit": "The quantity is in the product unit",
+    "batchNotTracked": "This product is not batch-tracked, so the expiry will not be followed",
+    "enableBatchTracking": "Turn on batch tracking",
     "printedCode": "code {{code}}",
     "saveNext": "Save & next",
     "saveLineFailed": "Could not save the line.",
@@ -748,6 +754,10 @@
     "catalogHint": "SKUs in this filter",
     "pendingReview": "Pending review",
     "missingPrice": "missing price",
+    "approve": "Approve",
+    "merge": "Merge into an existing product",
+    "mergeDone": "Product merged",
+    "approved": "Product approved",
     "freeOfCharge": "free of charge",
     "pendingHint": "Need a human check after OCR",
     "batchTracked": "Batch tracked",
@@ -1946,7 +1956,10 @@
     "remembers": "The supplier's code is remembered, so the next invoice matches by itself: {{codes}}",
     "createSubmit": "Create and use",
     "createFailed": "The product couldn't be created.",
-    "created": "{{name}} added to the catalog"
+    "created": "{{name}} added to the catalog",
+    "unitPlaceholder": "Choose a unit",
+    "unitRequired": "Choose a unit.",
+    "pendingStaff": "\"{{name}}\" is a new product waiting for a manager. You can still send the invoice for review."
   },
   "company": {
     "details": "Legal details",
@@ -2193,7 +2206,12 @@
     }
   },
   "errors": {
+    "INSUFFICIENT_ROLE": "You do not have permission for this action",
     "INSUFFICIENT_STOCK": "Not enough stock of {{product}}: {{available}} on hand, {{requested}} needed.",
+    "QUANTITY_CHECK": "Check the quantity on line {{line}}.",
+    "UNIT_CHECK": "Check the unit on line {{line}}.",
+    "PRODUCT_SIMILAR_EXISTS": "A similar product with the same unit already exists. Choose it instead of creating a new one.",
+    "EIK_MISMATCH": "The invoice ЕИК does not match the partner record.",
     "DOCUMENT_NOT_EDITABLE": "Posted or cancelled documents cannot be edited.",
     "DUPLICATE_DOCUMENT": "A document with this number already exists.",
     "MISSING_SITE_ID": "A site (siteId) is required.",

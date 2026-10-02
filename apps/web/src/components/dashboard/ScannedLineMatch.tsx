@@ -29,6 +29,7 @@ export function ScannedLineMatch({
   onChoose,
   onCreate,
   onConfirmPending,
+  canApprovePending = false,
 }: {
   line: DocumentLineRecord;
   busy: boolean;
@@ -36,6 +37,8 @@ export function ScannedLineMatch({
   onChoose: () => void;
   onCreate: (input: CreateProductFromLineInput) => Promise<void>;
   onConfirmPending: (productId: string) => Promise<void>;
+  /** Managers approve a pending product. Staff only submit it for review (CAF-02). */
+  canApprovePending?: boolean;
 }) {
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
@@ -49,7 +52,11 @@ export function ScannedLineMatch({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-ops-warn/25 bg-orange-50/70 px-3 py-2.5">
       <p className="font-sans text-[0.76rem] text-ops-warn">
-        {pending ? t('scanMatch.pendingHint', { name: pending.name }) : t('scanMatch.noMatchHint', { name: printedName })}
+        {pending
+          ? canApprovePending
+            ? t('scanMatch.pendingHint', { name: pending.name })
+            : t('scanMatch.pendingStaff', { name: pending.name })
+          : t('scanMatch.noMatchHint', { name: printedName })}
       </p>
       {line.suggestions.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -77,7 +84,7 @@ export function ScannedLineMatch({
           <Search size={12} />
           {t('scanMatch.choose')}
         </button>
-        {pending ? (
+        {pending && canApprovePending ? (
           <button
             type="button"
             disabled={busy}
@@ -87,7 +94,7 @@ export function ScannedLineMatch({
             <CheckCircle2 size={12} />
             {t('scanMatch.confirmNew')}
           </button>
-        ) : (
+        ) : pending ? null : (
           <button
             type="button"
             disabled={busy}
@@ -117,15 +124,21 @@ function CreateProductForm({
   const { t } = useTranslation();
   const [name, setName] = useState(line.printed.name ?? line.printed.description ?? '');
   const [code, setCode] = useState('');
-  const [unit, setUnit] = useState<UnitOfMeasure>(line.unit ?? 'PCS');
+  // CAF-02: no default „друго“. A parsed stock unit (л, кг, …) is pre-selected; otherwise the person chooses.
+  const [unit, setUnit] = useState<UnitOfMeasure | ''>(line.unit && line.unit !== 'OTHER' ? line.unit : '');
   const [vatRate, setVatRate] = useState(String(line.vatRate));
-  const [batchTracking, setBatchTracking] = useState(Boolean(line.batchNumber || line.expiryDate));
+  // CAF-02 / CAF-03: batch tracking starts ON for a product created from a scan line.
+  const [batchTracking, setBatchTracking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     try {
+      if (!unit) {
+        setError(t('scanMatch.unitRequired'));
+        return;
+      }
       await onCreate({ name: name.trim(), code: code.trim() || undefined, unit, vatRate: Number(vatRate), batchTracking });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('scanMatch.createFailed'));
@@ -139,23 +152,25 @@ function CreateProductForm({
         <span className={labelClass}>{t('scanMatch.name')}</span>
         <input required maxLength={180} value={name} onChange={(event) => setName(event.target.value)} className={inputClass} />
       </label>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label>
           <span className={labelClass}>{t('scanMatch.code')}</span>
           <input maxLength={64} value={code} placeholder={t('scanMatch.codeAuto')} onChange={(event) => setCode(event.target.value)} className={inputClass} />
         </label>
-        <div>
-          <span className={labelClass}>{t('scanMatch.unit')}</span>
-          <Select<UnitOfMeasure>
-            value={unit}
-            onChange={setUnit}
-            options={UNITS_OF_MEASURE.map((item) => ({ value: item, label: t(`labels.unit.${item}`) }))}
-          />
-        </div>
         <label>
           <span className={labelClass}>{t('scanMatch.vat')}</span>
           <input type="number" inputMode="decimal" min="0" max="100" step="0.01" required value={vatRate} onChange={(event) => setVatRate(event.target.value)} className={inputClass} />
         </label>
+      </div>
+      <div>
+        <span className={labelClass}>{t('scanMatch.unit')}</span>
+        <Select<UnitOfMeasure | ''>
+          value={unit}
+          onChange={setUnit}
+          placeholder={t('scanMatch.unitPlaceholder')}
+          expandOnNarrow
+          options={UNITS_OF_MEASURE.map((item) => ({ value: item, label: t(`labels.unit.${item}`) }))}
+        />
       </div>
       <label className="flex items-center gap-2 font-sans text-[0.8rem] text-ops-ink">
         <input type="checkbox" checked={batchTracking} onChange={(event) => setBatchTracking(event.target.checked)} className="size-4 accent-ops-teal" />
@@ -170,7 +185,7 @@ function CreateProductForm({
       <div className="flex items-center gap-2">
         <button
           type="submit"
-          disabled={busy || !name.trim()}
+          disabled={busy || !name.trim() || !unit}
           className="inline-flex items-center gap-1.5 rounded-lg bg-ops-teal px-3 py-2 font-display text-[0.78rem] font-medium text-white disabled:opacity-50"
         >
           {busy ? <Loader2 size={12} className="animate-spin" /> : <PackagePlus size={12} />}

@@ -5,12 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type ProductStatus } from '@prisma/client';
-import { canWriteProductCatalog, netContentProblem, type AuthUser, type ContentUnit } from '@skladnik/shared';
+import { canWriteProductCatalog, isOperationalManager, netContentProblem, type AuthUser, type ContentUnit } from '@skladnik/shared';
 import { changes, recordActivity } from '../activity/record-activity';
 import { apiBadRequest, apiForbidden } from '../common/api-error';
 import { toNumber } from '../common/decimal';
 import { presentProductForRole } from '../common/staff-view';
 import { PrismaService } from '../prisma/prisma.service';
+import { adoptLooseStock, UNBATCHED_LOT_NAME } from '../stock/batch-adoption';
+import { loadCostBook, saveAverages } from '../stock/ledger';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateSupplierCodeDto } from './dto/create-supplier-code.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
@@ -133,7 +135,12 @@ export class ProductsService {
   async update(user: AuthUser, id: string, dto: UpdateProductDto) {
     const existing = await this.findInCompany(user.companyId, id);
     const catalogWriter = canWriteProductCatalog(user.role);
-    if (!catalogWriter) {
+    // CAF-02: a site manager may edit a product that is still waiting for approval.
+    const pendingEdit = !catalogWriter && user.role === 'SITE_MANAGER' && existing.status === 'PENDING_REVIEW';
+    if (pendingEdit && dto.status === 'ARCHIVED') {
+      throw apiForbidden('PRODUCT_CATALOG_FORBIDDEN', 'Архивирането е за собственика. Одобрете продукта или го обединете със съществуващ.');
+    }
+    if (!catalogWriter && !pendingEdit) {
       // SKL-12: site managers write ProductSiteMin for their own site only (not company Product.minStock).
       const restricted = managerMinStockOnlyPatch(dto as unknown as Record<string, unknown>);
       if (!restricted.ok) {
@@ -196,6 +203,7 @@ export class ProductsService {
     if (dto.minStock !== undefined) data.minStock = dto.minStock;
     if (dto.maxStock !== undefined) data.maxStock = dto.maxStock;
     if (dto.batchTracking !== undefined) data.batchTracking = dto.batchTracking;
+    const enableTracking = dto.batchTracking === true && !existing.batchTracking;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.groupId !== undefined) {
       data.group = dto.groupId ? { connect: { id: dto.groupId } } : { disconnect: true };
@@ -217,6 +225,7 @@ export class ProductsService {
             });
           }
         }
+        if (enableTracking) await this.moveLooseStockIntoUnbatchedLot(tx, user.companyId, existing.id);
         // Owner/accountant may also set a per-site override when siteId is supplied.
         if (dto.siteId !== undefined && dto.minStock !== undefined) {
           await tx.productSiteMin.upsert({
@@ -242,6 +251,109 @@ export class ProductsService {
     } catch (error) {
       this.throwIfCodeTaken(error);
       throw error;
+    }
+  }
+
+  /**
+   * CAF-03: one-click for a manager. Existing loose stock moves into „без партида“
+   * (no expiry) so the on-hand total does not change. Line batch and expiry are untouched.
+   */
+  async enableBatchTracking(user: AuthUser, id: string) {
+    if (!isOperationalManager(user.role)) {
+      throw apiForbidden('INSUFFICIENT_ROLE', 'Нямате права за това действие');
+    }
+    const existing = await this.findInCompany(user.companyId, id);
+    if (existing.batchTracking) return { product: this.serialize(existing, user.role) };
+    const product = await this.prisma.$transaction(async (tx) => {
+      await this.moveLooseStockIntoUnbatchedLot(tx, user.companyId, existing.id);
+      return tx.product.update({
+        where: { id: existing.id },
+        data: { batchTracking: true },
+        include: productInclude,
+      });
+    });
+    await this.log(user, product, 'UPDATE', { before: { batchTracking: false }, after: { batchTracking: true } });
+    return { product: this.serialize(product, user.role) };
+  }
+
+  /**
+   * CAF-02: move document lines off a pending product onto an existing one, then drop the pending row.
+   * Stock movements are not rewritten; a pending product cannot have been posted.
+   */
+  async mergePending(user: AuthUser, id: string, intoProductId: string) {
+    if (!isOperationalManager(user.role)) {
+      throw apiForbidden('INSUFFICIENT_ROLE', 'Нямате права за това действие');
+    }
+    if (!intoProductId) throw apiBadRequest('PRODUCT_MERGE_TARGET', 'Изберете съществуващ продукт');
+    if (id === intoProductId) throw apiBadRequest('PRODUCT_MERGE_SELF', 'Изберете друг продукт, с който да обедините');
+    const pending = await this.findInCompany(user.companyId, id);
+    if (pending.status !== 'PENDING_REVIEW') {
+      throw apiBadRequest('PRODUCT_NOT_PENDING', 'Само продукт за одобрение може да се обедини със съществуващ');
+    }
+    const target = await this.findInCompany(user.companyId, intoProductId);
+    if (target.status === 'ARCHIVED') throw apiBadRequest('PRODUCT_ARCHIVED', 'Архивиран продукт не може да поеме редовете');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.documentLine.updateMany({
+        where: { companyId: user.companyId, productId: pending.id },
+        data: { productId: target.id, unit: target.unit },
+      });
+      const movements = await tx.stockMovement.count({ where: { productId: pending.id } });
+      if (movements === 0) {
+        await tx.recipeIngredient.deleteMany({ where: { productId: pending.id } });
+        await tx.batch.deleteMany({ where: { productId: pending.id } });
+        await tx.product.delete({ where: { id: pending.id } });
+      } else {
+        await tx.product.update({ where: { id: pending.id }, data: { status: 'ARCHIVED' } });
+      }
+    });
+    await this.log(user, target, 'MERGE', {
+      before: {},
+      after: { mergedFrom: pending.name, mergedFromCode: pending.code },
+    });
+    return { productId: target.id };
+  }
+
+  /**
+   * CAF-03: OUT the loose quantity and IN the same quantity into one lot with no expiry.
+   * See adoptLooseStock — on-hand before equals on-hand after.
+   */
+  private async moveLooseStockIntoUnbatchedLot(tx: Prisma.TransactionClient, companyId: string, productId: string) {
+    const sites = await tx.site.findMany({ where: { companyId }, select: { id: true } });
+    for (const site of sites) {
+      const { book } = await loadCostBook(tx, companyId, site.id, [productId]);
+      const plan = adoptLooseStock(book.onHand(productId, null));
+      if (!plan) continue;
+      const batch = await tx.batch.upsert({
+        where: { companyId_productId_batchNumber: { companyId, productId, batchNumber: UNBATCHED_LOT_NAME } },
+        create: { companyId, productId, batchNumber: UNBATCHED_LOT_NAME, expiryDate: null, isAutomatic: false },
+        update: {},
+      });
+      const unitCost = book.issue(productId, null, plan.outQty);
+      book.receive(productId, batch.id, plan.inQty, unitCost);
+      await tx.stockMovement.create({
+        data: {
+          companyId,
+          siteId: site.id,
+          productId,
+          batchId: null,
+          direction: 'OUT',
+          quantity: plan.outQty,
+          unitCost,
+        },
+      });
+      await tx.stockMovement.create({
+        data: {
+          companyId,
+          siteId: site.id,
+          productId,
+          batchId: batch.id,
+          direction: 'IN',
+          quantity: plan.inQty,
+          unitCost,
+        },
+      });
+      await saveAverages(tx, companyId, site.id, book);
     }
   }
 

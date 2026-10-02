@@ -254,6 +254,16 @@ export function canAdjustProductMinStock(role: UserRole | null | undefined): boo
   return Boolean(role && PRODUCT_MIN_STOCK_ROLES.includes(role));
 }
 
+/**
+ * CAF-02: create a product from a scanned invoice line.
+ * Staff creates PENDING_REVIEW only. This does not grant catalog create/edit/archive.
+ */
+export const PENDING_PRODUCT_CREATE_ROLES: readonly UserRole[] = ['OWNER', 'SITE_MANAGER', 'STAFF'];
+
+export function canCreatePendingProduct(role: UserRole | null | undefined): boolean {
+  return Boolean(role && PENDING_PRODUCT_CREATE_ROLES.includes(role));
+}
+
 export const UNITS_OF_MEASURE = ['PCS', 'PACK', 'KG', 'L', 'CASE', 'CARTON', 'JAR', 'OTHER'] as const;
 export type UnitOfMeasure = (typeof UNITS_OF_MEASURE)[number];
 

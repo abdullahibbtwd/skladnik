@@ -34,6 +34,23 @@ export class ProductsController {
     return this.products.update(user, id, dto);
   }
 
+  /** CAF-03: manager turns batch tracking on without changing the stock total. */
+  @Post(':id/enable-batch-tracking')
+  @Roles('OWNER', 'SITE_MANAGER')
+  enableBatchTracking(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.products.enableBatchTracking(user, id);
+  }
+
+  /** CAF-02: merge a pending scan product into an existing catalog product. */
+  @Post(':id/merge')
+  @Roles('OWNER', 'SITE_MANAGER')
+  merge(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: { productId?: string }) {
+    if (!body?.productId) {
+      return this.products.mergePending(user, id, '');
+    }
+    return this.products.mergePending(user, id, body.productId);
+  }
+
   @Delete(':id')
   @Roles('OWNER')
   archive(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
