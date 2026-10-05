@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { extractDocumentFromImage, type ExtractDocumentResult, type ReasoningEffort, type VisionTuning } from './extract-document';
+import { DEFAULT_LAYOUT_STRUCT_MODEL, extractDocumentViaLayout } from './extract-document-layout';
 
 const EFFORTS: ReasoningEffort[] = ['low', 'high', 'max'];
 /** Chosen with scripts/bench-extraction.cjs (audit F-17); GLM's own default is max. */
 const DEFAULT_EFFORT: ReasoningEffort = 'low';
+
+export type OcrEngine = 'vision' | 'layout';
 
 @Injectable()
 export class ExtractorService {
@@ -26,6 +29,16 @@ export class ExtractorService {
     return this.config.get<string>('GLM_MODEL') ?? this.config.get<string>('ZAI_VISION_MODEL') ?? 'glm-5.3-flash';
   }
 
+  /** `vision` = image chat/completions; `layout` = GLM-OCR + local table parse (+ optional flash header). */
+  engine(): OcrEngine {
+    const value = this.config.get<string>('OCR_ENGINE')?.trim().toLowerCase();
+    return value === 'layout' ? 'layout' : 'vision';
+  }
+
+  structureModel() {
+    return this.config.get<string>('GLM_LAYOUT_STRUCT_MODEL')?.trim() || DEFAULT_LAYOUT_STRUCT_MODEL;
+  }
+
   tuning(): VisionTuning {
     const effort = this.config.get<string>('GLM_REASONING_EFFORT')?.trim().toLowerCase() as ReasoningEffort | undefined;
     const maxEdge = Number(this.config.get<string>('VISION_MAX_EDGE'));
@@ -41,13 +54,16 @@ export class ExtractorService {
   }
 
   extractFromImage(image: Buffer, mimeType?: string): Promise<ExtractDocumentResult> {
-    return extractDocumentFromImage({
+    const input = {
       apiKey: this.apiKey(),
       baseUrl: this.baseUrl(),
       model: this.model(),
       image,
       mimeType,
       tuning: this.tuning(),
-    });
+    };
+    return this.engine() === 'layout'
+      ? extractDocumentViaLayout({ ...input, structureModel: this.structureModel() })
+      : extractDocumentFromImage(input);
   }
 }

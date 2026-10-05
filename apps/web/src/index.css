@@ -222,4 +222,24 @@
     color: #475569;
     white-space: pre-line;
   }
+
+  @page receipt {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  .receipt-print {
+    page: receipt;
+    max-width: 90mm;
+    margin: 0 auto;
+    font-size: 9.5pt;
+  }
+
+  .receipt-print h1 {
+    font-size: 12pt;
+  }
+
+  .receipt-print table + table {
+    margin-top: 6pt;
+  }
 }

@@ -220,6 +220,7 @@ export class ApiError extends Error {
   readonly params: Record<string, string | number | boolean | null>;
   readonly warnings: string[];
   readonly existingDocument: DuplicateDocumentRef | null;
+  readonly similarProducts: { id: string; name: string; code: string }[];
 
   constructor(
     message: string,
@@ -228,6 +229,7 @@ export class ApiError extends Error {
     warnings: string[],
     existingDocument: DuplicateDocumentRef | null = null,
     params: Record<string, string | number | boolean | null> = {},
+    similarProducts: { id: string; name: string; code: string }[] = [],
   ) {
     super(message);
     this.name = 'ApiError';
@@ -236,6 +238,7 @@ export class ApiError extends Error {
     this.params = params;
     this.warnings = warnings;
     this.existingDocument = existingDocument;
+    this.similarProducts = similarProducts;
   }
 }
 
@@ -319,8 +322,24 @@ async function requestWithResponse<T>(
     if (response.status === 401 && (await refreshSession())) response = await send();
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const body = payload as { code?: unknown; warnings?: unknown; existingDocument?: unknown };
+      const body = payload as {
+        code?: unknown;
+        warnings?: unknown;
+        existingDocument?: unknown;
+        similarProducts?: unknown;
+      };
       const existing = body.existingDocument;
+      const similarRaw = Array.isArray(body.similarProducts) ? body.similarProducts : [];
+      const similarProducts = similarRaw.filter(
+        (row): row is { id: string; name: string; code: string } =>
+          Boolean(
+            row &&
+              typeof row === 'object' &&
+              typeof (row as { id?: unknown }).id === 'string' &&
+              typeof (row as { name?: unknown }).name === 'string' &&
+              typeof (row as { code?: unknown }).code === 'string',
+          ),
+      );
       throw new ApiError(
         localisedErrorMessage(payload, 'Something went wrong. Please try again.'),
         response.status,
@@ -330,6 +349,7 @@ async function requestWithResponse<T>(
           ? (existing as DuplicateDocumentRef)
           : null,
         errorParams(payload),
+        similarProducts,
       );
     }
     return { payload: payload as T, response };
@@ -578,6 +598,8 @@ export type ProductSuggestion = {
   vatRate: number;
   batchTracking: boolean;
   score: number;
+  /** Present when the hit is still waiting for manager approval. */
+  status?: 'ACTIVE' | 'PENDING_REVIEW' | 'ARCHIVED';
 };
 
 export type CreateProductFromLineInput = {

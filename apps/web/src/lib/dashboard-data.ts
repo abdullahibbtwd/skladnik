@@ -1,4 +1,4 @@
-import { DEFAULT_EXPIRY_WINDOWS, expiryBucketCounts, expiryLevel, type DocumentStatus, type DocumentType, type UnitOfMeasure, type WriteOffReason } from '@skladnik/shared';
+import { DEFAULT_EXPIRY_WINDOWS, expiryBucketCounts, expiryLevel, expiryWithinCount, type DocumentStatus, type DocumentType, type UnitOfMeasure, type WriteOffReason } from '@skladnik/shared';
 import i18n from '../i18n';
 import { asMoney, formatEuro as formatEuroValue, formatShortDay } from './format';
 import type { DocumentListItem, StockLevel } from './workspace-api';
@@ -112,11 +112,12 @@ export function buildDashboardState(
     )
     .sort((a, b) => a.daysLeft - b.daysLeft || a.name.localeCompare(b.name));
 
+  const daysLeftList = fefoBoard.map((line) => line.daysLeft);
   /** Non-cumulative bands from Settings → Stock rules; expired batches are counted separately. */
-  const expiring = expiryBucketCounts(
-    fefoBoard.map((line) => line.daysLeft),
-    windows,
-  );
+  const expiring = expiryBucketCounts(daysLeftList, windows);
+  /** Overview “Expiring in N days” — cumulative through the urgent threshold (includes critical). */
+  const soonDays = windows[2] ?? 7;
+  const soonCount = expiryWithinCount(daysLeftList, soonDays);
 
   const lowStock: LowStockLine[] = items
     .filter((item) => item.status !== 'OK')
@@ -142,6 +143,8 @@ export function buildDashboardState(
     reorderCount: items.filter((item) => item.suggestedOrder !== null).length,
     inStockCount: inStock.length,
     expiring,
+    soonDays,
+    soonCount,
     expired: expiredLines.length,
     lowStock,
     fefoBoard,

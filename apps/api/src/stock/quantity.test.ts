@@ -1,5 +1,6 @@
 import {
   expiryBucketCounts,
+  expiryWithinCount,
   expiryLevel,
   isQuantityPrecisionOk,
   quantityPrecisionProblem,
@@ -34,5 +35,9 @@ expect(buckets[1].count === 1 && buckets[1].days === 14, `warning bucket: ${JSON
 expect(buckets[2].count === 1 && buckets[2].days === 7, `urgent bucket: ${JSON.stringify(buckets[2])}`);
 expect(buckets[3].count === 2 && buckets[3].days === 3, `critical bucket: ${JSON.stringify(buckets[3])}`);
 expect(buckets.reduce((sum, row) => sum + row.count, 0) === 5, 'expired excluded; bands non-cumulative');
+
+// Overview card: cumulative within 7 days includes critical (1,2) + urgent (5) — not the 4–7 band alone.
+expect(expiryWithinCount([-2, 1, 2, 5, 10, 20, 40], 7) === 3, 'within 7 days cumulative');
+expect(expiryWithinCount([-2, 1, 2, 5, 10, 20, 40], 3) === 2, 'within 3 days cumulative');
 
 console.log('quantity / expiry bucket tests passed');

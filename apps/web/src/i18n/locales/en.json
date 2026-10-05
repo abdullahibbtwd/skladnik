@@ -20,7 +20,10 @@
     "logout": "Logout",
     "openDashboard": "Open Dashboard",
     "openMenu": "Open navigation",
-    "closeMenu": "Close navigation"
+    "closeMenu": "Close navigation",
+    "scanNeedSite": "Add a site before photographing an invoice.",
+    "noSites": "No sites",
+    "loadingSites": "Loading sites…"
   },
   "hero": {
     "badge": "Retail stock, from paper invoices",
@@ -114,7 +117,8 @@
     "openAccount": "Create account",
     "annexLabel": "Annex No. 38 export",
     "annexHint": "Your posted history is kept from day one.",
-    "annexStatus": "For e-shops"
+    "annexStatus": "For e-shops",
+    "sku": "SKU"
   },
   "how": {
     "badge": "Workflow simplicity",
@@ -556,6 +560,10 @@
     "linesToFix_other": "{{count}} lines need fixing before posting",
     "addLineFirst": "Add at least one line before posting",
     "readyToPost": "Ready to post",
+    "readyToSubmitWithWarnings": "Can be sent for review — the manager will see the warnings",
+    "reviewWarningsTitle": "Review warnings before posting",
+    "openPartnersSettings": "Settings → Partners",
+    "reviewWarningsSubmitHint": "You can submit the document; a manager must fix these before posting.",
     "issue": {
       "product": "Pick a product",
       "archived": "Product is archived",
@@ -1071,6 +1079,7 @@
     "done": "Sale {{number}} · {{total}}",
     "saleDone": "Sale {{number}} recorded",
     "viewReceipt": "View receipt",
+    "printReceipt": "Print receipt",
     "failed": "The sale did not go through. Nothing was charged; try again.",
     "expiredTitle": "Sell expired stock?",
     "expiredConfirm": "Selling expired goods may breach food-safety rules. Continue only if you are sure.",
@@ -1253,7 +1262,9 @@
     "logOut": "Log out of this terminal",
     "operator": "Operator",
     "company": "Company",
-    "role": "Role"
+    "role": "Role",
+    "currentSite": "Current site",
+    "site": "site"
   },
   "camera": {
     "title": "Add a picture",
@@ -1272,7 +1283,8 @@
     "denied": "Camera access was blocked. Allow the camera, or choose a photo from your device.",
     "unsupported": "Could not find a camera. Choose a photo from your device instead.",
     "insecure": "Live camera needs localhost or HTTPS. Use Camera below, or pick a photo from this device.",
-    "failed": "Could not start the camera. You can still upload a photo from this device."
+    "failed": "Could not start the camera. You can still upload a photo from this device.",
+    "activeSite": "Active site"
   },
   "ocr": {
     "billingTitle": "We couldn't read this invoice",
@@ -1956,6 +1968,7 @@
     "remembers": "The supplier's code is remembered, so the next invoice matches by itself: {{codes}}",
     "createSubmit": "Create and use",
     "createFailed": "The product couldn't be created.",
+    "useExistingHint": "A matching product is already in your catalog — use it instead of creating a duplicate:",
     "created": "{{name}} added to the catalog",
     "unitPlaceholder": "Choose a unit",
     "unitRequired": "Choose a unit.",
@@ -2113,7 +2126,10 @@
     "quantity": "Quantity",
     "unitPrice": "Unit price",
     "amount": "Amount",
-    "total": "Total"
+    "total": "Total",
+    "soldBy": "Sold by",
+    "companyFallback": "Your company",
+    "fillCompanyHint": "Add your legal name, ЕИК and address so they appear on every receipt:"
   },
   "reversal": {
     "eyebrow": "Reversal",
@@ -2206,14 +2222,34 @@
     }
   },
   "errors": {
+    "BATCH_FIELDS_REQUIRED": "Batch number and expiry are required (or expiry only with Auto).",
+    "BATCH_EXPIRY_REQUIRED": "An expiry date is required.",
+    "STAFF_CANNOT_SELL": "Staff cannot use the till — use the Cashier role.",
+    "STAFF_CANCEL_DRAFT_ONLY": "You can only cancel a draft.",
+    "SELLING_PRICE_REQUIRED": "This product has no selling price.",
+    "PRODUCT_GROUP_REQUIRED": "Product group is required.",
+    "PRODUCT_UNIT_REQUIRED": "Choose a unit.",
+    "PRODUCT_NAME_REQUIRED": "Product name is required.",
     "INSUFFICIENT_ROLE": "You do not have permission for this action",
     "INSUFFICIENT_STOCK": "Not enough stock of {{product}}: {{available}} on hand, {{requested}} needed.",
     "QUANTITY_CHECK": "Check the quantity on line {{line}}.",
     "UNIT_CHECK": "Check the unit on line {{line}}.",
-    "PRODUCT_SIMILAR_EXISTS": "A similar product with the same unit already exists. Choose it instead of creating a new one.",
+    "PRODUCT_SIMILAR_EXISTS": "A similar product with the same unit already exists: {{names}}. Choose it instead of creating a new one.",
     "EIK_MISMATCH": "The invoice ЕИК does not match the partner record.",
     "DOCUMENT_NOT_EDITABLE": "Posted or cancelled documents cannot be edited.",
     "DUPLICATE_DOCUMENT": "A document with this number already exists.",
+    "DOCUMENT_DATE_FUTURE": "The document date is in the future. Check it against the paper.",
+    "DOCUMENT_EMPTY_LINES": "Add at least one line before posting",
+    "DOCUMENT_NUMBER_EQUALS_BATCH": "The document number matches a line batch number. Check it against the paper.",
+    "DOCUMENT_DATE_EQUALS_EXPIRY": "The document date matches a line expiry. Check it against the paper.",
+    "DOCUMENT_DATE_OLD": "The document date is older than 90 days. Confirm it before posting.",
+    "DOCUMENT_DATE_CONFIRM": "Confirm the document date before posting.",
+    "PENDING_PRODUCT": "There is an unreviewed product from a scan. Confirm it or pick an existing one.",
+    "TOTALS_MISMATCH": "Printed totals do not match the lines.",
+    "TOTALS_MISSING": "Enter the total printed on the document.",
+    "MISSING_PREVIOUS_PAGE": "A previous page is missing (the first line on the photo is not № 1).",
+    "AMOUNT_IN_WORDS_MISMATCH": "The amount in words does not match — a page may be missing.",
+    "ZERO_PRICE_LINE": "A line is missing a price. Enter a price or mark it as free of charge.",
     "MISSING_SITE_ID": "A site (siteId) is required.",
     "MISSING_SESSION": "Missing session.",
     "SITE_OUTSIDE_COMPANY": "Site is outside your company.",

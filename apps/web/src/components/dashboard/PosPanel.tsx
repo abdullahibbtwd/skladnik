@@ -319,6 +319,13 @@ export const PosPanel: React.FC = () => {
             >
               {t('pos.viewReceipt')}
             </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/app/sales/${lastSale.id}?print=1`)}
+              className="rounded-lg border border-ops-teal/30 bg-white px-3 py-1.5 font-display text-[0.76rem] font-medium text-ops-teal hover:border-ops-teal/50"
+            >
+              {t('pos.printReceipt')}
+            </button>
             <button type="button" onClick={() => setLastSale(null)} className="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white" aria-label={t('common.cancel')}>
               <X size={15} />
             </button>

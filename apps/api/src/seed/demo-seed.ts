@@ -524,7 +524,8 @@ async function seedTenant(prisma: PrismaService, tenant: TenantSeed, passwordHas
     if (seed.status === 'DRAFT') return;
     await documents.submitForReview(owner, created.id);
     if (seed.status !== 'POSTED') return;
-    await documents.post(owner, created.id);
+    // Demo intentionally includes already-expired batches (expiry UI / write-off samples).
+    await documents.post(owner, created.id, { confirmExpired: true, confirmDate: true });
     await prisma.document.update({
       where: { id: created.id },
       data: { postedAt: new Date(dayStart(issuedOn).getTime() + 10 * 3_600_000) },

@@ -113,6 +113,7 @@ type ProductSuggestion = {
   vatRate: number;
   batchTracking: boolean;
   score: number;
+  status?: string;
 };
 
 type PrintedInput = {
@@ -628,6 +629,8 @@ export class DocumentsService {
       throw apiConflict(
         'PRODUCT_SIMILAR_EXISTS',
         `Има подобен продукт със същата мярка: ${list}. Изберете го вместо нов.`,
+        { names: list },
+        { similarProducts: similar },
       );
     }
     // CAF-02: Staff products wait for a manager. They cannot be sold or posted until approved.
@@ -713,7 +716,17 @@ export class DocumentsService {
     });
     const index = new NameIndex(products, productKey, 0.88, true);
     const found = index.find(name);
-    const ranked = index.suggest(name, 3).filter((row) => row.score >= 0.85);
+    // Suggest can score shared brand words highly even when sizes differ; only keep same-number hits.
+    const wantNumbers = productKey(name)
+      .match(/\d+(?:\.\d+)?/g)
+      ?.join(' ');
+    const ranked = index.suggest(name, 5).filter((row) => {
+      if (row.score < 0.9) return false;
+      const have = productKey(row.item.name)
+        .match(/\d+(?:\.\d+)?/g)
+        ?.join(' ');
+      return Boolean(wantNumbers && have && wantNumbers === have);
+    });
     const seen = new Set<string>();
     const matches: { id: string; name: string; code: string }[] = [];
     for (const product of [found, ...ranked.map((row) => row.item)]) {
@@ -1988,19 +2001,29 @@ export class DocumentsService {
     const result = new Map<string, ProductSuggestion[]>();
     const open = doc.lines.filter((line) => line.ocrDescription && (!line.product || line.product.status === 'PENDING_REVIEW'));
     if (!open.length) return result;
+    // Include PENDING_REVIEW: create-from-line blocks on those, so the reviewer must see them here.
     const index = new NameIndex(
       await this.prisma.product.findMany({
-        where: { companyId: doc.companyId, status: 'ACTIVE' },
-        select: { id: true, name: true, code: true, unit: true, vatRate: true, batchTracking: true },
+        where: { companyId: doc.companyId, status: { in: ['ACTIVE', 'PENDING_REVIEW'] } },
+        select: { id: true, name: true, code: true, unit: true, vatRate: true, batchTracking: true, status: true },
       }),
       productKey,
     );
     for (const line of open) {
       const name = splitProductText(line.ocrDescription!, line.supplierProductCode).name;
-      const hits = name ? index.suggest(name, 3) : [];
+      const hits = name ? index.suggest(name, 5) : [];
       result.set(
         line.id,
-        hits.map(({ item, score }) => ({ ...item, vatRate: toNumber(item.vatRate), score: Math.round(score * 100) / 100 })),
+        hits.map(({ item, score }) => ({
+          id: item.id,
+          name: item.name,
+          code: item.code,
+          unit: item.unit,
+          vatRate: toNumber(item.vatRate),
+          batchTracking: item.batchTracking,
+          status: item.status,
+          score: Math.round(score * 100) / 100,
+        })),
       );
     }
     return result;

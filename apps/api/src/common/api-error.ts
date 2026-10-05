@@ -11,6 +11,7 @@ export type ApiErrorBody = {
   warnings?: string[];
   errors?: { code: string; message: string; params?: ApiErrorParams }[];
   existingDocument?: unknown;
+  similarProducts?: { id: string; name: string; code: string }[];
 };
 
 function body(statusCode: number, error: string, code: string, message: string, params?: ApiErrorParams, extra?: Partial<ApiErrorBody>): ApiErrorBody {

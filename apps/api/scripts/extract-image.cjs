@@ -1,4 +1,8 @@
-process.env.TS_NODE_COMPILER_OPTIONS = JSON.stringify({ module: 'CommonJS', esModuleInterop: true });
+process.env.TS_NODE_COMPILER_OPTIONS = JSON.stringify({
+  module: 'CommonJS',
+  esModuleInterop: true,
+  ignoreDeprecations: '6.0',
+});
 require('ts-node/register/transpile-only');
 
 const { readFileSync } = require('fs');

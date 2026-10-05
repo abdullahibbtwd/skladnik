@@ -20,7 +20,9 @@
     "governance:prove": "node scripts/prove-governance.mjs",
     "test": "node scripts/run-posting-unit.cjs",
     "extract:image": "node scripts/extract-image.cjs",
-    "scans:cleanup": "node scripts/cleanup-empty-scans.mjs"
+    "extract:layout": "node scripts/extract-layout.cjs",
+    "scans:cleanup": "node scripts/cleanup-empty-scans.mjs",
+    "scans:cleanup-junk": "node scripts/cleanup-junk-documents.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.893.0",

@@ -96,8 +96,8 @@ export const OverviewPanel: React.FC = () => {
 
       <section className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-5 [&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1">
         <MetricCard
-          label={t('overview.useSoon', { count: data.expiring[2]?.days ?? 7 })}
-          value={ready ? String(data.expiring[2]?.count ?? 0) : dash}
+          label={t('overview.useSoon', { count: data.soonDays })}
+          value={ready ? String(data.soonCount) : dash}
           hint={data.expired > 0 ? t('overview.expiredHint', { count: data.expired }) : t('overview.useSoonHint')}
           icon={Timer}
           iconColor="text-ops-warn"

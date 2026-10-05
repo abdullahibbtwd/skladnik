@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { CheckCircle2, Loader2, PackagePlus, Search, Sparkles } from 'lucide-react';
 import { UNITS_OF_MEASURE, type UnitOfMeasure } from '@skladnik/shared';
 import { useTranslation } from 'react-i18next';
-import type { CreateProductFromLineInput, DocumentLineRecord, ProductSuggestion } from '../../lib/workspace-api';
+import { ApiError, type CreateProductFromLineInput, type DocumentLineRecord, type ProductSuggestion } from '../../lib/workspace-api';
 import { Select } from '../ui/Select';
 
 const inputClass =
@@ -46,7 +46,15 @@ export function ScannedLineMatch({
   const printedName = line.printed.name ?? line.printed.description ?? '';
 
   if (creating) {
-    return <CreateProductForm line={line} busy={busy} onCancel={() => setCreating(false)} onCreate={onCreate} />;
+    return (
+      <CreateProductForm
+        line={line}
+        busy={busy}
+        onCancel={() => setCreating(false)}
+        onCreate={onCreate}
+        onLink={onLink}
+      />
+    );
   }
 
   return (
@@ -59,25 +67,7 @@ export function ScannedLineMatch({
           : t('scanMatch.noMatchHint', { name: printedName })}
       </p>
       {line.suggestions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 font-display text-[0.72rem] font-medium text-slate-500">
-            <Sparkles size={12} />
-            {t('scanMatch.didYouMean')}
-          </span>
-          {line.suggestions.map((suggestion) => (
-            <button
-              key={suggestion.id}
-              type="button"
-              disabled={busy}
-              onClick={() => void onLink(suggestion)}
-              className={`${chipClass} border-ops-teal/30 bg-white text-ops-ink hover:border-ops-teal hover:bg-teal-50`}
-              title={t('scanMatch.linkTitle', { name: suggestion.name })}
-            >
-              <span className="truncate">{suggestion.name}</span>
-              <span className="shrink-0 font-mono text-[0.64rem] text-slate-400">{suggestion.code}</span>
-            </button>
-          ))}
-        </div>
+        <SuggestionChips suggestions={line.suggestions} busy={busy} onLink={onLink} />
       )}
       <div className="flex flex-wrap gap-1.5">
         <button type="button" disabled={busy} onClick={onChoose} className={`${chipClass} border-slate-200 bg-white text-ops-ink hover:border-ops-accent/40`}>
@@ -110,16 +100,56 @@ export function ScannedLineMatch({
   );
 }
 
+function SuggestionChips({
+  suggestions,
+  busy,
+  onLink,
+}: {
+  suggestions: ProductSuggestion[];
+  busy: boolean;
+  onLink: (suggestion: ProductSuggestion) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="inline-flex items-center gap-1 font-display text-[0.72rem] font-medium text-slate-500">
+        <Sparkles size={12} />
+        {t('scanMatch.didYouMean')}
+      </span>
+      {suggestions.map((suggestion) => (
+        <button
+          key={suggestion.id}
+          type="button"
+          disabled={busy}
+          onClick={() => void onLink(suggestion)}
+          className={`${chipClass} border-ops-teal/30 bg-white text-ops-ink hover:border-ops-teal hover:bg-teal-50`}
+          title={t('scanMatch.linkTitle', { name: suggestion.name })}
+        >
+          <span className="truncate">{suggestion.name}</span>
+          <span className="shrink-0 font-mono text-[0.64rem] text-slate-400">{suggestion.code}</span>
+          {suggestion.status === 'PENDING_REVIEW' && (
+            <span className="shrink-0 rounded bg-amber-100 px-1 font-sans text-[0.62rem] text-amber-800">
+              {t('doc.pendingReview')}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function CreateProductForm({
   line,
   busy,
   onCancel,
   onCreate,
+  onLink,
 }: {
   line: DocumentLineRecord;
   busy: boolean;
   onCancel: () => void;
   onCreate: (input: CreateProductFromLineInput) => Promise<void>;
+  onLink: (suggestion: ProductSuggestion) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState(line.printed.name ?? line.printed.description ?? '');
@@ -130,10 +160,12 @@ function CreateProductForm({
   // CAF-02 / CAF-03: batch tracking starts ON for a product created from a scan line.
   const [batchTracking, setBatchTracking] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [similar, setSimilar] = useState<{ id: string; name: string; code: string }[]>([]);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    setSimilar([]);
     try {
       if (!unit) {
         setError(t('scanMatch.unitRequired'));
@@ -141,13 +173,44 @@ function CreateProductForm({
       }
       await onCreate({ name: name.trim(), code: code.trim() || undefined, unit, vatRate: Number(vatRate), batchTracking });
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'PRODUCT_SIMILAR_EXISTS') {
+        setSimilar(err.similarProducts);
+        setError(err.message);
+        return;
+      }
       setError(err instanceof Error ? err.message : t('scanMatch.createFailed'));
     }
   };
 
+  const closeMatches =
+    similar.length > 0
+      ? similar.map((product) => ({
+          id: product.id,
+          name: product.name,
+          code: product.code,
+          unit: (unit || 'PCS') as UnitOfMeasure,
+          vatRate: Number(vatRate) || 0,
+          batchTracking: true,
+          score: 1,
+        }))
+      : line.suggestions.filter((row) => row.score >= 0.85);
+
   return (
     <form onSubmit={submit} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
       <p className="font-display text-[0.8rem] font-semibold text-ops-ink">{t('scanMatch.createTitle')}</p>
+      {closeMatches.length > 0 && (
+        <div className="rounded-lg border border-ops-warn/30 bg-orange-50/80 px-2.5 py-2">
+          <p className="mb-1.5 font-sans text-[0.74rem] text-ops-warn">{t('scanMatch.useExistingHint')}</p>
+          <SuggestionChips
+            suggestions={closeMatches}
+            busy={busy}
+            onLink={async (suggestion) => {
+              await onLink(suggestion);
+              onCancel();
+            }}
+          />
+        </div>
+      )}
       <label>
         <span className={labelClass}>{t('scanMatch.name')}</span>
         <input required maxLength={180} value={name} onChange={(event) => setName(event.target.value)} className={inputClass} />

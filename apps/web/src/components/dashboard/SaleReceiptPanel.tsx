@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Undo2 } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Printer, Undo2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatBusinessDateTime } from '../../lib/business-date';
 import { cn } from '../../lib/cn';
 import { formatEuro } from '../../lib/dashboard-data';
 import { formatDate, formatQty } from '../../lib/format';
-import { useSaleQuery, useVoidSale } from '../../lib/workspace-session';
+import { useCompanySettingsQuery, useSaleQuery, useVoidSale } from '../../lib/workspace-session';
 import { FieldError, FieldLabel } from '../PasswordField';
 import { toast } from '../ui/Toaster';
 import { GhostButton, GlassPanel, PageHeader, tableHeadRowClass, tableRowClass } from './dashboard-ui';
+import { SalePrintView } from './SalePrintView';
 
 export const SaleReceiptPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { id = '' } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const saleQuery = useSaleQuery(id);
+  const settings = useCompanySettingsQuery().data;
   const voidSale = useVoidSale(id);
   const sale = saleQuery.data?.sale;
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const autoPrint = searchParams.get('print') === '1';
 
   if (saleQuery.isLoading) return <p className="font-sans text-[0.86rem] text-slate-500">{t('common.loading')}</p>;
   if (!sale) {
@@ -34,6 +38,11 @@ export const SaleReceiptPanel: React.FC = () => {
 
   const isVoid = sale.kind === 'VOID';
   const showsCost = sale.cost !== undefined;
+  const profile = settings?.profile;
+  const companyLine = profile
+    ? [profile.eik && `ЕИК ${profile.eik}`, profile.vatNumber && `${t('taxId.vatNumber')} ${profile.vatNumber}`].filter(Boolean).join(' · ')
+    : '';
+  const address = profile ? [profile.address, profile.city].filter(Boolean).join(', ') : '';
 
   const submitVoid = async () => {
     setError(null);
@@ -58,18 +67,41 @@ export const SaleReceiptPanel: React.FC = () => {
         {t('sales.backToSales')}
       </button>
 
-      <PageHeader
-        eyebrow={sale.site.name}
-        title={isVoid ? t('sales.voidTitle', { number: sale.number }) : t('sales.receiptTitle', { number: sale.number })}
-        description={[
-          sale.postedAt ? formatBusinessDateTime(sale.postedAt, i18n.language) : null,
-          sale.cashier?.name,
-          sale.paymentMethod ? t(`labels.paymentMethod.${sale.paymentMethod}`) : null,
-          sale.paymentReference,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeader
+          eyebrow={sale.site.name}
+          title={isVoid ? t('sales.voidTitle', { number: sale.number }) : t('sales.receiptTitle', { number: sale.number })}
+          description={[
+            sale.postedAt ? formatBusinessDateTime(sale.postedAt, i18n.language) : null,
+            sale.cashier?.name,
+            sale.paymentMethod ? t(`labels.paymentMethod.${sale.paymentMethod}`) : null,
+            sale.paymentReference,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        />
+        <GhostButton onClick={() => window.print()}>
+          <span className="inline-flex items-center gap-1.5">
+            <Printer size={13} /> {t('print.print')}
+          </span>
+        </GhostButton>
+      </div>
+
+      {profile && (
+        <GlassPanel title={t('print.soldBy')}>
+          <p className="font-display text-[0.95rem] font-semibold text-ops-ink">{profile.name || t('print.companyFallback')}</p>
+          {companyLine && <p className="mt-1 font-mono text-[0.76rem] text-slate-500">{companyLine}</p>}
+          {address && <p className="font-sans text-[0.78rem] text-slate-500">{address}</p>}
+          {!profile.name && !companyLine && (
+            <p className="font-sans text-[0.8rem] text-ops-warn">
+              {t('print.fillCompanyHint')}{' '}
+              <Link to="/app/settings/company" className="font-medium underline underline-offset-2">
+                {t('settingsNav.company')}
+              </Link>
+            </p>
+          )}
+        </GlassPanel>
+      )}
 
       {isVoid && sale.reversalOf && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 font-sans text-[0.82rem] text-rose-900">
@@ -203,6 +235,8 @@ export const SaleReceiptPanel: React.FC = () => {
           )}
         </GlassPanel>
       )}
+
+      <SalePrintView sale={sale} autoPrint={autoPrint} />
     </div>
   );
 };

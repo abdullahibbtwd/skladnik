@@ -93,6 +93,11 @@ export function expiryBucketCounts(daysLeftList: readonly number[], windows: rea
   ];
 }
 
+/** Live batches that expire on or before `withinDays` (inclusive). Expired are excluded. */
+export function expiryWithinCount(daysLeftList: readonly number[], withinDays: number) {
+  return daysLeftList.filter((days) => days >= 0 && days <= withinDays).length;
+}
+
 // ─── Print template ─────────────────────────────────────────────────────────
 
 export type PrintTemplate = {

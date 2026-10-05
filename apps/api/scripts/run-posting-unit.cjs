@@ -25,6 +25,7 @@ require('ts-node/register/transpile-only');
   require('../src/extraction/product-text.test.ts');
   require('../src/extraction/quantity-cell.test.ts');
   require('../src/extraction/parse-ocr-date.test.ts');
+  require('../src/extraction/parse-layout-markdown.test.ts');
   require('../src/stock/stock-levels.test.ts');
   require('../src/stock/batch-adoption.test.ts');
   require('../src/stock/stock-as-of.test.ts');
