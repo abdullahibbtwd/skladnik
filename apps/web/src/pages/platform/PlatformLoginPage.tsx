@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Boxes, ShieldCheck } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitch } from '../../components/LanguageSwitch';
 import { FieldLabel, PasswordField } from '../../components/PasswordField';
@@ -33,6 +34,7 @@ export function PlatformLoginPage() {
   const [code, setCode] = useState('');
   const [secret, setSecret] = useState<string | null>(null);
   const [otpauthUrl, setOtpauthUrl] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,9 +42,28 @@ export function PlatformLoginPage() {
     document.title = t('platform.login.title');
   }, [t]);
 
+  useEffect(() => {
+    if (!otpauthUrl) {
+      setQrDataUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void QRCode.toDataURL(otpauthUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 220,
+      color: { dark: '#0f172a', light: '#ffffff' },
+    }).then((url) => {
+      if (!cancelled) setQrDataUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [otpauthUrl]);
+
   if (meQuery.isLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-ops-canvas font-display text-sm text-slate-500">
+      <div className="flex min-h-dvh items-center justify-center bg-ops-canvas font-sans text-sm text-slate-500">
         {t('platform.session.restoring')}
       </div>
     );
@@ -171,17 +192,30 @@ export function PlatformLoginPage() {
           ) : (
             <form className="flex flex-col gap-4" onSubmit={(e) => void onTotp(e)}>
               {step === 'enroll' && (
-                <div className={platformWarnClass}>
-                  <p className="font-display font-medium">{t('platform.login.enrollWarn')}</p>
-                  {otpauthUrl && (
-                    <p className="mt-2 break-all font-mono text-[0.7rem] text-ops-warn/80">{otpauthUrl}</p>
-                  )}
-                  {secret && (
-                    <p className="mt-2">
-                      <span className="text-ops-warn/80">{t('platform.login.manualSecret')}: </span>
-                      <span className="font-mono tracking-wider text-ops-ink">{secret}</span>
+                <div className="flex flex-col gap-3">
+                  <div className={platformWarnClass}>
+                    <p className="font-display font-medium">{t('platform.login.enrollWarn')}</p>
+                  </div>
+                  {qrDataUrl ? (
+                    <div className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-4">
+                      <img
+                        src={qrDataUrl}
+                        alt={t('platform.login.qrAlt')}
+                        width={220}
+                        height={220}
+                        className="size-[220px]"
+                      />
+                      <p className="text-center font-sans text-[0.75rem] text-slate-500">
+                        {t('platform.login.qrHint')}
+                      </p>
+                    </div>
+                  ) : null}
+                  {secret ? (
+                    <p className="rounded-xl border border-slate-200 bg-ops-canvas px-3 py-2.5 font-sans text-[0.78rem] text-slate-600">
+                      <span className="text-slate-400">{t('platform.login.manualSecret')}: </span>
+                      <span className="break-all font-mono tracking-wider text-ops-ink">{secret}</span>
                     </p>
-                  )}
+                  ) : null}
                 </div>
               )}
               <div>
