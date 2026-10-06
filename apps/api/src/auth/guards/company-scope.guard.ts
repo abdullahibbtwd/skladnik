@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { AuthUser } from '@skladnik/shared';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { resolveAuthRealm } from './auth-realm.guard';
 
 type RequestShape = {
   user?: AuthUser;
@@ -19,11 +19,8 @@ export class CompanyScopeGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) {
+    const realm = resolveAuthRealm(this.reflector, context);
+    if (realm === 'public' || realm === 'platform') {
       return true;
     }
 

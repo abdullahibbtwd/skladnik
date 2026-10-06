@@ -40,6 +40,7 @@ import { useSiteChoices } from '../../lib/workspace-session';
 import { LanguageSwitch } from '../LanguageSwitch';
 import { confirm } from '../ui/Dialog';
 import { PhotoQueueBadge } from './PhotoQueueBadge';
+import { SubscriptionExpiryBanner } from './SubscriptionExpiryBanner';
 
 type NavItem = { to: string; labelKey: string; icon: LucideIcon; end?: boolean; requires?: Permission };
 
@@ -435,6 +436,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
               <p>{t('app.offlineBanner')}</p>
             </div>
           )}
+          <SubscriptionExpiryBanner />
           <Outlet />
         </div>
       </main>

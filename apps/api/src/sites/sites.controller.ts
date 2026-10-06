@@ -5,7 +5,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
 import { SitesService } from './sites.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('sites')
 export class SitesController {
   constructor(private readonly sites: SitesService) {}

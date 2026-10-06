@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { join } from 'path';
 import { ActivityModule } from './activity/activity.module';
 import { AuthModule } from './auth/auth.module';
+import { PlatformAuthModule } from './platform-auth/platform-auth.module';
+import { PlatformSettingsModule } from './platform-settings/platform-settings.module';
+import { PlatformSubscriptionsModule } from './subscriptions/platform-subscriptions.module';
 import { CompanyModule } from './company/company.module';
 import { DocumentsModule } from './documents/documents.module';
 import { ExtractionModule } from './extraction/extraction.module';
@@ -43,7 +47,11 @@ import { UsersModule } from './users/users.module';
     RedisModule,
     MailModule,
     QueueModule,
+    ScheduleModule.forRoot(),
     AuthModule,
+    PlatformAuthModule,
+    PlatformSettingsModule,
+    PlatformSubscriptionsModule,
     TenancyModule,
     CompanyModule,
     ActivityModule,

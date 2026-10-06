@@ -1,3 +1,6 @@
+import { createHmac, randomBytes } from 'node:crypto';
+import { PrismaClient } from '@prisma/client';
+
 const API = process.env.API_URL ?? 'http://localhost:3003';
 const PASSWORD = 'DevPassword123!';
 
@@ -157,7 +160,150 @@ assert(activityA.status === 200 && activityB.status === 200, 'activity logs');
 const activityIdsB = rowIds(activityB.body, 'entries');
 assert(rowIds(activityA.body, 'entries').every((id) => !activityIdsB.includes(id)), 'activity logs overlap companies');
 
+// --- Subscriptions: tenant isolation + activation ---
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const CHECK = `${CROCKFORD}*`;
+const PEPPER = process.env.ACTIVATION_CODE_PEPPER ?? 'dev-activation-code-pepper-change-me';
+
+function encodeCrockford(bytes) {
+  let bits = '';
+  for (const byte of bytes) bits += byte.toString(2).padStart(8, '0');
+  while (bits.length % 5 !== 0) bits += '0';
+  let out = '';
+  for (let i = 0; i < bits.length; i += 5) out += CROCKFORD[parseInt(bits.slice(i, i + 5), 2)];
+  return out;
+}
+
+function crockfordChecksum(payload) {
+  let sum = 0;
+  for (const ch of payload) sum = (sum * 32 + CROCKFORD.indexOf(ch)) % 37;
+  return CHECK[sum];
+}
+
+function issueCode() {
+  const payload = encodeCrockford(randomBytes(16));
+  const normalized = `${payload}${crockfordChecksum(payload)}`;
+  const parts = [];
+  for (let i = 0; i < normalized.length; i += 4) parts.push(normalized.slice(i, i + 4));
+  return {
+    plaintext: parts.join('-'),
+    normalized,
+    codeHash: createHmac('sha256', PEPPER).update(normalized, 'utf8').digest('hex'),
+    codePrefix: normalized.slice(0, 5),
+  };
+}
+
+async function postJson(path, cookie, body) {
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  return { status: res.status, body: json };
+}
+
+const subA = await getJson('/subscriptions/current', ownerA.cookie);
+const subB = await getJson('/subscriptions/current', ownerB.cookie);
+assert(subA.status === 200 && subB.status === 200, 'subscription current');
+assert(subA.body.subscription, 'company A should have a live subscription (trial/grandfather)');
+assert(subB.body.subscription, 'company B should have a live subscription');
+assert(
+  subA.body.subscription.id !== subB.body.subscription.id,
+  'subscription current leaked across tenants',
+);
+
+const prisma = new PrismaClient();
+const issued = issueCode();
+let pendingSubId = null;
+try {
+  const pending = await prisma.subscription.create({
+    data: {
+      plan: 'PRO',
+      status: 'PENDING',
+      maxUsers: 10,
+      termMonths: 12,
+      companyNameHint: 'prove-isolation',
+      activationCodes: {
+        create: {
+          codeHash: issued.codeHash,
+          codePrefix: issued.codePrefix,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      },
+    },
+  });
+  pendingSubId = pending.id;
+
+  const badActivate = await postJson('/subscriptions/activate', ownerA.cookie, { code: 'AAAA-AAAA-AAAA' });
+  assert(badActivate.status === 400, `malformed activate expected 400, got ${badActivate.status}`);
+  assert(badActivate.body.code === 'ACTIVATION_FAILED', 'activate should use ACTIVATION_FAILED');
+
+  const managerActivate = await postJson('/subscriptions/activate', managerA.cookie, {
+    code: issued.plaintext,
+  });
+  assert(managerActivate.status === 403, `manager activate expected 403, got ${managerActivate.status}`);
+
+  const activateA = await postJson('/subscriptions/activate', ownerA.cookie, { code: issued.plaintext });
+  assert(activateA.status === 200, `owner A activate failed: ${activateA.status} ${JSON.stringify(activateA.body)}`);
+  assert(activateA.body.subscription?.status === 'ACTIVE', 'activated status');
+  assert(activateA.body.subscription?.plan === 'PRO', 'activated plan');
+
+  const reuse = await postJson('/subscriptions/activate', ownerB.cookie, { code: issued.plaintext });
+  assert(reuse.status === 400, `owner B re-use expected 400, got ${reuse.status}`);
+
+  const afterA = await getJson('/subscriptions/current', ownerA.cookie);
+  const afterB = await getJson('/subscriptions/current', ownerB.cookie);
+  assert(afterA.status === 200 && afterB.status === 200, 'subscription current after activate');
+  assert(afterA.body.subscription?.id !== afterB.body.subscription?.id, 'post-activate tenant isolation');
+  assert(afterA.body.subscription?.plan === 'PRO', 'owner A current shows activated plan');
+  assert(afterA.body.subscription?.status === 'ACTIVE', 'owner A current shows ACTIVE');
+} finally {
+  await prisma.$executeRawUnsafe(`ALTER TABLE "SubscriptionEvent" DISABLE TRIGGER "SubscriptionEvent_append_only"`);
+  try {
+    if (pendingSubId) {
+      await prisma.subscriptionEvent.deleteMany({ where: { subscriptionId: pendingSubId } });
+      await prisma.activationCode.deleteMany({ where: { subscriptionId: pendingSubId } });
+      await prisma.subscription.deleteMany({ where: { id: pendingSubId } });
+    }
+    const leftovers = await prisma.subscription.findMany({
+      where: { companyNameHint: 'prove-isolation' },
+      select: { id: true },
+    });
+    for (const row of leftovers) {
+      await prisma.subscriptionEvent.deleteMany({ where: { subscriptionId: row.id } });
+      await prisma.activationCode.deleteMany({ where: { subscriptionId: row.id } });
+      await prisma.subscription.deleteMany({ where: { id: row.id } });
+    }
+    // Activation revokes the previous live row; restore a grandfather so the seed stays usable.
+    const liveA = await prisma.subscription.count({
+      where: {
+        companyId: snapA.body.companyId,
+        status: { in: ['TRIAL', 'ACTIVE', 'GRANDFATHERED', 'EXPIRED', 'SUSPENDED'] },
+      },
+    });
+    if (liveA === 0) {
+      await prisma.subscription.create({
+        data: {
+          companyId: snapA.body.companyId,
+          plan: 'MULTI_LOCATION',
+          status: 'GRANDFATHERED',
+          maxUsers: 100,
+          termMonths: 12,
+          startsAt: new Date(),
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          notes: 'Restored after auth:prove activation check',
+        },
+      });
+    }
+  } finally {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "SubscriptionEvent" ENABLE TRIGGER "SubscriptionEvent_append_only"`);
+    await prisma.$disconnect();
+  }
+}
+
 console.log('Isolation proof passed.');
 console.log(`  A: ${snapA.body.companyName} users=${snapA.body.userCount} sites=${snapA.body.siteCount}`);
 console.log(`  B: ${snapB.body.companyName} users=${snapB.body.userCount} sites=${snapB.body.siteCount}`);
 console.log(`  manager A sites: ${sitesMgr.body.sites.map((site) => site.name).join(', ')}`);
+console.log('  subscriptions: tenant isolation + activation covered');

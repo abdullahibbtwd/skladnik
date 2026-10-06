@@ -5,7 +5,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateUnitAliasDto } from './dto/create-unit-alias.dto';
 import { UpdateUnitAliasDto } from './dto/update-unit-alias.dto';
 import { UnitAliasesService } from './unit-aliases.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('unit-aliases')
 export class UnitAliasesController {
   constructor(private readonly aliases: UnitAliasesService) {}

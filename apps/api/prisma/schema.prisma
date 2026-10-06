@@ -130,6 +130,52 @@ enum VatLedger {
   SALES
 }
 
+/// SaaS plan for a company subscription (marketing tiers; seats enforced via maxUsers).
+enum SubscriptionPlan {
+  STARTER
+  PRO
+  MULTI_LOCATION
+}
+
+/// Lifecycle of a company subscription. PENDING is unbound; REVOKED is terminal.
+enum SubscriptionStatus {
+  PENDING
+  TRIAL
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  REVOKED
+}
+
+/// Append-only subscription history rows (who changed what).
+enum SubscriptionEventType {
+  CREATED
+  STATUS_CHANGED
+  LIMITS_CHANGED
+  ACTIVATED
+  CODE_ISSUED
+  CODE_REVOKED
+  EXTENDED
+  NOTE
+  INVOICE_CREATED
+  INVOICE_PAID
+  INVOICE_VOIDED
+  CODE_REVEALED
+}
+
+enum SubscriptionEventActor {
+  PLATFORM_ADMIN
+  USER
+  SYSTEM
+}
+
+/// Platform SaaS invoice lifecycle. Created as ISSUED (no DRAFT).
+enum InvoiceStatus {
+  ISSUED
+  PAID
+  VOID
+}
+
 /// Top-level tenant. Created in the same transaction as the first Owner user.
 model Company {
   id        String   @id @default(uuid())
@@ -180,6 +226,8 @@ model Company {
   vatLedgerEntries VatLedgerEntry[]
   complianceFilings ComplianceFiling[]
   documentSeries  DocumentSeries[]
+  subscriptions   Subscription[]
+  activationCodesRedeemed ActivationCode[] @relation("ActivationCodeRedeemedCompany")
 }
 
 /// Numbering of documents the company issues itself (write-offs, transfers, …). The row is locked while a
@@ -277,6 +325,8 @@ model User {
   activityLogs ActivityLog[]
   documentsCreated Document[] @relation("DocumentCreatedBy")
   invitations Invitation[] @relation("InvitedBy")
+  subscriptionsActivated Subscription[] @relation("SubscriptionActivatedBy")
+  activationCodesRedeemed ActivationCode[] @relation("ActivationCodeRedeemedBy")
 
   @@index([companyId])
 }
@@ -915,5 +965,190 @@ model ActivityLog {
   @@index([companyId, createdAt])
   @@index([companyId, userId, createdAt])
   @@index([companyId, entityType, createdAt])
+  @@index([entityType, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Platform operator & subscriptions (SaaS entitlement)
+// PlatformAdmin is a separate identity from tenant User. CHECKs, the partial
+// unique "one live subscription per company" index, and append-only triggers
+// live in the migration SQL (Prisma cannot express them in the schema DSL).
+// ---------------------------------------------------------------------------
+
+/// ERP platform operator (not a company OWNER). Own auth realm in later phases.
+model PlatformAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  /// TOTP secret (encrypt at rest in app layer); required before login once enabled.
+  totpSecret   String?
+  totpEnabled  Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptionsCreated Subscription[]     @relation("SubscriptionCreatedBy")
+  auditLogs            PlatformAuditLog[]
+  billingSettingsUpdates PlatformBillingSettings[] @relation("BillingSettingsUpdatedBy")
+}
+
+/// Singleton platform billing identity used on SaaS proforma invoices (editable in /platform/settings).
+model PlatformBillingSettings {
+  id               String   @id @default("default")
+  sellerName       String   @default("")
+  sellerEik        String   @default("")
+  sellerAddress    String   @default("")
+  sellerEmail      String   @default("")
+  updatedAt        DateTime @updatedAt
+  updatedByAdminId String?
+
+  updatedByAdmin PlatformAdmin? @relation("BillingSettingsUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+}
+
+/// Entitlement for one deal / trial / paid company. PENDING has no companyId.
+/// Optimistic `version` for atomic redeem / seat updates.
+model Subscription {
+  id                  String             @id @default(uuid())
+  companyId           String?
+  plan                SubscriptionPlan
+  status              SubscriptionStatus
+  maxUsers            Int
+  /// Paid term length; expiresAt is set from this at activation (not at create).
+  termMonths          Int
+  startsAt            DateTime?
+  expiresAt           DateTime?
+  companyNameHint     String?
+  contactEmail        String?
+  notes               String?
+  externalInvoiceRef  String?
+  /// Optimistic lock; bump on every status/limit/activation write.
+  version             Int                @default(1)
+  createdByAdminId    String?
+  activatedAt         DateTime?
+  activatedByUserId   String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdByAdmin PlatformAdmin?    @relation("SubscriptionCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  activatedBy    User?             @relation("SubscriptionActivatedBy", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+  activationCodes ActivationCode[]
+  events         SubscriptionEvent[]
+  invoices       Invoice[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// One-time activation code. Plaintext is never stored — HMAC-SHA256 hex + prefix.
+/// Optional AES-GCM ciphertext (key-id prefix) only while subscription is PENDING.
+model ActivationCode {
+  id                 String    @id @default(uuid())
+  subscriptionId     String
+  /// HMAC-SHA256 hex (64 chars). Unique so the same digest cannot map to two rows.
+  codeHash           String    @unique
+  /// First characters of the Crockford code for support lookup (not enough to guess).
+  codePrefix         String
+  /// AES-256-GCM blob with key-id prefix (`kid:iv:tag:ct` base64url). Null after redeem/revoke/expiry wipe.
+  codeCiphertext     String?
+  expiresAt          DateTime
+  redeemedAt         DateTime?
+  redeemedByUserId   String?
+  redeemedCompanyId  String?
+  revokedAt          DateTime?
+  failedAttempts     Int       @default(0)
+  createdAt          DateTime  @default(now())
+
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  redeemedBy      User?        @relation("ActivationCodeRedeemedBy", fields: [redeemedByUserId], references: [id], onDelete: SetNull)
+  redeemedCompany Company?     @relation("ActivationCodeRedeemedCompany", fields: [redeemedCompanyId], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionId])
+  @@index([codePrefix])
+  @@index([expiresAt])
+}
+
+/// Year-scoped sequential counter for platform invoice numbers (Europe/Sofia year).
+model InvoiceNumberCounter {
+  /// Calendar year in Europe/Sofia.
+  year       Int @id
+  nextNumber Int @default(1)
+}
+
+/// Immutable SaaS proforma/invoice snapshot. Status may move ISSUED→PAID|VOID only.
+/// Corrections = VOID + new invoice. Enforced by DB trigger (see migration SQL).
+model Invoice {
+  id             String        @id @default(uuid())
+  subscriptionId String
+  /// Unique human number, e.g. PI-2026-000001 (year from Europe/Sofia).
+  number         String        @unique
+  /// Document title shown on PDF (default "Proforma invoice").
+  title          String
+  status         InvoiceStatus
+  currency       String
+  /// VAT percent, e.g. 20.0000 for 20%. Rounding rule documented in shared + tests.
+  vatRate        Decimal       @db.Decimal(7, 4)
+  subtotalMinor  Int
+  vatMinor       Int
+  totalMinor     Int
+  /// Line items snapshot: [{ description, quantity, unitMinor, lineMinor }]
+  lineItems      Json
+  sellerName     String
+  sellerEik      String
+  sellerAddress  String
+  sellerEmail    String
+  buyerName      String
+  buyerEik       String
+  buyerAddress   String
+  buyerEmail     String
+  issuedAt       DateTime
+  paidAt         DateTime?
+  voidedAt       DateTime?
+  version        Int           @default(1)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([issuedAt])
+}
+
+/// Append-only subscription history. Updates/deletes are rejected by a DB trigger.
+model SubscriptionEvent {
+  id             String                   @id @default(uuid())
+  subscriptionId String
+  type           SubscriptionEventType
+  fromStatus     SubscriptionStatus?
+  toStatus       SubscriptionStatus?
+  actorType      SubscriptionEventActor
+  actorId        String?
+  payload        Json?
+  createdAt      DateTime                 @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
+}
+
+/// Append-only platform-operator audit trail (no company scope).
+model PlatformAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String?
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  admin PlatformAdmin? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([adminId, createdAt])
   @@index([entityType, entityId])
 }

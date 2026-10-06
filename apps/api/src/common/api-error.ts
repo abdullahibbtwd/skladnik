@@ -37,6 +37,11 @@ export function apiForbidden(code: string, message: string, params?: ApiErrorPar
   return new ForbiddenException(body(403, 'Forbidden', code, message, params));
 }
 
+/** Subscription / billing gate — stable machine codes: SUBSCRIPTION_REQUIRED, SUBSCRIPTION_SEAT_LIMIT. */
+export function apiPaymentRequired(code: string, message: string, params?: ApiErrorParams) {
+  return new HttpException(body(402, 'Payment Required', code, message, params), 402);
+}
+
 export function apiNotFound(code: string, message: string, params?: ApiErrorParams) {
   return new NotFoundException(body(404, 'Not Found', code, message, params));
 }

@@ -8,6 +8,9 @@ import { queryClient } from './query-client';
 const UPDATE_CHECK_MS = 60 * 60 * 1000;
 
 export function registerServiceWorker() {
+  // Platform operator surface is online-only — do not register a SW on those routes.
+  if (window.location.pathname.startsWith('/platform')) return;
+
   watchCacheUpdates();
   let prompted = false;
   const updateServiceWorker = registerSW({

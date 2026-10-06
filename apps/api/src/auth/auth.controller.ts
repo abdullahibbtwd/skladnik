@@ -6,8 +6,9 @@ import type { AuthUser } from '@skladnik/shared';
 import { AuthService } from './auth.service';
 import { REFRESH_COOKIE } from './auth.constants';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { Public } from './decorators/public.decorator';
+import { Public, Tenant } from './decorators/auth-realm.decorator';
 import { RateLimit, type RateLimitRule } from './decorators/rate-limit.decorator';
+import { AllowWithoutSubscription } from '../subscriptions/decorators/allow-without-subscription.decorator';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
@@ -21,6 +22,7 @@ const SIGNUP_LIMIT: RateLimitRule = { name: 'signup', limit: 10, windowSeconds: 
 const RESET_LIMIT: RateLimitRule = { name: 'password-reset', limit: 10, windowSeconds: 15 * 60, by: 'ip' };
 const GOOGLE_LIMIT: RateLimitRule = { name: 'google-auth', limit: 30, windowSeconds: 15 * 60, by: 'ip' };
 
+@Tenant()
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -75,6 +77,7 @@ export class AuthController {
   }
 
   @Public()
+  @AllowWithoutSubscription()
   @UseGuards(RateLimitGuard)
   @RateLimit(RESET_LIMIT)
   @Post('forgot-password')
@@ -83,6 +86,7 @@ export class AuthController {
   }
 
   @Public()
+  @AllowWithoutSubscription()
   @UseGuards(RateLimitGuard)
   @RateLimit(RESET_LIMIT)
   @Post('reset-password')
@@ -97,6 +101,7 @@ export class AuthController {
   }
 
   @Public()
+  @AllowWithoutSubscription()
   @Post('logout')
   logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.auth.logout(req.cookies?.[REFRESH_COOKIE], res);

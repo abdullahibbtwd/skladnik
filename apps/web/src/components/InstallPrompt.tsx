@@ -55,6 +55,7 @@ export function InstallPrompt() {
     return () => window.clearInterval(timer);
   }, [engaged]);
 
+  if (pathname.startsWith('/platform')) return null;
   if (!event || snoozed || (pageViews < MIN_PAGE_VIEWS && !engaged)) return null;
 
   const snooze = () => {

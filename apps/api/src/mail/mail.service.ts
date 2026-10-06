@@ -84,4 +84,78 @@ export class MailService {
 
     return { delivered: true };
   }
+
+  async sendSubscriptionExpiryReminder(input: {
+    to: string;
+    name: string;
+    companyName: string;
+    daysBefore: number;
+    expiresAt: Date;
+    settingsUrl: string;
+  }): Promise<{ delivered: boolean }> {
+    const when = input.expiresAt.toISOString().slice(0, 10);
+    const subject =
+      input.daysBefore === 1
+        ? `Skladnik: ${input.companyName} subscription expires tomorrow`
+        : `Skladnik: ${input.companyName} subscription expires in ${input.daysBefore} days`;
+    const greeting = input.name.trim() || 'there';
+    const bodyHtml = `
+        <p>Hi ${greeting},</p>
+        <p>The Skladnik subscription for <strong>${input.companyName}</strong> expires on <strong>${when}</strong>
+        (${input.daysBefore === 1 ? 'tomorrow' : `in ${input.daysBefore} days`}).</p>
+        <p>After expiry the workspace stays readable and you can still export data, but writes are blocked until you activate a new code.</p>
+        <p><a href="${input.settingsUrl}">Open subscription settings</a></p>
+      `;
+    const bodyText = `Hi ${greeting},\n\nThe Skladnik subscription for ${input.companyName} expires on ${when} (${input.daysBefore === 1 ? 'tomorrow' : `in ${input.daysBefore} days`}).\n\nOpen settings: ${input.settingsUrl}\n`;
+
+    return this.sendOptional(input.to, subject, bodyHtml, bodyText, 'expiry reminder');
+  }
+
+  async sendSubscriptionActivatedEmail(input: {
+    to: string;
+    name: string;
+    companyName: string;
+    plan: string;
+    expiresAt: Date;
+    settingsUrl: string;
+  }): Promise<{ delivered: boolean }> {
+    const when = input.expiresAt.toISOString().slice(0, 10);
+    const greeting = input.name.trim() || 'there';
+    const subject = `Skladnik: ${input.companyName} subscription activated`;
+    const bodyHtml = `
+        <p>Hi ${greeting},</p>
+        <p>A <strong>${input.plan}</strong> subscription for <strong>${input.companyName}</strong> is now active.</p>
+        <p>It remains valid until <strong>${when}</strong>.</p>
+        <p><a href="${input.settingsUrl}">View subscription details</a></p>
+      `;
+    const bodyText = `Hi ${greeting},\n\nA ${input.plan} subscription for ${input.companyName} is now active until ${when}.\n\nDetails: ${input.settingsUrl}\n`;
+
+    return this.sendOptional(input.to, subject, bodyHtml, bodyText, 'activation confirmation');
+  }
+
+  private async sendOptional(
+    to: string,
+    subject: string,
+    html: string,
+    text: string,
+    label: string,
+  ): Promise<{ delivered: boolean }> {
+    if (!this.resend) {
+      this.logger.warn(`RESEND_API_KEY is not set. Skipped ${label} email to ${to}: ${subject}`);
+      return { delivered: false };
+    }
+
+    const from =
+      this.config.get<string>('RESEND_FROM_EMAIL')?.trim() || 'Skladnik <beth.t@example.com>';
+
+    const { error } = await this.resend.emails.send({ from, to, subject, html, text });
+
+    if (error) {
+      const detail = typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error);
+      this.logger.error(`Resend failed for ${label} to ${to}: ${detail}`);
+      throw new BadGatewayException(`Could not send the ${label} email. Try again later.`);
+    }
+
+    return { delivered: true };
+  }
 }

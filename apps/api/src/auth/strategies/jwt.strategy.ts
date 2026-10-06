@@ -4,6 +4,10 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 import { isCompanyWideRole, type AuthUser, type UserRole } from '@skladnik/shared';
+import {
+  PLATFORM_JWT_ISSUER,
+  TENANT_JWT_AUDIENCE,
+} from '../../platform-auth/platform-auth.constants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ACCESS_COOKIE } from '../auth.constants';
 
@@ -26,6 +30,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ]),
       ignoreExpiration: false,
       secretOrKey: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+      issuer: PLATFORM_JWT_ISSUER,
+      audience: TENANT_JWT_AUDIENCE,
     });
   }
 

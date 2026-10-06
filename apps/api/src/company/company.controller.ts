@@ -10,8 +10,10 @@ import {
   PrintTemplateDto,
 } from './company.dto';
 import { CompanyService } from './company.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
 /** Company profile and settings. Every role reads them (expiry colours, print layout, till prices). */
+@Tenant()
 @Controller('company')
 export class CompanyController {
   constructor(private readonly company: CompanyService) {}

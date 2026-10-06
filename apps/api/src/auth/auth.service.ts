@@ -18,6 +18,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { seedUnitAliases } from '../units/seed-unit-aliases';
 import {
+  PLATFORM_JWT_ISSUER,
+  TENANT_JWT_AUDIENCE,
+} from '../platform-auth/platform-auth.constants';
+import { createSignupTrialSubscription } from '../subscriptions/create-signup-trial';
+import {
   ACCESS_COOKIE,
   ACCESS_TTL_SECONDS,
   REFRESH_COOKIE,
@@ -71,6 +76,7 @@ export class AuthService {
         data: { name: dto.companyName.trim() },
       });
       await seedUnitAliases(tx, company.id);
+      await createSignupTrialSubscription(tx, company.id);
       const created = await tx.user.create({
         data: {
           email,
@@ -233,6 +239,7 @@ export class AuthService {
       const companyName = `${name}'s store`.slice(0, 160);
       const company = await tx.company.create({ data: { name: companyName } });
       await seedUnitAliases(tx, company.id);
+      await createSignupTrialSubscription(tx, company.id);
       const owner = await tx.user.create({
         data: {
           email,
@@ -265,6 +272,8 @@ export class AuthService {
     try {
       payload = await this.jwt.verifyAsync(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        issuer: PLATFORM_JWT_ISSUER,
+        audience: TENANT_JWT_AUDIENCE,
       });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
@@ -295,6 +304,8 @@ export class AuthService {
       try {
         const payload = await this.jwt.verifyAsync<{ sub?: string; jti?: string }>(refreshToken, {
           secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+          issuer: PLATFORM_JWT_ISSUER,
+          audience: TENANT_JWT_AUDIENCE,
         });
         if (payload.jti) {
           await this.redis.client.del(refreshRedisKey(payload.jti));
@@ -321,6 +332,8 @@ export class AuthService {
         {
           secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
           expiresIn: ACCESS_TTL_SECONDS,
+          issuer: PLATFORM_JWT_ISSUER,
+          audience: TENANT_JWT_AUDIENCE,
         },
       ),
       this.jwt.signAsync(
@@ -328,6 +341,8 @@ export class AuthService {
         {
           secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
           expiresIn: REFRESH_TTL_SECONDS,
+          issuer: PLATFORM_JWT_ISSUER,
+          audience: TENANT_JWT_AUDIENCE,
           jwtid: jti,
         },
       ),

@@ -15,6 +15,7 @@ export const SettingsLayout: React.FC = () => {
           { to: '/app/settings/company', label: t('settingsNav.company'), end: false },
           { to: '/app/settings/documents', label: t('settingsNav.documents'), end: false },
           { to: '/app/settings/stock-rules', label: t('settingsNav.stockRules'), end: false },
+          { to: '/app/settings/subscription', label: t('settingsNav.subscription'), end: false },
         ]
       : []),
     { to: '/app/settings/sites', label: t('settingsNav.sites'), end: false },

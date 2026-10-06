@@ -33,6 +33,7 @@ import {
 } from './dto/document.dto';
 import { DocumentsService } from './documents.service';
 import { isImageUpload, isPdfUpload } from './pdf-to-images';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
 /** Draft create/edit/submit — Staff included; ACC-01 Accountant excluded (read-only). */
 const DRAFT_WRITE_ROLES = ['OWNER', 'SITE_MANAGER', 'STAFF'] as const;
@@ -54,6 +55,7 @@ const captureUpload = () =>
     },
   });
 
+@Tenant()
 @Controller('documents')
 export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}

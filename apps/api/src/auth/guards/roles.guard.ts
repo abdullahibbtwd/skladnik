@@ -2,19 +2,16 @@ import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { AuthUser, UserRole } from '@skladnik/shared';
 import { apiForbidden } from '../../common/api-error';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
+import { resolveAuthRealm } from './auth-realm.guard';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) {
+    const realm = resolveAuthRealm(this.reflector, context);
+    if (realm === 'public' || realm === 'platform') {
       return true;
     }
 

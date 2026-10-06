@@ -6,8 +6,10 @@ import { SiteScoped } from '../auth/decorators/site-scoped.decorator';
 import { SiteAccessGuard } from '../auth/guards/site-access.guard';
 import { RecipeSiteQueryDto, SaveRecipeDto } from './dto/recipe.dto';
 import { RecipesService } from './recipes.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
 /** Cards and their costs are for operational managers; ACC-01 Accountant excluded. Till uses /menu. */
+@Tenant()
 @Controller('recipes')
 export class RecipesController {
   constructor(private readonly recipes: RecipesService) {}

@@ -6,7 +6,7 @@ import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { BroadcastUpdatePlugin } from 'workbox-broadcast-update';
 import type { RouteHandlerCallback, RouteMatchCallbackOptions, WorkboxPlugin } from 'workbox-core';
-import { API_CACHE, API_CACHES, API_PATH_PREFIXES, OFFLINE_DOCUMENT_DETAILS_KEPT, OFFLINE_DOCUMENTS_KEPT } from './lib/pwa-constants';
+import { API_CACHE, API_CACHES, API_NESTED_PATH_PREFIXES, API_PATH_PREFIXES, OFFLINE_DOCUMENT_DETAILS_KEPT, OFFLINE_DOCUMENTS_KEPT } from './lib/pwa-constants';
 import { PHOTO_SYNC_MESSAGE, PHOTO_SYNC_TAG } from './lib/photo-queue';
 import { syncPhotoQueue } from './lib/photo-sync';
 
@@ -14,7 +14,9 @@ declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: (PrecacheEntry |
 
 type SyncEvent = ExtendableEvent & { readonly tag: string; readonly lastChance: boolean };
 
-const apiPath = new RegExp(`^/(?:${API_PATH_PREFIXES.join('|')})(?:/|$)`);
+const apiPath = new RegExp(
+  `^/(?:${[...API_PATH_PREFIXES, ...API_NESTED_PATH_PREFIXES.map((p) => p.replace(/\//g, '\\/'))].join('|')})(?:/|$)`,
+);
 /** File downloads and streams: large, sometimes signed and short-lived, so never cached. */
 const filePath = /\/(?:export|archive|download|file|url)$/;
 const isApi = (url: URL) => url.origin === self.location.origin && apiPath.test(url.pathname);
@@ -22,9 +24,21 @@ const isApi = (url: URL) => url.origin === self.location.origin && apiPath.test(
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
-registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), { denylist: [apiPath] }));
+registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), {
+  denylist: [
+    apiPath,
+    // Platform operator UI must never be served from the offline SPA fallback cache.
+    /^\/platform(?:\/|$)/,
+  ],
+}));
 
-registerRoute(({ url }) => isApi(url) && /^\/(?:auth|health)(?:\/|$)/.test(url.pathname), new NetworkOnly());
+registerRoute(
+  ({ url }) =>
+    isApi(url) &&
+    (/^\/(?:auth|health|platform-auth|subscriptions)(?:\/|$)/.test(url.pathname) ||
+      /^\/platform\/subscriptions(?:\/|$)/.test(url.pathname)),
+  new NetworkOnly(),
+);
 registerRoute(({ url }) => isApi(url) && filePath.test(url.pathname), new NetworkOnly());
 
 /*

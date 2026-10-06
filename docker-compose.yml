@@ -72,6 +72,10 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me-please}
       JWT_ACCESS_EXPIRES: ${JWT_ACCESS_EXPIRES:-15m}
       JWT_REFRESH_EXPIRES: ${JWT_REFRESH_EXPIRES:-7d}
+      JWT_PLATFORM_ACCESS_SECRET: ${JWT_PLATFORM_ACCESS_SECRET:-dev-platform-access-secret-change-me-please}
+      JWT_PLATFORM_REFRESH_SECRET: ${JWT_PLATFORM_REFRESH_SECRET:-dev-platform-refresh-secret-change-me-please}
+      PLATFORM_TOTP_ENCRYPTION_KEY: ${PLATFORM_TOTP_ENCRYPTION_KEY:-dev-platform-totp-encryption-key-change-me}
+      ACTIVATION_CODE_PEPPER: ${ACTIVATION_CODE_PEPPER:-dev-activation-code-pepper-change-me}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5176}
       GLM_API_KEY: ${GLM_API_KEY:-}

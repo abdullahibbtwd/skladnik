@@ -4,8 +4,10 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ActivityQueryDto } from './activity.dto';
 import { ActivityService } from './activity.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
 /** Read-only: entries are written by the services that make the changes, never through the API. */
+@Tenant()
 @Controller('activity')
 export class ActivityController {
   constructor(private readonly activity: ActivityService) {}

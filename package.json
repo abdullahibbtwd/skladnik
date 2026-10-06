@@ -19,6 +19,7 @@
     "db:seed": "dotenv -e .env -- npm run db:seed --workspace=@skladnik/api",
     "auth:prove": "npm run auth:prove --workspace=@skladnik/api",
     "documents:prove": "npm run documents:prove --workspace=@skladnik/api",
+    "platform:create-admin": "dotenv -e .env -- npm run platform:create-admin --workspace=@skladnik/api",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
   },

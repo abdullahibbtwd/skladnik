@@ -6,11 +6,13 @@ import { SiteScoped } from '../auth/decorators/site-scoped.decorator';
 import { SiteAccessGuard } from '../auth/guards/site-access.guard';
 import { CreateSaleDto, MarginsQueryDto, SalesListQueryDto, SalesReportQueryDto, VoidSaleDto } from './dto/sales.dto';
 import { SalesService } from './sales.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
 /**
  * The till. SKL-07: STAFF is blocked (403); CASHIER + operational managers sell.
  * ACC-01: Accountant may read sales/reports but not create or void.
  */
+@Tenant()
 @Controller('sales')
 export class SalesController {
   constructor(private readonly sales: SalesService) {}

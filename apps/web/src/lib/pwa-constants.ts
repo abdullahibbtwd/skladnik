@@ -18,6 +18,8 @@ export const FRESH_DATA_MS = 5 * 60 * 1000;
 
 export const API_PATH_PREFIXES = [
   'auth',
+  'platform-auth',
+  'subscriptions',
   'tenancy',
   'sites',
   'users',
@@ -38,3 +40,9 @@ export const API_PATH_PREFIXES = [
   'annex38',
   'health',
 ] as const;
+
+/**
+ * Multi-segment API mounts that must not steal the `/platform` SPA routes
+ * (`/platform/login`, `/platform/subscriptions` UI, …).
+ */
+export const API_NESTED_PATH_PREFIXES = ['platform/subscriptions'] as const;

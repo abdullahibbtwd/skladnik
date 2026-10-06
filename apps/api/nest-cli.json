@@ -5,6 +5,13 @@
   "entryFile": "main",
   "compilerOptions": {
     "deleteOutDir": true,
-    "tsConfigPath": "tsconfig.build.json"
+    "tsConfigPath": "tsconfig.build.json",
+    "assets": [
+      {
+        "include": "../assets/fonts/**/*",
+        "outDir": "dist/assets/fonts",
+        "watchAssets": true
+      }
+    ]
   }
 }

@@ -5,7 +5,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { UpdatePartnerDto } from './dto/update-partner.dto';
 import { PartnersService } from './partners.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('partners')
 export class PartnersController {
   constructor(private readonly partners: PartnersService) {}

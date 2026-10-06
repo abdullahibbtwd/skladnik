@@ -5,7 +5,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateProductGroupDto } from './dto/create-product-group.dto';
 import { UpdateProductGroupDto } from './dto/update-product-group.dto';
 import { ProductGroupsService } from './product-groups.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('product-groups')
 export class ProductGroupsController {
   constructor(private readonly groups: ProductGroupsService) {}

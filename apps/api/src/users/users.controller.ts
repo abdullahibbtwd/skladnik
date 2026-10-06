@@ -4,7 +4,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('users')
 @Roles('OWNER')
 export class UsersController {

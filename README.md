@@ -165,14 +165,18 @@ One `.env` at the repo root, read by the API in local dev (see `.env.example`).
 | Redis | `REDIS_PORT`, `REDIS_URL` |
 | MinIO (internal) | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_ENDPOINT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT`, `MINIO_USE_SSL`, `MINIO_BUCKET` |
 | MinIO (signed links for browsers) | `MINIO_PUBLIC_ENDPOINT`, `MINIO_PUBLIC_PORT`, `MINIO_PUBLIC_USE_SSL` (port and SSL default to the internal values) |
-| Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES` (15m), `JWT_REFRESH_EXPIRES` (7d), `COOKIE_SECURE`, `GOOGLE_CLIENT_ID` (optional) |
+| Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES` (15m), `JWT_REFRESH_EXPIRES` (7d), `JWT_PLATFORM_ACCESS_SECRET`, `JWT_PLATFORM_REFRESH_SECRET`, `PLATFORM_TOTP_ENCRYPTION_KEY`, `ACTIVATION_CODE_PEPPER`, `ACTIVATION_CODE_ENCRYPTION_KEY`, `COOKIE_SECURE`, `GOOGLE_CLIENT_ID` (optional) |
 | OCR | `GLM_API_KEY` or `ZAI_API_KEY`, `GLM_BASE_URL`, `GLM_MODEL` |
 | Email | `RESEND_API_KEY` (optional), `RESEND_FROM_EMAIL` |
 | Seed | `SEED_PASSWORD` (shared by every seed user), `SEED_RESET=1`, `SEED_DEMO=1` (include demo companies when `NODE_ENV=production`) |
 
 ## Auth, tenancy, and roles
 
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for auth realms, SaaS subscriptions, platform invoices, code reveal, entitlement enforcement, reminder emails, and proof scripts.
+
 Signup creates a `Company` and its `Owner` in one transaction. Sessions are JWTs in httpOnly cookies: a 15-minute access token and a 7-day refresh token that rotates on every use and is stored in Redis. Login and signup are rate-limited per IP. Password reset sends a one-hour email link (via Resend) and revokes every refresh session for that user. Optional Google sign-in uses Google Identity Services: set `GOOGLE_CLIENT_ID` and add `WEB_ORIGIN` under Authorized JavaScript origins. Every query is scoped to the `companyId` from the token, never from the request body, and site managers and staff only see the sites they are assigned to.
+
+Platform operators use a separate auth realm (`/platform-auth/*`): cookies `skladnik_platform_*`, secrets `JWT_PLATFORM_*`, JWT audience `skladnik-platform`, and mandatory TOTP. Create the first admin with `npm run platform:create-admin -- --email … --password … --name …`. Every controller route must be marked `@Public`, `@Tenant`, or `@Platform` (default-deny). The operator UI lives at `/platform` (login, subscriptions, invoices, status transitions, Settings). Activation codes use `ACTIVATION_CODE_PEPPER` (HMAC) plus optional AES-GCM ciphertext (`ACTIVATION_CODE_ENCRYPTION_KEY`) for TOTP-gated reveal while `PENDING`. Creating a deal also issues an immutable proforma (seller identity from platform Settings); marking an invoice paid does not activate the subscription.
 
 | Capability | Owner | Accountant | Site manager | Staff |
 | --- | :-: | :-: | :-: | :-: |

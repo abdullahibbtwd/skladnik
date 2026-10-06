@@ -6,6 +6,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { ArchiveService } from './archive.service';
 import { ArchiveQueryDto, ReportExportQueryDto, ReportQueryDto } from './dto/report.dto';
 import { ReportsService } from './reports.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
 function reportKind(value: string): ReportKind {
   if (!isReportKind(value)) throw new BadRequestException('Unknown report');
@@ -13,6 +14,7 @@ function reportKind(value: string): ReportKind {
 }
 
 /** Reports cover the sites in the user's scope; omit siteId for all of them. */
+@Tenant()
 @Controller('reports')
 @Roles(...SALES_MANAGER_ROLES)
 export class ReportsController {

@@ -1,10 +1,11 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { UnrecoverableError } from 'bullmq';
 import type { Job } from 'bullmq';
 import { Readable } from 'stream';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { assertCompanyCanWrite } from '../subscriptions/company-entitlement';
 import { ExtractionApplyService } from './extraction-apply.service';
 import { ExtractorService } from './extractor.service';
 import { isUnrecoverableVisionError, isVisionTransientError } from './ocr-errors';
@@ -43,6 +44,30 @@ export class ExtractionProcessor extends WorkerHost {
     const capture = await this.prisma.documentCapture.findUnique({ where: { id: job.data.captureId } });
     if (!capture) {
       throw new UnrecoverableError('Capture not found');
+    }
+
+    try {
+      await assertCompanyCanWrite(this.prisma, capture.companyId);
+    } catch (error) {
+      const message =
+        error instanceof HttpException
+          ? (() => {
+              const body = error.getResponse();
+              return typeof body === 'object' && body && 'message' in body
+                ? String((body as { message: unknown }).message)
+                : error.message;
+            })()
+          : errorMessage(error, 'Subscription inactive');
+      await this.prisma.documentCapture.update({
+        where: { id: capture.id },
+        data: {
+          extractionStatus: 'FAILED',
+          extractionError: message,
+          ocrRaw: { extractionFailed: true, error: message, code: 'SUBSCRIPTION_REQUIRED' },
+        },
+      });
+      this.logger.warn(`OCR skipped for capture ${capture.id}: ${message}`);
+      throw new UnrecoverableError(message);
     }
 
     await this.prisma.documentCapture.update({

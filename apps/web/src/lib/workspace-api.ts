@@ -1470,3 +1470,42 @@ export function retryDocumentExtraction(id: string, captureId: string) {
     method: 'POST',
   });
 }
+
+export type TenantSubscriptionCurrent = {
+  subscription: {
+    id: string;
+    plan: string;
+    status: string;
+    maxUsers: number;
+    termMonths: number;
+    startsAt: string | null;
+    expiresAt: string | null;
+    activatedAt?: string | null;
+    isLive?: boolean;
+  } | null;
+  seatsUsed: number;
+  seatsMax: number | null;
+  daysRemaining: number | null;
+  expiringSoon: boolean;
+};
+
+export function fetchCurrentSubscription() {
+  return requestJson<TenantSubscriptionCurrent>('/subscriptions/current', freshInit(true));
+}
+
+export function activateSubscription(code: string) {
+  return requestJson<{
+    subscription: {
+      id: string;
+      plan: string;
+      status: string;
+      maxUsers: number;
+      termMonths: number;
+      startsAt: string;
+      expiresAt: string;
+    };
+  }>('/subscriptions/activate', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}

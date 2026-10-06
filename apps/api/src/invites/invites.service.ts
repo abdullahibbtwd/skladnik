@@ -15,6 +15,8 @@ import { recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { SignupWithInviteDto } from '../auth/dto/signup-with-invite.dto';
+import { assertSeatAvailable } from '../subscriptions/seat-lock';
+import { assertCompanyCanWrite } from '../subscriptions/company-entitlement';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -175,9 +177,12 @@ export class InvitesService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
-      const siteIds = invite.sites.filter((row) => row.site.isActive).map((row) => row.site.id);
+    const siteIds = invite.sites.filter((row) => row.site.isActive).map((row) => row.site.id);
 
     return this.prisma.$transaction(async (tx) => {
+      // Serialize concurrent accepts against the same company's seat limit.
+      await assertSeatAvailable(tx, invite.companyId);
+
       const created = await tx.user.create({
         data: {
           email,
@@ -194,10 +199,13 @@ export class InvitesService {
         });
       }
 
-      await tx.invitation.update({
-        where: { id: invite.id },
+      const accepted = await tx.invitation.updateMany({
+        where: { id: invite.id, acceptedAt: null, revokedAt: null },
         data: { acceptedAt: new Date(), revokedAt: null },
       });
+      if (accepted.count !== 1) {
+        throw new BadRequestException('This invite has already been used');
+      }
 
       await recordActivity(tx, created, {
         entityType: 'Invitation',
@@ -212,6 +220,8 @@ export class InvitesService {
   }
 
   private async send(invite: InvitationRecord, inviteUrl: string) {
+    // Company-scoped outbound mail (invites / digests) must respect entitlement.
+    await assertCompanyCanWrite(this.prisma, invite.companyId);
     const { delivered } = await this.mail.sendInviteEmail({
       to: invite.email,
       companyName: invite.company.name,

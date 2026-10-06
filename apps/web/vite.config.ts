@@ -4,17 +4,28 @@ import { defineConfig, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
-import { API_PATH_PREFIXES } from './src/lib/pwa-constants';
+import { API_NESTED_PATH_PREFIXES, API_PATH_PREFIXES } from './src/lib/pwa-constants';
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 const apiTarget = process.env.API_URL ?? 'http://localhost:3003';
 
-const proxy = Object.fromEntries(
-  API_PATH_PREFIXES.map((prefix): [string, ProxyOptions] => [
+const proxy = Object.fromEntries([
+  ...API_PATH_PREFIXES.map((prefix): [string, ProxyOptions] => [
     `/${prefix}`,
-    { target: apiTarget, changeOrigin: true, ...(prefix === 'auth' ? { xfwd: true } : {}) },
+    { target: apiTarget, changeOrigin: true, ...(prefix === 'auth' || prefix === 'platform-auth' ? { xfwd: true } : {}) },
   ]),
-);
+  ...API_NESTED_PATH_PREFIXES.map((prefix): [string, ProxyOptions] => [
+    `/${prefix}`,
+    {
+      target: apiTarget,
+      changeOrigin: true,
+      // Browser document navigations to /platform/subscriptions/* must hit the SPA.
+      bypass(req) {
+        if (req.headers.accept?.includes('text/html')) return '/index.html';
+      },
+    },
+  ]),
+]);
 
 export default defineConfig({
   plugins: [

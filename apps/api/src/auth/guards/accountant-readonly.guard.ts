@@ -1,7 +1,9 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { AuthUser } from '@skladnik/shared';
 import { apiForbidden } from '../../common/api-error';
 import { isAccountantMutationAllowed } from '../accountant-allowlist';
+import { resolveAuthRealm } from './auth-realm.guard';
 
 /**
  * ACC-01: central deny-by-default for Accountant mutations.
@@ -9,7 +11,14 @@ import { isAccountantMutationAllowed } from '../accountant-allowlist';
  */
 @Injectable()
 export class AccountantReadOnlyGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
   canActivate(context: ExecutionContext): boolean {
+    const realm = resolveAuthRealm(this.reflector, context);
+    if (realm === 'public' || realm === 'platform') {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<{
       method?: string;
       originalUrl?: string;

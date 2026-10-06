@@ -10,6 +10,12 @@ import { AuthModal } from './components/AuthModal';
 import { AuthPage } from './pages/AuthPage';
 import { PasswordResetPage } from './pages/PasswordResetPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { PlatformLayout } from './pages/platform/PlatformLayout';
+import { PlatformLoginPage } from './pages/platform/PlatformLoginPage';
+import { PlatformDashboardPage } from './pages/platform/PlatformDashboardPage';
+import { PlatformSubscriptionsPage } from './pages/platform/PlatformSubscriptionsPage';
+import { PlatformSubscriptionDetailPage } from './pages/platform/PlatformSubscriptionDetailPage';
+import { PlatformSettingsPage } from './pages/platform/PlatformSettingsPage';
 import { OverviewPanel } from './components/dashboard/OverviewPanel';
 import { InventoryPanel } from './components/dashboard/InventoryPanel';
 import { StockPanel } from './components/dashboard/StockPanel';
@@ -39,6 +45,7 @@ import { CompanySettings } from './components/dashboard/CompanySettings';
 import { DocumentSettings } from './components/dashboard/DocumentSettings';
 import { StockRulesSettings } from './components/dashboard/StockRulesSettings';
 import { ActivityLogPanel } from './components/dashboard/ActivityLogPanel';
+import { SubscriptionSettings } from './components/dashboard/SubscriptionSettings';
 import { RequirePermission } from './components/dashboard/RequirePermission';
 import { appReturnPath, useMeQuery } from './lib/auth-session';
 import { useIsAuthenticated } from './lib/auth-store';
@@ -169,6 +176,13 @@ export default function App() {
       />
       <Route path="/forgot-password" element={<PasswordResetPage mode="forgot" />} />
       <Route path="/reset-password" element={<PasswordResetPage mode="reset" />} />
+      <Route path="/platform/login" element={<PlatformLoginPage />} />
+      <Route path="/platform" element={<PlatformLayout />}>
+        <Route index element={<PlatformDashboardPage />} />
+        <Route path="subscriptions" element={<PlatformSubscriptionsPage />} />
+        <Route path="subscriptions/:id" element={<PlatformSubscriptionDetailPage />} />
+        <Route path="settings" element={<PlatformSettingsPage />} />
+      </Route>
       <Route path="/app" element={<DashboardPage />}>
         <Route index element={<OverviewPanel />} />
         <Route path="invoices">
@@ -306,6 +320,7 @@ export default function App() {
             <Route path="company" element={<CompanySettings />} />
             <Route path="documents" element={<DocumentSettings />} />
             <Route path="stock-rules" element={<StockRulesSettings />} />
+            <Route path="subscription" element={<SubscriptionSettings />} />
           </Route>
           <Route path="sites" element={<SitesSettings />} />
           <Route element={<RequirePermission permission="users" fallback="/app/settings" />}>

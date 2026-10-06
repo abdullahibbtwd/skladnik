@@ -71,7 +71,7 @@ export function Select<T extends string>({
       width,
       top: openUp ? undefined : rect.bottom + 6,
       bottom: openUp ? window.innerHeight - rect.top + 6 : undefined,
-      zIndex: 140,
+      zIndex: 200,
     });
   };
 

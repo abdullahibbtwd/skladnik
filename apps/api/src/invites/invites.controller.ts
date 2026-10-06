@@ -1,11 +1,12 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import type { AuthUser } from '@skladnik/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Public } from '../auth/decorators/public.decorator';
+import { Public, Tenant } from '../auth/decorators/auth-realm.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { InvitesService } from './invites.service';
 
+@Tenant()
 @Controller('invites')
 export class InvitesController {
   constructor(private readonly invites: InvitesService) {}

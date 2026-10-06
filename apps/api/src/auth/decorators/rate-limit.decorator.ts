@@ -5,8 +5,13 @@ export type RateLimitRule = {
   name: string;
   limit: number;
   windowSeconds: number;
-  /** "ip+email" keys on the lower-cased `email` in the body as well. */
-  by: 'ip' | 'ip+email';
+  /**
+   * - ip: client IP
+   * - ip+email: IP + body.email (login/signup)
+   * - user: authenticated user id (JWT)
+   * - company: authenticated company id (JWT)
+   */
+  by: 'ip' | 'ip+email' | 'user' | 'company';
 };
 
 export const RATE_LIMIT_KEY = 'rateLimit';

@@ -2,10 +2,13 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, StreamableFile 
 import type { AuthUser } from '@skladnik/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { AllowWithoutSubscription } from '../subscriptions/decorators/allow-without-subscription.decorator';
 import { Annex38SubmittedDto, EShopSettingsDto } from './annex38.dto';
 import { Annex38Service } from './annex38.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
 /** Annex 38 e-shop audit files. Company-level filings, so only the owner and the accountant. */
+@Tenant()
 @Controller('annex38')
 @Roles('OWNER', 'ACCOUNTANT')
 export class Annex38Controller {
@@ -34,6 +37,7 @@ export class Annex38Controller {
   }
 
   @Post('filings/:id/submitted')
+  @AllowWithoutSubscription()
   markSubmitted(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Annex38SubmittedDto) {
     return this.annex38.markSubmitted(user, id, dto);
   }
@@ -44,6 +48,7 @@ export class Annex38Controller {
   }
 
   @Post('sites/:siteId/periods/:period/filings')
+  @AllowWithoutSubscription()
   generate(@CurrentUser() user: AuthUser, @Param('siteId', ParseUUIDPipe) siteId: string, @Param('period') period: string) {
     return this.annex38.generate(user, siteId, period);
   }

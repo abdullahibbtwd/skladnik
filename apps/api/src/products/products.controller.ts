@@ -7,7 +7,9 @@ import { CreateSupplierCodeDto } from './dto/create-supplier-code.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductsService } from './products.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('products')
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}

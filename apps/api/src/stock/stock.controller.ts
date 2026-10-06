@@ -5,7 +5,9 @@ import { SiteScoped } from '../auth/decorators/site-scoped.decorator';
 import { SiteAccessGuard } from '../auth/guards/site-access.guard';
 import { MovementsQueryDto, StockQueryDto } from './dto/stock-query.dto';
 import { StockService } from './stock.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('stock')
 export class StockController {
   constructor(private readonly stock: StockService) {}

@@ -5,7 +5,9 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { SiteScoped } from '../auth/decorators/site-scoped.decorator';
 import { SiteAccessGuard } from '../auth/guards/site-access.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { Tenant } from '../auth/decorators/auth-realm.decorator';
 
+@Tenant()
 @Controller('tenancy')
 export class TenancyController {
   constructor(private readonly prisma: PrismaService) {}
