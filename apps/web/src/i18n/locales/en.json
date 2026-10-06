@@ -2369,6 +2369,22 @@
       "createTitle": "Create subscription",
       "createSub": "Issues a pending deal, activation code, and proforma invoice together.",
       "plan": "Plan",
+      "planHint": "Choosing a plan fills users, term, and price. You can still edit those fields.",
+      "planHintEdit": "Choosing a plan updates suggested users and term. Price stays on the invoice as issued.",
+      "plans": {
+        "STARTER": {
+          "label": "Starter — single shop",
+          "hint": "{{users}} users · {{price}} {{currency}} / {{months}} months"
+        },
+        "PRO": {
+          "label": "Pro — busy store",
+          "hint": "{{users}} users · {{price}} {{currency}} / {{months}} months"
+        },
+        "MULTI_LOCATION": {
+          "label": "Multi-location — chain",
+          "hint": "{{users}} users · {{price}} {{currency}} / {{months}} months"
+        }
+      },
       "maxUsers": "Max users",
       "termMonths": "Term (months)",
       "invoiceSection": "Invoice",

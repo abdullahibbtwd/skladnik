@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Copy, Download, Eye, Plus, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import {
-  SUBSCRIPTION_PLANS,
   SUBSCRIPTION_STATUSES,
   type SubscriptionPlan,
   type SubscriptionStatus,
@@ -25,9 +24,11 @@ import { FieldLabel } from '../../components/PasswordField';
 import { Select } from '../../components/ui/Select';
 import { StatusTransitionControl } from './StatusTransitionControl';
 import {
+  PLATFORM_PLAN_PRESETS,
   platformErrorClass,
   platformInputClass,
   platformPanelClass,
+  platformPlanSelectOptions,
   platformPrimaryBtnClass,
   platformSecondaryBtnClass,
   platformStatusTone,
@@ -148,7 +149,7 @@ export function PlatformSubscriptionsPage() {
   const planOptions = useMemo(
     () => [
       { value: '' as const, label: t('platform.subscriptions.anyPlan') },
-      ...SUBSCRIPTION_PLANS.map((value) => ({ value, label: value })),
+      ...platformPlanSelectOptions(t),
     ],
     [t],
   );
@@ -477,11 +478,12 @@ function CreateSubscriptionModal({
   onSubmit: (input: CreateSubscriptionInput, idempotencyKey: string) => void;
 }) {
   const { t } = useTranslation();
+  const starter = PLATFORM_PLAN_PRESETS.STARTER;
   const [plan, setPlan] = useState<SubscriptionPlan>('STARTER');
-  const [maxUsers, setMaxUsers] = useState(5);
-  const [termMonths, setTermMonths] = useState(12);
-  const [priceMajor, setPriceMajor] = useState('120.00');
-  const [currency, setCurrency] = useState('EUR');
+  const [maxUsers, setMaxUsers] = useState(starter.maxUsers);
+  const [termMonths, setTermMonths] = useState(starter.termMonths);
+  const [priceMajor, setPriceMajor] = useState(starter.priceMajor);
+  const [currency, setCurrency] = useState(starter.currency);
   const [vatRate, setVatRate] = useState('20');
   const [buyerName, setBuyerName] = useState('');
   const [buyerEik, setBuyerEik] = useState('');
@@ -494,10 +496,16 @@ function CreateSubscriptionModal({
   const [notes, setNotes] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const planOptions = useMemo(
-    () => SUBSCRIPTION_PLANS.map((value) => ({ value, label: value })),
-    [],
-  );
+  const planOptions = useMemo(() => platformPlanSelectOptions(t), [t]);
+
+  const applyPlan = (next: SubscriptionPlan) => {
+    const preset = PLATFORM_PLAN_PRESETS[next];
+    setPlan(next);
+    setMaxUsers(preset.maxUsers);
+    setTermMonths(preset.termMonths);
+    setPriceMajor(preset.priceMajor);
+    setCurrency(preset.currency);
+  };
 
   const onForm = (event: FormEvent) => {
     event.preventDefault();
@@ -561,7 +569,8 @@ function CreateSubscriptionModal({
         <form className="grid gap-4" onSubmit={onForm}>
           <div>
             <FieldLabel htmlFor="create-plan">{t('platform.subscriptions.plan')}</FieldLabel>
-            <Select id="create-plan" value={plan} onChange={setPlan} options={planOptions} disabled={busy} />
+            <Select id="create-plan" value={plan} onChange={applyPlan} options={planOptions} disabled={busy} />
+            <p className="mt-1.5 font-sans text-[0.72rem] text-slate-400">{t('platform.subscriptions.planHint')}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

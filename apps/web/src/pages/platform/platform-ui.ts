@@ -1,5 +1,9 @@
 /** Shared light-theme classes for the platform console (aligned with tenant auth / dashboard). */
 
+import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from '@skladnik/shared';
+import type { TFunction } from 'i18next';
+import type { SelectOption } from '../../components/ui/Select';
+
 export const platformInputClass =
   'w-full rounded-xl border border-slate-200 bg-ops-canvas px-3 py-2.5 font-sans text-[0.88rem] text-ops-ink outline-none transition-colors placeholder:text-slate-400 focus:border-ops-teal/50 focus:bg-white focus:ring-1 focus:ring-ops-teal/30';
 
@@ -19,6 +23,32 @@ export const platformErrorClass =
 
 export const platformWarnClass =
   'rounded-xl border border-ops-warn/25 bg-orange-50 px-3 py-2.5 font-sans text-sm text-ops-warn';
+
+/** Suggested deal defaults when an operator picks a plan in the create form. Editable after. */
+export const PLATFORM_PLAN_PRESETS: Record<
+  SubscriptionPlan,
+  { maxUsers: number; termMonths: number; priceMajor: string; currency: string }
+> = {
+  STARTER: { maxUsers: 5, termMonths: 12, priceMajor: '120.00', currency: 'EUR' },
+  PRO: { maxUsers: 15, termMonths: 12, priceMajor: '299.00', currency: 'EUR' },
+  MULTI_LOCATION: { maxUsers: 50, termMonths: 12, priceMajor: '599.00', currency: 'EUR' },
+};
+
+export function platformPlanSelectOptions(t: TFunction): SelectOption<SubscriptionPlan>[] {
+  return SUBSCRIPTION_PLANS.map((value) => {
+    const preset = PLATFORM_PLAN_PRESETS[value];
+    return {
+      value,
+      label: t(`platform.subscriptions.plans.${value}.label`),
+      hint: t(`platform.subscriptions.plans.${value}.hint`, {
+        users: preset.maxUsers,
+        price: preset.priceMajor,
+        months: preset.termMonths,
+        currency: preset.currency,
+      }),
+    };
+  });
+}
 
 export function platformStatusTone(status: string): string {
   if (status === 'ACTIVE' || status === 'TRIAL') {

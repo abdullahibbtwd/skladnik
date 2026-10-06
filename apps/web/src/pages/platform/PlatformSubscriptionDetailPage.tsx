@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Download, Eye } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { INVOICE_STATUS_TRANSITIONS, SUBSCRIPTION_PLANS, type InvoiceStatus, type SubscriptionPlan, type SubscriptionStatus } from '@skladnik/shared';
+import { INVOICE_STATUS_TRANSITIONS, type InvoiceStatus, type SubscriptionPlan, type SubscriptionStatus } from '@skladnik/shared';
 import { useTranslation } from 'react-i18next';
 import { GlassPanel } from '../../components/dashboard/dashboard-ui';
 import { FieldLabel } from '../../components/PasswordField';
@@ -24,9 +24,11 @@ import {
 import { ActivationCodeModal } from './PlatformSubscriptionsPage';
 import { StatusTransitionControl } from './StatusTransitionControl';
 import {
+  PLATFORM_PLAN_PRESETS,
   platformErrorClass,
   platformInputClass,
   platformPanelClass,
+  platformPlanSelectOptions,
   platformPrimaryBtnClass,
   platformSecondaryBtnClass,
   platformStatusTone,
@@ -77,10 +79,14 @@ export function PlatformSubscriptionDetailPage() {
     setNotes(sub.notes ?? '');
   }, [sub]);
 
-  const planOptions = useMemo(
-    () => SUBSCRIPTION_PLANS.map((value) => ({ value, label: value })),
-    [],
-  );
+  const planOptions = useMemo(() => platformPlanSelectOptions(t), [t]);
+
+  const applyPlan = (next: SubscriptionPlan) => {
+    const preset = PLATFORM_PLAN_PRESETS[next];
+    setPlan(next);
+    setMaxUsers(preset.maxUsers);
+    setTermMonths(preset.termMonths);
+  };
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['platform', 'subscription', id] });
@@ -272,10 +278,11 @@ export function PlatformSubscriptionDetailPage() {
               <Select
                 id="edit-plan"
                 value={plan}
-                onChange={setPlan}
+                onChange={applyPlan}
                 options={planOptions}
                 disabled={sub.status === 'REVOKED'}
               />
+              <p className="mt-1.5 font-sans text-[0.72rem] text-slate-400">{t('platform.subscriptions.planHintEdit')}</p>
             </div>
             <div>
               <FieldLabel htmlFor="edit-max-users">{t('platform.subscriptions.maxUsers')}</FieldLabel>
