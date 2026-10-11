@@ -98,6 +98,7 @@ async function main() {
     const code = await prisma.activationCode.findUniqueOrThrow({ where: { codeHash: issued.codeHash } });
     assert.ok(code.redeemedAt, 'code must be redeemed');
     assert.ok(code.redeemedByUserId === userA || code.redeemedByUserId === userB);
+    assert.equal(winners[0]!.status, 'ACTIVE');
 
     const active = await prisma.subscription.findMany({
       where: { companyId, status: 'ACTIVE' },

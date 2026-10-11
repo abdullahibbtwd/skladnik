@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, Copy, Download, Eye, Plus, Search, X } from 
 import { createPortal } from 'react-dom';
 import {
   SUBSCRIPTION_STATUSES,
+  validateCreatePlatformSubscription,
+  type CreatePlatformSubscriptionFieldErrors,
   type SubscriptionPlan,
   type SubscriptionStatus,
 } from '@skladnik/shared';
@@ -26,7 +28,9 @@ import { StatusTransitionControl } from './StatusTransitionControl';
 import {
   PLATFORM_PLAN_PRESETS,
   platformErrorClass,
+  platformFieldErrorClass,
   platformInputClass,
+  platformInputErrorClass,
   platformPanelClass,
   platformPlanSelectOptions,
   platformPrimaryBtnClass,
@@ -34,6 +38,47 @@ import {
   platformStatusTone,
   platformWarnClass,
 } from './platform-ui';
+
+const CREATE_FIELD_FOCUS_ORDER = [
+  'plan',
+  'maxUsers',
+  'termMonths',
+  'priceMinor',
+  'currency',
+  'vatRate',
+  'buyerName',
+  'buyerEik',
+  'buyerAddress',
+  'buyerEmail',
+  'contactEmail',
+] as const;
+
+const CREATE_FIELD_ELEMENT_IDS: Record<string, string> = {
+  plan: 'create-plan',
+  maxUsers: 'create-max-users',
+  termMonths: 'create-term',
+  priceMinor: 'create-price',
+  currency: 'create-currency',
+  vatRate: 'create-vat',
+  buyerName: 'create-buyer-name',
+  buyerEik: 'create-buyer-eik',
+  buyerAddress: 'create-buyer-address',
+  buyerEmail: 'create-buyer-email',
+  contactEmail: 'create-email',
+};
+
+function fieldErrorsFromPayload(payload: unknown): CreatePlatformSubscriptionFieldErrors {
+  if (!payload || typeof payload !== 'object' || !('fieldErrors' in payload)) return {};
+  const raw = (payload as { fieldErrors: unknown }).fieldErrors;
+  if (!raw || typeof raw !== 'object') return {};
+  const result: CreatePlatformSubscriptionFieldErrors = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'string') {
+      (result as Record<string, string>)[key] = value;
+    }
+  }
+  return result;
+}
 
 const listKey = ['platform', 'subscriptions'] as const;
 const PAGE_SIZE = 20;
@@ -43,6 +88,20 @@ function formatMoney(minor: number, currency: string) {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(minor / 100);
   } catch {
     return `${(minor / 100).toFixed(2)} ${currency}`;
+  }
+}
+
+function focusFirstInvalidField(errors: CreatePlatformSubscriptionFieldErrors) {
+  for (const field of CREATE_FIELD_FOCUS_ORDER) {
+    if (!errors[field]) continue;
+    const id = CREATE_FIELD_ELEMENT_IDS[field];
+    if (!id) continue;
+    const el = document.getElementById(id);
+    if (el instanceof HTMLElement) {
+      el.focus();
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
   }
 }
 
@@ -137,6 +196,15 @@ export function PlatformSubscriptionsPage() {
   const total = listQuery.data?.total ?? 0;
   const totalPages = listQuery.data?.totalPages ?? 1;
   const currentPage = listQuery.data?.page ?? page;
+  const hasFilters = Boolean(status || plan || q.trim());
+  const emptyKind = !listQuery.isLoading && rows.length === 0 ? (hasFilters ? 'no_results' : 'empty') : null;
+
+  const clearFilters = () => {
+    setStatus('');
+    setPlan('');
+    setQ('');
+    setPage(1);
+  };
 
   const statusOptions = useMemo(
     () => [
@@ -206,16 +274,17 @@ export function PlatformSubscriptionsPage() {
 
       <GlassPanel padded={false}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] table-fixed text-left text-sm">
+          <table className="w-full min-w-[68rem] border-separate border-spacing-0 text-left text-sm">
             <thead className={tableHeadRowClass()}>
               <tr>
-                <th className="w-[22%] px-4 py-2.5 font-display font-medium sm:px-5">{t('platform.subscriptions.colCompany')}</th>
-                <th className="w-[12%] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colPlan')}</th>
-                <th className="w-[11%] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colStatus')}</th>
-                <th className="w-[20%] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colInvoice')}</th>
-                <th className="w-[14%] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colCode')}</th>
-                <th className="w-[10%] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colCreated')}</th>
-                <th className="w-[11%] px-3 py-2.5 pr-4 text-right font-display font-medium sm:pr-5">
+                <th className="min-w-[10rem] px-4 py-2.5 font-display font-medium sm:px-5">{t('platform.subscriptions.colCompany')}</th>
+                <th className="min-w-[9rem] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colBuyer')}</th>
+                <th className="min-w-[7rem] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colPlan')}</th>
+                <th className="min-w-[6.5rem] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colStatus')}</th>
+                <th className="min-w-[9rem] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colInvoice')}</th>
+                <th className="min-w-[6rem] px-3 py-2.5 font-display font-medium">{t('platform.subscriptions.colCode')}</th>
+                <th className="min-w-[6.5rem] px-3 py-2.5 font-display font-medium whitespace-nowrap">{t('platform.subscriptions.colCreated')}</th>
+                <th className="min-w-[8.5rem] px-3 py-2.5 pr-4 text-right font-display font-medium whitespace-nowrap sm:pr-5">
                   {t('platform.subscriptions.colActions')}
                 </th>
               </tr>
@@ -223,16 +292,32 @@ export function PlatformSubscriptionsPage() {
             <tbody>
               {listQuery.isLoading && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400 sm:px-5">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400 sm:px-5">
                     {t('platform.subscriptions.loading')}
                   </td>
                 </tr>
               )}
-              {!listQuery.isLoading && rows.length === 0 && (
+              {emptyKind === 'empty' && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center sm:px-5">
+                  <td colSpan={8} className="px-4 py-12 text-center sm:px-5">
                     <p className="font-display text-[0.88rem] font-medium text-ops-ink">{t('platform.subscriptions.empty')}</p>
                     <p className="mt-1 font-sans text-[0.76rem] text-slate-400">{t('platform.subscriptions.emptyHint')}</p>
+                  </td>
+                </tr>
+              )}
+              {emptyKind === 'no_results' && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center sm:px-5">
+                    <p className="font-display text-[0.88rem] font-medium text-ops-ink">
+                      {t('platform.subscriptions.noResults')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className={`${platformSecondaryBtnClass} mt-4`}
+                    >
+                      {t('platform.subscriptions.clearFilters')}
+                    </button>
                   </td>
                 </tr>
               )}
@@ -302,11 +387,25 @@ export function PlatformSubscriptionsPage() {
       {createOpen && (
         <CreateSubscriptionModal
           busy={createMutation.isPending}
-          error={createMutation.error instanceof Error ? createMutation.error.message : null}
+          serverError={
+            createMutation.error instanceof PlatformApiError && createMutation.error.code !== 'VALIDATION_FAILED'
+              ? createMutation.error.message
+              : createMutation.error instanceof Error && !(createMutation.error instanceof PlatformApiError)
+                ? createMutation.error.message
+                : null
+          }
+          serverFieldErrors={
+            createMutation.error instanceof PlatformApiError
+              ? fieldErrorsFromPayload(createMutation.error.payload)
+              : {}
+          }
           onClose={() => {
             if (!createMutation.isPending) setCreateOpen(false);
           }}
-          onSubmit={(input, key) => createMutation.mutate({ input, key })}
+          onSubmit={(input, key) => {
+            createMutation.reset();
+            createMutation.mutate({ input, key });
+          }}
         />
       )}
 
@@ -378,13 +477,31 @@ function SubscriptionRow({
         <Link
           to={`/platform/subscriptions/${row.id}`}
           className="block truncate font-display text-[0.88rem] font-medium text-ops-teal hover:underline"
-          title={row.company?.name || row.companyNameHint || t('platform.subscriptions.unbound')}
+          title={row.company?.name || t('platform.subscriptions.unbound')}
         >
-          {row.company?.name || row.companyNameHint || t('platform.subscriptions.unbound')}
+          {row.company?.name || t('platform.subscriptions.unbound')}
         </Link>
-        {row.contactEmail && (
+        {row.company?.eik && (
+          <div className="mt-0.5 truncate text-[0.72rem] text-slate-500" title={row.company.eik}>
+            {t('platform.subscriptions.eikLabel', { eik: row.company.eik })}
+          </div>
+        )}
+        {!row.company && row.contactEmail && (
           <div className="mt-0.5 truncate text-[0.72rem] text-slate-500" title={row.contactEmail}>
             {row.contactEmail}
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-3 align-middle">
+        <div
+          className="truncate font-display text-[0.82rem] font-medium text-ops-ink"
+          title={row.invoiceBuyer?.name || '—'}
+        >
+          {row.invoiceBuyer?.name || '—'}
+        </div>
+        {row.invoiceBuyer?.eik && (
+          <div className="mt-0.5 truncate text-[0.72rem] text-slate-500">
+            {t('platform.subscriptions.eikLabel', { eik: row.invoiceBuyer.eik })}
           </div>
         )}
       </td>
@@ -417,8 +534,8 @@ function SubscriptionRow({
       <td className="px-3 py-3 align-middle whitespace-nowrap text-[0.78rem] text-slate-500">
         {new Date(row.createdAt).toLocaleDateString()}
       </td>
-      <td className="px-3 py-3 pr-4 align-middle sm:pr-5">
-        <div className="flex items-center justify-end gap-1.5">
+      <td className="px-3 py-3 pr-4 align-middle whitespace-nowrap sm:pr-5">
+        <div className="flex flex-nowrap items-center justify-end gap-1.5">
           {onDownloadInvoice && (
             <button
               type="button"
@@ -468,12 +585,14 @@ function StatusPill({ status }: { status: SubscriptionStatus }) {
 
 function CreateSubscriptionModal({
   busy,
-  error,
+  serverError,
+  serverFieldErrors,
   onClose,
   onSubmit,
 }: {
   busy: boolean;
-  error: string | null;
+  serverError: string | null;
+  serverFieldErrors: CreatePlatformSubscriptionFieldErrors;
   onClose: () => void;
   onSubmit: (input: CreateSubscriptionInput, idempotencyKey: string) => void;
 }) {
@@ -494,9 +613,25 @@ function CreateSubscriptionModal({
   const [contactEmail, setContactEmail] = useState('');
   const [externalInvoiceRef, setExternalInvoiceRef] = useState('');
   const [notes, setNotes] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<CreatePlatformSubscriptionFieldErrors>({});
 
   const planOptions = useMemo(() => platformPlanSelectOptions(t), [t]);
+
+  useEffect(() => {
+    if (Object.keys(serverFieldErrors).length === 0) return;
+    setFieldErrors(serverFieldErrors);
+    focusFirstInvalidField(serverFieldErrors);
+  }, [serverFieldErrors]);
+
+  const fieldMessage = (field: keyof CreatePlatformSubscriptionFieldErrors) => {
+    const code = fieldErrors[field];
+    if (!code) return null;
+    const key = `platform.subscriptions.fieldErrors.${code}`;
+    return t(key, { defaultValue: code });
+  };
+
+  const inputClass = (field: keyof CreatePlatformSubscriptionFieldErrors) =>
+    fieldErrors[field] ? platformInputErrorClass : platformInputClass;
 
   const applyPlan = (next: SubscriptionPlan) => {
     const preset = PLATFORM_PLAN_PRESETS[next];
@@ -511,28 +646,30 @@ function CreateSubscriptionModal({
     event.preventDefault();
     if (busy) return;
     const major = Number(priceMajor.replace(',', '.'));
-    if (!Number.isFinite(major) || major < 0) {
-      setLocalError(t('platform.subscriptions.invalidPrice'));
-      return;
-    }
     const rate = Number(vatRate.replace(',', '.'));
-    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
-      setLocalError(t('platform.subscriptions.invalidVat'));
+    const priceMinor = Number.isFinite(major) ? Math.round(major * 100) : Number.NaN;
+    const draft = {
+      plan,
+      maxUsers,
+      termMonths,
+      priceMinor,
+      currency: currency.trim().toUpperCase(),
+      vatRate: rate,
+      buyerName: buyerName.trim(),
+      buyerEik: buyerEik.trim(),
+      buyerAddress: buyerAddress.trim(),
+      buyerEmail: buyerEmail.trim(),
+      contactEmail: contactEmail.trim() || undefined,
+    };
+    const errors = validateCreatePlatformSubscription(draft);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      focusFirstInvalidField(errors);
       return;
     }
-    setLocalError(null);
     onSubmit(
       {
-        plan,
-        maxUsers,
-        termMonths,
-        priceMinor: Math.round(major * 100),
-        currency: currency.trim().toUpperCase(),
-        vatRate: rate,
-        buyerName: buyerName.trim(),
-        buyerEik: buyerEik.trim(),
-        buyerAddress: buyerAddress.trim(),
-        buyerEmail: buyerEmail.trim(),
+        ...draft,
         invoiceTitle: invoiceTitle.trim() || undefined,
         companyNameHint: companyNameHint.trim() || buyerName.trim() || undefined,
         contactEmail: contactEmail.trim() || buyerEmail.trim() || undefined,
@@ -546,31 +683,37 @@ function CreateSubscriptionModal({
   return createPortal(
     <div
       className="fixed inset-0 z-[160] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-6"
-      onClick={onClose}
+      role="presentation"
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-subscription-title"
         className={`${platformPanelClass} max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl p-5 sm:rounded-2xl sm:p-6`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-lg font-semibold text-ops-ink">{t('platform.subscriptions.createTitle')}</h2>
+            <h2 id="create-subscription-title" className="font-display text-lg font-semibold text-ops-ink">
+              {t('platform.subscriptions.createTitle')}
+            </h2>
             <p className="mt-1 text-sm text-slate-500">{t('platform.subscriptions.createSub')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             disabled={busy}
+            aria-label={t('common.close')}
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-ops-canvas hover:text-ops-ink disabled:opacity-50"
           >
             <X size={18} />
           </button>
         </div>
-        <form className="grid gap-4" onSubmit={onForm}>
+        <form className="grid gap-4" onSubmit={onForm} noValidate>
           <div>
             <FieldLabel htmlFor="create-plan">{t('platform.subscriptions.plan')}</FieldLabel>
             <Select id="create-plan" value={plan} onChange={applyPlan} options={planOptions} disabled={busy} />
             <p className="mt-1.5 font-sans text-[0.72rem] text-slate-400">{t('platform.subscriptions.planHint')}</p>
+            {fieldMessage('plan') && <p className={platformFieldErrorClass}>{fieldMessage('plan')}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -580,12 +723,13 @@ function CreateSubscriptionModal({
                 type="number"
                 min={1}
                 max={10000}
-                required
                 disabled={busy}
                 value={maxUsers}
                 onChange={(e) => setMaxUsers(Number(e.target.value))}
-                className={platformInputClass}
+                className={inputClass('maxUsers')}
+                aria-invalid={Boolean(fieldErrors.maxUsers)}
               />
+              {fieldMessage('maxUsers') && <p className={platformFieldErrorClass}>{fieldMessage('maxUsers')}</p>}
             </div>
             <div>
               <FieldLabel htmlFor="create-term">{t('platform.subscriptions.termMonths')}</FieldLabel>
@@ -594,12 +738,13 @@ function CreateSubscriptionModal({
                 type="number"
                 min={1}
                 max={120}
-                required
                 disabled={busy}
                 value={termMonths}
                 onChange={(e) => setTermMonths(Number(e.target.value))}
-                className={platformInputClass}
+                className={inputClass('termMonths')}
+                aria-invalid={Boolean(fieldErrors.termMonths)}
               />
+              {fieldMessage('termMonths') && <p className={platformFieldErrorClass}>{fieldMessage('termMonths')}</p>}
             </div>
           </div>
 
@@ -614,36 +759,41 @@ function CreateSubscriptionModal({
                   <input
                     id="create-price"
                     inputMode="decimal"
-                    required
                     disabled={busy}
                     value={priceMajor}
                     onChange={(e) => setPriceMajor(e.target.value)}
-                    className={platformInputClass}
+                    className={inputClass('priceMinor')}
+                    aria-invalid={Boolean(fieldErrors.priceMinor)}
                   />
+                  {fieldMessage('priceMinor') && (
+                    <p className={platformFieldErrorClass}>{fieldMessage('priceMinor')}</p>
+                  )}
                 </div>
                 <div>
                   <FieldLabel htmlFor="create-currency">{t('platform.subscriptions.currency')}</FieldLabel>
                   <input
                     id="create-currency"
-                    required
                     disabled={busy}
                     maxLength={3}
                     value={currency}
                     onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                    className={platformInputClass}
+                    className={inputClass('currency')}
+                    aria-invalid={Boolean(fieldErrors.currency)}
                   />
+                  {fieldMessage('currency') && <p className={platformFieldErrorClass}>{fieldMessage('currency')}</p>}
                 </div>
                 <div>
                   <FieldLabel htmlFor="create-vat">{t('platform.subscriptions.vatRate')}</FieldLabel>
                   <input
                     id="create-vat"
                     inputMode="decimal"
-                    required
                     disabled={busy}
                     value={vatRate}
                     onChange={(e) => setVatRate(e.target.value)}
-                    className={platformInputClass}
+                    className={inputClass('vatRate')}
+                    aria-invalid={Boolean(fieldErrors.vatRate)}
                   />
+                  {fieldMessage('vatRate') && <p className={platformFieldErrorClass}>{fieldMessage('vatRate')}</p>}
                 </div>
               </div>
               <div>
@@ -660,46 +810,52 @@ function CreateSubscriptionModal({
                 <FieldLabel htmlFor="create-buyer-name">{t('platform.subscriptions.buyerName')}</FieldLabel>
                 <input
                   id="create-buyer-name"
-                  required
                   disabled={busy}
                   value={buyerName}
                   onChange={(e) => setBuyerName(e.target.value)}
-                  className={platformInputClass}
+                  className={inputClass('buyerName')}
+                  aria-invalid={Boolean(fieldErrors.buyerName)}
                 />
+                {fieldMessage('buyerName') && <p className={platformFieldErrorClass}>{fieldMessage('buyerName')}</p>}
               </div>
               <div>
                 <FieldLabel htmlFor="create-buyer-eik">{t('platform.subscriptions.buyerEik')}</FieldLabel>
                 <input
                   id="create-buyer-eik"
-                  required
                   disabled={busy}
                   value={buyerEik}
                   onChange={(e) => setBuyerEik(e.target.value)}
-                  className={platformInputClass}
+                  className={inputClass('buyerEik')}
+                  aria-invalid={Boolean(fieldErrors.buyerEik)}
                 />
+                {fieldMessage('buyerEik') && <p className={platformFieldErrorClass}>{fieldMessage('buyerEik')}</p>}
               </div>
               <div>
                 <FieldLabel htmlFor="create-buyer-address">{t('platform.subscriptions.buyerAddress')}</FieldLabel>
                 <input
                   id="create-buyer-address"
-                  required
                   disabled={busy}
                   value={buyerAddress}
                   onChange={(e) => setBuyerAddress(e.target.value)}
-                  className={platformInputClass}
+                  className={inputClass('buyerAddress')}
+                  aria-invalid={Boolean(fieldErrors.buyerAddress)}
                 />
+                {fieldMessage('buyerAddress') && (
+                  <p className={platformFieldErrorClass}>{fieldMessage('buyerAddress')}</p>
+                )}
               </div>
               <div>
                 <FieldLabel htmlFor="create-buyer-email">{t('platform.subscriptions.buyerEmail')}</FieldLabel>
                 <input
                   id="create-buyer-email"
                   type="email"
-                  required
                   disabled={busy}
                   value={buyerEmail}
                   onChange={(e) => setBuyerEmail(e.target.value)}
-                  className={platformInputClass}
+                  className={inputClass('buyerEmail')}
+                  aria-invalid={Boolean(fieldErrors.buyerEmail)}
                 />
+                {fieldMessage('buyerEmail') && <p className={platformFieldErrorClass}>{fieldMessage('buyerEmail')}</p>}
               </div>
             </div>
           </div>
@@ -722,8 +878,10 @@ function CreateSubscriptionModal({
               disabled={busy}
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
-              className={platformInputClass}
+              className={inputClass('contactEmail')}
+              aria-invalid={Boolean(fieldErrors.contactEmail)}
             />
+            {fieldMessage('contactEmail') && <p className={platformFieldErrorClass}>{fieldMessage('contactEmail')}</p>}
           </div>
           <div>
             <FieldLabel htmlFor="create-invoice">{t('platform.subscriptions.invoiceRef')}</FieldLabel>
@@ -746,7 +904,7 @@ function CreateSubscriptionModal({
               className={platformInputClass}
             />
           </div>
-          {(localError || error) && <p className={platformErrorClass}>{localError || error}</p>}
+          {serverError && <p className={platformErrorClass}>{serverError}</p>}
           <button type="submit" disabled={busy} className={`${platformPrimaryBtnClass} mt-1 w-full`}>
             {busy ? t('platform.subscriptions.creating') : t('platform.subscriptions.createSubmit')}
           </button>
@@ -781,6 +939,8 @@ export function ActivationCodeModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         className={`${platformPanelClass} w-full max-w-md rounded-t-2xl p-5 sm:rounded-2xl sm:p-6`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -837,6 +997,8 @@ function RevealCodeModal({
       onClick={onClose}
     >
       <form
+        role="dialog"
+        aria-modal="true"
         className={`${platformPanelClass} w-full max-w-md rounded-t-2xl p-5 sm:rounded-2xl sm:p-6`}
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {

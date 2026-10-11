@@ -17,7 +17,15 @@ import {
   type SubscriptionEventType,
   type SubscriptionStatus,
 } from '@prisma/client';
-import { canTransitionInvoiceStatus, canTransitionSubscriptionStatus, computeInvoiceTotals } from '@skladnik/shared';
+import {
+  canManualTransitionSubscriptionStatus,
+  canTransitionInvoiceStatus,
+  computeInvoiceTotals,
+  normaliseSubscriptionBuyerEik,
+  validateCreatePlatformSubscription,
+} from '@skladnik/shared';
+import { apiValidationFailed } from '../common/api-error';
+import { invalidStatusTransitionError } from './activation-activate.errors';
 import { randomUUID } from 'crypto';
 import { decryptTotpSecret, verifyTotpTimestep } from '../platform-auth/totp.crypto';
 import type { PlatformAuthUser } from '../platform-auth/platform-auth.types';
@@ -25,7 +33,8 @@ import { PlatformSettingsService } from '../platform-settings/platform-settings.
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { encryptActivationCode, decryptActivationCode } from './activation-code.crypto';
-import { issueActivationCode } from './activation-code';
+import { displayActivationCodePrefix, issueActivationCode } from './activation-code';
+import { platformSubscriptionSearchOr } from './platform-subscription-search';
 import { CreatePlatformSubscriptionDto } from './dto/create-platform-subscription.dto';
 import { ListPlatformSubscriptionsQueryDto } from './dto/list-platform-subscriptions.dto';
 import { MarkInvoicePaidDto } from './dto/mark-invoice-paid.dto';
@@ -84,14 +93,7 @@ export class PlatformSubscriptionsService {
     if (query.plan) where.plan = query.plan;
     const q = query.q?.trim();
     if (q) {
-      where.OR = [
-        { companyNameHint: { contains: q, mode: 'insensitive' } },
-        { contactEmail: { contains: q, mode: 'insensitive' } },
-        { externalInvoiceRef: { contains: q, mode: 'insensitive' } },
-        { notes: { contains: q, mode: 'insensitive' } },
-        { company: { name: { contains: q, mode: 'insensitive' } } },
-        { activationCodes: { some: { codePrefix: { startsWith: q.toUpperCase() } } } },
-      ];
+      where.OR = platformSubscriptionSearchOr(q);
     }
 
     const page = query.page ?? 1;
@@ -119,6 +121,8 @@ export class PlatformSubscriptionsService {
               totalMinor: true,
               currency: true,
               issuedAt: true,
+              buyerName: true,
+              buyerEik: true,
             },
           },
         },
@@ -194,6 +198,25 @@ export class PlatformSubscriptionsService {
     dto: CreatePlatformSubscriptionDto,
     idempotencyKey?: string | null,
   ) {
+    const fieldErrors = validateCreatePlatformSubscription({
+      plan: dto.plan,
+      maxUsers: dto.maxUsers,
+      termMonths: dto.termMonths,
+      priceMinor: dto.priceMinor,
+      currency: dto.currency,
+      vatRate: dto.vatRate,
+      buyerName: dto.buyerName,
+      buyerEik: dto.buyerEik,
+      buyerAddress: dto.buyerAddress,
+      buyerEmail: dto.buyerEmail,
+      contactEmail: dto.contactEmail,
+    });
+    if (Object.keys(fieldErrors).length > 0) {
+      throw apiValidationFailed(fieldErrors);
+    }
+
+    const buyerEik = normaliseSubscriptionBuyerEik(dto.buyerEik);
+
     const key = idempotencyKey?.trim();
     if (key) {
       const cached = await this.readIdempotentResponse(admin.id, key);
@@ -264,7 +287,7 @@ export class PlatformSubscriptionsService {
             lineItems,
             ...seller,
             buyerName: dto.buyerName.trim(),
-            buyerEik: dto.buyerEik.trim(),
+            buyerEik,
             buyerAddress: dto.buyerAddress.trim(),
             buyerEmail: dto.buyerEmail.trim().toLowerCase(),
             issuedAt: now,
@@ -450,8 +473,8 @@ export class PlatformSubscriptionsService {
         subscription: this.serializeDetail(existing),
       });
     }
-    if (!canTransitionSubscriptionStatus(existing.status, toStatus)) {
-      throw new BadRequestException(`Cannot change status from ${existing.status} to ${toStatus}`);
+    if (!canManualTransitionSubscriptionStatus(existing.status, toStatus)) {
+      throw invalidStatusTransitionError(existing.status, toStatus);
     }
 
     const auditAction =
@@ -944,6 +967,8 @@ export class PlatformSubscriptionsService {
       paidAt: invoice.paidAt,
       voidedAt: invoice.voidedAt,
       version: invoice.version,
+      buyerName: invoice.buyerName,
+      buyerEik: invoice.buyerEik,
     };
   }
 
@@ -964,6 +989,8 @@ export class PlatformSubscriptionsService {
         totalMinor: number;
         currency: string;
         issuedAt: Date;
+        buyerName: string;
+        buyerEik: string;
       }>;
     },
   ) {
@@ -981,8 +1008,15 @@ export class PlatformSubscriptionsService {
       contactEmail: row.contactEmail,
       externalInvoiceRef: row.externalInvoiceRef,
       version: row.version,
+      /** Redeeming ERP company (null while PENDING). */
       company: row.company,
-      openCodePrefix: openCode?.codePrefix ?? null,
+      /** Invoice buyer snapshot — may differ from redeemed company. */
+      invoiceBuyer: latestInvoice
+        ? { name: latestInvoice.buyerName, eik: latestInvoice.buyerEik }
+        : row.companyNameHint
+          ? { name: row.companyNameHint, eik: null as string | null }
+          : null,
+      openCodePrefix: displayActivationCodePrefix(openCode?.codePrefix ?? null),
       openCodeExpiresAt: openCode?.expiresAt ?? null,
       codeRevealable: Boolean(openCode?.codeCiphertext) && row.status === 'PENDING',
       latestInvoice: latestInvoice
@@ -993,6 +1027,8 @@ export class PlatformSubscriptionsService {
             totalMinor: latestInvoice.totalMinor,
             currency: latestInvoice.currency,
             issuedAt: latestInvoice.issuedAt,
+            buyerName: latestInvoice.buyerName,
+            buyerEik: latestInvoice.buyerEik,
           }
         : null,
       activatedAt: row.activatedAt,
@@ -1038,6 +1074,11 @@ export class PlatformSubscriptionsService {
       externalInvoiceRef: row.externalInvoiceRef,
       version: row.version,
       company: row.company,
+      invoiceBuyer: latestInvoice
+        ? { name: latestInvoice.buyerName, eik: latestInvoice.buyerEik }
+        : row.companyNameHint
+          ? { name: row.companyNameHint, eik: null as string | null }
+          : null,
       activatedAt: row.activatedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -1045,7 +1086,7 @@ export class PlatformSubscriptionsService {
       invoices: row.invoices.map((inv) => this.serializeInvoiceSummary(inv)),
       activationCodes: row.activationCodes.map((code) => ({
         id: code.id,
-        codePrefix: code.codePrefix,
+        codePrefix: displayActivationCodePrefix(code.codePrefix) ?? code.codePrefix,
         expiresAt: code.expiresAt,
         redeemedAt: code.redeemedAt,
         revokedAt: code.revokedAt,

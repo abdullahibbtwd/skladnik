@@ -3,11 +3,8 @@ import {
   IsEmail,
   IsIn,
   IsInt,
-  IsNumber,
   IsOptional,
   IsString,
-  Length,
-  Matches,
   Max,
   MaxLength,
   Min,
@@ -15,6 +12,11 @@ import {
 } from 'class-validator';
 import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from '@skladnik/shared';
 
+/**
+ * Transport DTO. Business rules (EIK checksum, price ≥ 0, VAT 0–100, …) are
+ * enforced by validateCreatePlatformSubscription() so every field error is
+ * returned together — class-validator alone would still allow invalid EIKs.
+ */
 export class CreatePlatformSubscriptionDto {
   @IsIn(SUBSCRIPTION_PLANS)
   plan!: SubscriptionPlan;
@@ -31,20 +33,17 @@ export class CreatePlatformSubscriptionDto {
   @Max(120)
   termMonths!: number;
 
+  /** May be negative or NaN at the pipe boundary — shared validator rejects. */
   @Type(() => Number)
-  @IsInt()
-  @Min(0)
   priceMinor!: number;
 
   @IsString()
-  @Length(3, 3)
-  @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter ISO code' })
+  @MinLength(3)
+  @MaxLength(3)
   currency!: string;
 
+  /** Non-numeric strings become NaN — shared validator rejects. */
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 4 })
-  @Min(0)
-  @Max(100)
   vatRate!: number;
 
   @IsString()

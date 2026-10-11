@@ -41,6 +41,7 @@ export function PlatformSettingsPage() {
   const [sellerEik, setSellerEik] = useState('');
   const [sellerAddress, setSellerAddress] = useState('');
   const [sellerEmail, setSellerEmail] = useState('');
+  const [eikMismatchMode, setEikMismatchMode] = useState<'WARN' | 'BLOCK'>('WARN');
   const [formError, setFormError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -51,6 +52,7 @@ export function PlatformSettingsPage() {
     setSellerEik(data.sellerEik);
     setSellerAddress(data.sellerAddress);
     setSellerEmail(data.sellerEmail);
+    setEikMismatchMode(data.activationEikMismatchMode ?? 'WARN');
   }, [billingQuery.data]);
 
   const saveMutation = useMutation({
@@ -60,6 +62,7 @@ export function PlatformSettingsPage() {
         sellerEik,
         sellerAddress,
         sellerEmail,
+        activationEikMismatchMode: eikMismatchMode,
       }),
     onSuccess: async (data) => {
       setFormError(null);
@@ -205,6 +208,24 @@ export function PlatformSettingsPage() {
                 required
                 autoComplete="email"
               />
+            </div>
+            <div>
+              <label className={platformLabelClass} htmlFor="eik-mismatch-mode">
+                {t('platform.settings.eikMismatchMode')}
+              </label>
+              <select
+                id="eik-mismatch-mode"
+                className={platformInputClass}
+                value={eikMismatchMode}
+                onChange={(e) => setEikMismatchMode(e.target.value === 'BLOCK' ? 'BLOCK' : 'WARN')}
+                disabled={billingQuery.isLoading || saveMutation.isPending}
+              >
+                <option value="WARN">{t('platform.settings.eikMismatchWarn')}</option>
+                <option value="BLOCK">{t('platform.settings.eikMismatchBlock')}</option>
+              </select>
+              <p className="mt-1 font-sans text-[0.72rem] text-slate-400">
+                {t('platform.settings.eikMismatchHint')}
+              </p>
             </div>
             {formError ? <div className={platformErrorClass}>{formError}</div> : null}
             <div className="flex flex-wrap items-center gap-3">

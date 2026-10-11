@@ -1,5 +1,9 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  DEFAULT_ACTIVATION_EIK_MISMATCH_MODE,
+  type ActivationEikMismatchMode,
+} from '@skladnik/shared';
 import type { PlatformAuthUser } from '../platform-auth/platform-auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdatePlatformBillingSettingsDto } from './dto/update-platform-billing-settings.dto';
@@ -11,6 +15,7 @@ export type PlatformBillingSettingsView = {
   sellerEik: string;
   sellerAddress: string;
   sellerEmail: string;
+  activationEikMismatchMode: ActivationEikMismatchMode;
   configured: boolean;
   updatedAt: string;
 };
@@ -62,6 +67,9 @@ export class PlatformSettingsService {
         sellerEik: dto.sellerEik.trim(),
         sellerAddress: dto.sellerAddress.trim(),
         sellerEmail: dto.sellerEmail.trim().toLowerCase(),
+        ...(dto.activationEikMismatchMode
+          ? { activationEikMismatchMode: dto.activationEikMismatchMode }
+          : {}),
         updatedByAdminId: admin.id,
       },
     });
@@ -77,6 +85,7 @@ export class PlatformSettingsService {
           sellerEik: row.sellerEik,
           sellerAddress: row.sellerAddress,
           sellerEmail: row.sellerEmail,
+          activationEikMismatchMode: row.activationEikMismatchMode,
         },
       },
     });
@@ -142,17 +151,21 @@ export class PlatformSettingsService {
     sellerEik: string;
     sellerAddress: string;
     sellerEmail: string;
+    activationEikMismatchMode?: string | null;
     updatedAt: Date;
   }): PlatformBillingSettingsView {
     const sellerName = row.sellerName.trim();
     const sellerEik = row.sellerEik.trim();
     const sellerAddress = row.sellerAddress.trim();
     const sellerEmail = row.sellerEmail.trim();
+    const mode = row.activationEikMismatchMode;
     return {
       sellerName,
       sellerEik,
       sellerAddress,
       sellerEmail,
+      activationEikMismatchMode:
+        mode === 'WARN' || mode === 'BLOCK' ? mode : DEFAULT_ACTIVATION_EIK_MISMATCH_MODE,
       configured: Boolean(sellerName && sellerEik && sellerAddress && sellerEmail),
       updatedAt: row.updatedAt.toISOString(),
     };

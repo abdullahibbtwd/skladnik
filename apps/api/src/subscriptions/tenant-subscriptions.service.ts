@@ -1,19 +1,29 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AuthUser } from '@skladnik/shared';
-import { daysUntilExpiry, isExpiringSoon, isLiveSubscriptionStatus } from '@skladnik/shared';
-import { apiBadRequest } from '../common/api-error';
+import type { AuthUser, ActivationEikMismatchMode, ActivationKind } from '@skladnik/shared';
+import {
+  computeActivationSchedule,
+  daysUntilExpiry,
+  DEFAULT_ACTIVATION_EIK_MISMATCH_MODE,
+  isExpiringSoon,
+  isLiveSubscriptionStatus,
+  normaliseEik,
+} from '@skladnik/shared';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  activationCodeAlreadyUsedError,
+  eikMismatchBlockedError,
+  eikMismatchConfirmRequiredError,
+  invalidActivationCodeError,
+} from './activation-activate.errors';
 import { ActivationFailureAlertsService } from './activation-failure-alerts.service';
 import {
-  hashActivationCode,
+  activationCodeHashCandidates,
   isWellFormedActivationCode,
   normalizeActivationCode,
 } from './activation-code';
-import { redeemActivationCodeAtomic } from './redeem-activation';
-
-const GENERIC_ACTIVATION_ERROR = 'Invalid or already used activation code';
+import { promoteDueQueuedSubscriptions, redeemActivationCodeAtomic } from './redeem-activation';
 
 @Injectable()
 export class TenantSubscriptionsService {
@@ -27,6 +37,12 @@ export class TenantSubscriptionsService {
   ) {}
 
   async current(user: AuthUser) {
+    await this.prisma.$transaction((tx) => promoteDueQueuedSubscriptions(tx)).catch((error) => {
+      this.logger.warn(
+        `Queued promotion skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         companyId: user.companyId,
@@ -50,9 +66,7 @@ export class TenantSubscriptionsService {
     }
 
     const daysRemaining = subscription.expiresAt ? daysUntilExpiry(subscription.expiresAt) : null;
-    const writable =
-      subscription.status === 'TRIAL' ||
-      subscription.status === 'ACTIVE';
+    const writable = subscription.status === 'TRIAL' || subscription.status === 'ACTIVE';
 
     return {
       subscription: {
@@ -73,58 +87,192 @@ export class TenantSubscriptionsService {
     };
   }
 
-  async activate(user: AuthUser, rawCode: string) {
-    if (!isWellFormedActivationCode(rawCode)) {
-      this.fail();
-    }
+  async preview(user: AuthUser, rawCode: string) {
+    const resolved = await this.resolveRedeemableCode(rawCode);
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: user.companyId },
+      select: { eik: true },
+    });
+    const current = await this.prisma.subscription.findFirst({
+      where: {
+        companyId: user.companyId,
+        status: { in: ['TRIAL', 'ACTIVE', 'EXPIRED', 'SUSPENDED'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { plan: true, expiresAt: true, status: true },
+    });
 
-    const normalized = normalizeActivationCode(rawCode);
-    const codeHash = hashActivationCode(normalized, this.config.getOrThrow<string>('ACTIVATION_CODE_PEPPER'));
+    const schedule = computeActivationSchedule({
+      newPlan: resolved.plan,
+      termMonths: resolved.termMonths,
+      now: new Date(),
+      current: current ? { plan: current.plan, expiresAt: current.expiresAt } : null,
+    });
+
+    const buyerEik = resolved.buyerEik;
+    const companyEik = company.eik ? normaliseEik(company.eik) : null;
+    // No invoice buyer EIK → skip mismatch gate (legacy / incomplete deals).
+    const eikMatchesCompany =
+      !buyerEik || Boolean(companyEik && normaliseEik(buyerEik) === companyEik);
+
+    return {
+      plan: resolved.plan,
+      termMonths: resolved.termMonths,
+      kind: schedule.kind as ActivationKind,
+      currentPlan: current?.plan ?? null,
+      currentExpires: current?.expiresAt?.toISOString() ?? null,
+      resultingExpires: schedule.expiresAt.toISOString(),
+      resultingStartsAt: schedule.startsAt.toISOString(),
+      resultingStatus: schedule.status,
+      buyerEik,
+      eikMatchesCompany,
+      eikMismatchMode: await this.eikMismatchMode(),
+    };
+  }
+
+  async activate(user: AuthUser, rawCode: string, confirmEikMismatch = false) {
+    const resolved = await this.resolveRedeemableCode(rawCode);
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: user.companyId },
+      select: { eik: true },
+    });
+
+    const buyerEik = resolved.buyerEik;
+    const companyEik = company.eik ? normaliseEik(company.eik) : null;
+    const eikMatches =
+      !buyerEik || Boolean(companyEik && normaliseEik(buyerEik) === companyEik);
+    const mode = await this.eikMismatchMode();
+
+    let eikMismatchAudit: { buyerEik: string; companyEik: string | null } | null = null;
+    if (buyerEik && !eikMatches) {
+      if (mode === 'BLOCK') {
+        throw eikMismatchBlockedError(buyerEik, companyEik);
+      }
+      if (!confirmEikMismatch) {
+        throw eikMismatchConfirmRequiredError(buyerEik, companyEik);
+      }
+      eikMismatchAudit = { buyerEik, companyEik };
+    }
 
     try {
       const result = await this.prisma.$transaction(
         async (tx) =>
           redeemActivationCodeAtomic(tx, {
-            codeHash,
+            codeHash: resolved.codeHash,
             companyId: user.companyId,
             userId: user.id,
+            eikMismatchAudit,
           }),
         { isolationLevel: 'ReadCommitted', timeout: 15_000 },
       );
 
       if (!result) {
+        const again = await this.prisma.activationCode.findFirst({
+          where: { codeHash: resolved.codeHash },
+          select: { redeemedAt: true },
+        });
+        if (again?.redeemedAt) {
+          throw activationCodeAlreadyUsedError(again.redeemedAt);
+        }
         await this.failureAlerts.recordFailedAttempt({
-          codeHash,
+          codeHash: resolved.codeHash,
           companyId: user.companyId,
           userId: user.id,
         });
-        this.fail();
+        throw invalidActivationCodeError();
       }
 
-      const activated = result;
-      void this.sendActivationConfirmation(user.companyId, activated).catch((error) => {
-        this.logger.warn(
-          `Activation confirmation email failed for company ${user.companyId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      });
+      if (result.status === 'ACTIVE') {
+        void this.sendActivationConfirmation(user.companyId, result).catch((error) => {
+          this.logger.warn(
+            `Activation confirmation email failed for company ${user.companyId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+      }
 
       return {
         subscription: {
-          id: activated.subscriptionId,
-          plan: activated.plan,
-          status: 'ACTIVE' as const,
-          maxUsers: activated.maxUsers,
-          termMonths: activated.termMonths,
-          startsAt: activated.startsAt,
-          expiresAt: activated.expiresAt,
+          id: result.subscriptionId,
+          plan: result.plan,
+          status: result.status,
+          maxUsers: result.maxUsers,
+          termMonths: result.termMonths,
+          startsAt: result.startsAt,
+          expiresAt: result.expiresAt,
+          kind: result.kind,
         },
       };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      this.fail();
+      throw invalidActivationCodeError();
     }
+  }
+
+  private async resolveRedeemableCode(rawCode: string) {
+    const normalized = normalizeActivationCode(rawCode);
+    if (!normalized || !isWellFormedActivationCode(rawCode)) {
+      throw invalidActivationCodeError();
+    }
+
+    const pepper = this.config.getOrThrow<string>('ACTIVATION_CODE_PEPPER');
+    const hashCandidates = activationCodeHashCandidates(normalized, pepper);
+
+    const existing = await this.prisma.activationCode.findFirst({
+      where: { codeHash: { in: hashCandidates } },
+      select: {
+        codeHash: true,
+        redeemedAt: true,
+        revokedAt: true,
+        expiresAt: true,
+        subscription: {
+          select: {
+            plan: true,
+            termMonths: true,
+            status: true,
+            companyId: true,
+            invoices: {
+              orderBy: { issuedAt: 'desc' },
+              take: 1,
+              select: { buyerEik: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      throw invalidActivationCodeError();
+    }
+    if (existing.redeemedAt) {
+      throw activationCodeAlreadyUsedError(existing.redeemedAt);
+    }
+    if (
+      existing.revokedAt ||
+      existing.expiresAt.getTime() <= Date.now() ||
+      existing.subscription.status !== 'PENDING' ||
+      existing.subscription.companyId
+    ) {
+      throw invalidActivationCodeError();
+    }
+
+    return {
+      codeHash: existing.codeHash,
+      plan: existing.subscription.plan,
+      termMonths: existing.subscription.termMonths,
+      buyerEik: existing.subscription.invoices[0]?.buyerEik ?? null,
+    };
+  }
+
+  private async eikMismatchMode(): Promise<ActivationEikMismatchMode> {
+    const row = await this.prisma.platformBillingSettings.findUnique({
+      where: { id: 'default' },
+      select: { activationEikMismatchMode: true },
+    });
+    const mode = row?.activationEikMismatchMode;
+    if (mode === 'WARN' || mode === 'BLOCK') return mode;
+    return DEFAULT_ACTIVATION_EIK_MISMATCH_MODE;
   }
 
   private async sendActivationConfirmation(
@@ -159,9 +307,5 @@ export class TenantSubscriptionsService {
         settingsUrl,
       });
     }
-  }
-
-  private fail(): never {
-    throw apiBadRequest('ACTIVATION_FAILED', GENERIC_ACTIVATION_ERROR);
   }
 }

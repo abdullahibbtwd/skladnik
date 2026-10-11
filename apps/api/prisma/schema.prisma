@@ -137,7 +137,8 @@ enum SubscriptionPlan {
   MULTI_LOCATION
 }
 
-/// Lifecycle of a company subscription. PENDING is unbound; REVOKED is terminal.
+/// Lifecycle of a company subscription. PENDING is unbound; REVOKED / SUPERSEDED are terminal.
+/// QUEUED = paid downgrade waiting for the current term to end.
 enum SubscriptionStatus {
   PENDING
   TRIAL
@@ -145,6 +146,8 @@ enum SubscriptionStatus {
   EXPIRED
   SUSPENDED
   REVOKED
+  SUPERSEDED
+  QUEUED
 }
 
 /// Append-only subscription history rows (who changed what).
@@ -1000,6 +1003,8 @@ model PlatformBillingSettings {
   sellerEik        String   @default("")
   sellerAddress    String   @default("")
   sellerEmail      String   @default("")
+  /// WARN (default): owner must confirm EIK mismatch. BLOCK: reject activation.
+  activationEikMismatchMode String @default("WARN")
   updatedAt        DateTime @updatedAt
   updatedByAdminId String?
 

@@ -1,4 +1,9 @@
-import { Prisma, type SubscriptionStatus } from '@prisma/client';
+import { Prisma, type SubscriptionPlan, type SubscriptionStatus } from '@prisma/client';
+import {
+  addCalendarMonths,
+  computeActivationSchedule,
+  type ActivationKind,
+} from '@skladnik/shared';
 
 const LIVE: SubscriptionStatus[] = ['TRIAL', 'ACTIVE', 'EXPIRED', 'SUSPENDED'];
 
@@ -7,6 +12,11 @@ export type RedeemActivationInput = {
   companyId: string;
   userId: string;
   now?: Date;
+  /** Optional audit payload when owner confirmed an EIK mismatch (WARN mode). */
+  eikMismatchAudit?: {
+    buyerEik: string;
+    companyEik: string | null;
+  } | null;
 };
 
 export type RedeemActivationResult = {
@@ -16,13 +26,17 @@ export type RedeemActivationResult = {
   termMonths: number;
   startsAt: Date;
   expiresAt: Date;
-  replacedSubscriptionIds: string[];
+  status: 'ACTIVE' | 'QUEUED';
+  kind: ActivationKind;
+  supersededSubscriptionIds: string[];
 };
+
+export { addCalendarMonths };
 
 /**
  * Atomically redeem a PENDING activation code onto a company.
- * Uses row locks + conditional updates so concurrent redeemers cannot both succeed.
- * Returns null on any failure (caller maps to a generic client error).
+ * Applies DEFAULT_ACTIVATION_LIFECYCLE_RULES via computeActivationSchedule().
+ * Concurrent redeemers: exactly one winner (conditional code update).
  */
 export async function redeemActivationCodeAtomic(
   tx: Prisma.TransactionClient,
@@ -35,7 +49,7 @@ export async function redeemActivationCodeAtomic(
       codeId: string;
       subscriptionId: string;
       termMonths: number;
-      plan: string;
+      plan: SubscriptionPlan;
       maxUsers: number;
       status: SubscriptionStatus;
       companyId: string | null;
@@ -45,7 +59,7 @@ export async function redeemActivationCodeAtomic(
       c.id AS "codeId",
       s.id AS "subscriptionId",
       s."termMonths" AS "termMonths",
-      s.plan::text AS plan,
+      s.plan AS plan,
       s."maxUsers" AS "maxUsers",
       s.status AS status,
       s."companyId" AS "companyId"
@@ -79,29 +93,73 @@ export async function redeemActivationCodeAtomic(
   });
   if (codeUpdate.count !== 1) return null;
 
-  const live = await tx.subscription.findMany({
+  const current = await tx.subscription.findFirst({
     where: {
       companyId: input.companyId,
       status: { in: LIVE },
       id: { not: row.subscriptionId },
     },
-    select: { id: true, status: true },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, status: true, plan: true, expiresAt: true },
   });
 
-  const replacedSubscriptionIds: string[] = [];
-  for (const existing of live) {
-    const revoked = await tx.subscription.updateMany({
-      where: { id: existing.id, status: existing.status, companyId: input.companyId },
-      data: { status: 'REVOKED', version: { increment: 1 } },
+  const schedule = computeActivationSchedule({
+    newPlan: row.plan,
+    termMonths: row.termMonths,
+    now,
+    current: current
+      ? { plan: current.plan, expiresAt: current.expiresAt }
+      : null,
+  });
+
+  const supersededSubscriptionIds: string[] = [];
+
+  if (schedule.supersedeCurrent && current) {
+    const superseded = await tx.subscription.updateMany({
+      where: { id: current.id, status: current.status, companyId: input.companyId },
+      data: { status: 'SUPERSEDED', version: { increment: 1 } },
     });
-    if (revoked.count !== 1) return null;
-    replacedSubscriptionIds.push(existing.id);
+    if (superseded.count !== 1) return null;
+    supersededSubscriptionIds.push(current.id);
     await tx.subscriptionEvent.create({
       data: {
-        subscriptionId: existing.id,
+        subscriptionId: current.id,
         type: 'STATUS_CHANGED',
-        fromStatus: existing.status,
-        toStatus: 'REVOKED',
+        fromStatus: current.status,
+        toStatus: 'SUPERSEDED',
+        actorType: 'USER',
+        actorId: input.userId,
+        payload: {
+          reason: 'replaced_by_activation',
+          newSubscriptionId: row.subscriptionId,
+          kind: schedule.kind,
+        },
+      },
+    });
+  }
+
+  // A prior queued downgrade is replaced by this redeem.
+  const priorQueued = await tx.subscription.findMany({
+    where: {
+      companyId: input.companyId,
+      status: 'QUEUED',
+      id: { not: row.subscriptionId },
+    },
+    select: { id: true },
+  });
+  for (const queued of priorQueued) {
+    const updated = await tx.subscription.updateMany({
+      where: { id: queued.id, status: 'QUEUED', companyId: input.companyId },
+      data: { status: 'SUPERSEDED', version: { increment: 1 } },
+    });
+    if (updated.count !== 1) return null;
+    supersededSubscriptionIds.push(queued.id);
+    await tx.subscriptionEvent.create({
+      data: {
+        subscriptionId: queued.id,
+        type: 'STATUS_CHANGED',
+        fromStatus: 'QUEUED',
+        toStatus: 'SUPERSEDED',
         actorType: 'USER',
         actorId: input.userId,
         payload: { reason: 'replaced_by_activation', newSubscriptionId: row.subscriptionId },
@@ -109,7 +167,6 @@ export async function redeemActivationCodeAtomic(
     });
   }
 
-  const expiresAt = addCalendarMonths(now, row.termMonths);
   const activated = await tx.subscription.updateMany({
     where: {
       id: row.subscriptionId,
@@ -117,10 +174,10 @@ export async function redeemActivationCodeAtomic(
       companyId: null,
     },
     data: {
-      status: 'ACTIVE',
+      status: schedule.status,
       companyId: input.companyId,
-      startsAt: now,
-      expiresAt,
+      startsAt: schedule.startsAt,
+      expiresAt: schedule.expiresAt,
       activatedAt: now,
       activatedByUserId: input.userId,
       version: { increment: 1 },
@@ -133,14 +190,16 @@ export async function redeemActivationCodeAtomic(
       subscriptionId: row.subscriptionId,
       type: 'ACTIVATED',
       fromStatus: 'PENDING',
-      toStatus: 'ACTIVE',
+      toStatus: schedule.status,
       actorType: 'USER',
       actorId: input.userId,
       payload: {
         companyId: input.companyId,
-        startsAt: now.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-        replacedSubscriptionIds,
+        kind: schedule.kind,
+        startsAt: schedule.startsAt.toISOString(),
+        expiresAt: schedule.expiresAt.toISOString(),
+        supersededSubscriptionIds,
+        eikMismatch: input.eikMismatchAudit ?? null,
       },
     },
   });
@@ -149,30 +208,124 @@ export async function redeemActivationCodeAtomic(
       subscriptionId: row.subscriptionId,
       type: 'STATUS_CHANGED',
       fromStatus: 'PENDING',
-      toStatus: 'ACTIVE',
+      toStatus: schedule.status,
       actorType: 'USER',
       actorId: input.userId,
+      payload: { kind: schedule.kind },
     },
   });
+
+  if (input.eikMismatchAudit) {
+    await tx.platformAuditLog.create({
+      data: {
+        action: 'ACTIVATION_EIK_MISMATCH_CONFIRMED',
+        entityType: 'Subscription',
+        entityId: row.subscriptionId,
+        metadata: {
+          companyId: input.companyId,
+          userId: input.userId,
+          buyerEik: input.eikMismatchAudit.buyerEik,
+          companyEik: input.eikMismatchAudit.companyEik,
+        },
+      },
+    });
+  }
 
   return {
     subscriptionId: row.subscriptionId,
     plan: row.plan,
     maxUsers: row.maxUsers,
     termMonths: row.termMonths,
-    startsAt: now,
-    expiresAt,
-    replacedSubscriptionIds,
+    startsAt: schedule.startsAt,
+    expiresAt: schedule.expiresAt,
+    status: schedule.status,
+    kind: schedule.kind,
+    supersededSubscriptionIds,
   };
 }
 
-/** Add whole calendar months in UTC, clamping to the last day of the month when needed. */
-export function addCalendarMonths(from: Date, months: number): Date {
-  const result = new Date(from.getTime());
-  const day = result.getUTCDate();
-  result.setUTCDate(1);
-  result.setUTCMonth(result.getUTCMonth() + months);
-  const daysInMonth = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
-  result.setUTCDate(Math.min(day, daysInMonth));
-  return result;
+/**
+ * Promote QUEUED downgrades whose start time has arrived and whose company
+ * no longer has a blocking live ACTIVE/TRIAL/SUSPENDED row (EXPIRED is ok to supersede).
+ */
+export async function promoteDueQueuedSubscriptions(
+  tx: Prisma.TransactionClient,
+  now = new Date(),
+): Promise<number> {
+  const due = await tx.subscription.findMany({
+    where: {
+      status: 'QUEUED',
+      startsAt: { lte: now },
+    },
+    select: { id: true, companyId: true, startsAt: true, expiresAt: true },
+  });
+
+  let promoted = 0;
+  for (const queued of due) {
+    if (!queued.companyId) continue;
+
+    const blocking = await tx.subscription.findFirst({
+      where: {
+        companyId: queued.companyId,
+        status: { in: ['TRIAL', 'ACTIVE', 'SUSPENDED'] },
+        id: { not: queued.id },
+      },
+      select: { id: true, status: true, expiresAt: true },
+    });
+    if (blocking && blocking.expiresAt && blocking.expiresAt.getTime() > now.getTime()) {
+      continue;
+    }
+
+    if (blocking) {
+      await tx.subscription.updateMany({
+        where: { id: blocking.id, status: blocking.status },
+        data: { status: 'SUPERSEDED', version: { increment: 1 } },
+      });
+      await tx.subscriptionEvent.create({
+        data: {
+          subscriptionId: blocking.id,
+          type: 'STATUS_CHANGED',
+          fromStatus: blocking.status,
+          toStatus: 'SUPERSEDED',
+          actorType: 'SYSTEM',
+          payload: { reason: 'queued_activation', newSubscriptionId: queued.id },
+        },
+      });
+    }
+
+    const expiredLive = await tx.subscription.findMany({
+      where: {
+        companyId: queued.companyId,
+        status: 'EXPIRED',
+        id: { not: queued.id },
+      },
+      select: { id: true },
+    });
+    for (const row of expiredLive) {
+      await tx.subscription.updateMany({
+        where: { id: row.id, status: 'EXPIRED' },
+        data: { status: 'SUPERSEDED', version: { increment: 1 } },
+      });
+    }
+
+    const updated = await tx.subscription.updateMany({
+      where: { id: queued.id, status: 'QUEUED' },
+      data: { status: 'ACTIVE', version: { increment: 1 } },
+    });
+    if (updated.count !== 1) continue;
+
+    await tx.subscriptionEvent.create({
+      data: {
+        subscriptionId: queued.id,
+        type: 'STATUS_CHANGED',
+        fromStatus: 'QUEUED',
+        toStatus: 'ACTIVE',
+        actorType: 'SYSTEM',
+        payload: { reason: 'queued_start_reached' },
+      },
+    });
+    promoted += 1;
+  }
+
+  return promoted;
 }

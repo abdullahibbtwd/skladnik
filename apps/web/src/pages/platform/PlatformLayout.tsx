@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Boxes, CreditCard, LayoutDashboard, LogOut, Menu, Settings, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitch } from '../../components/LanguageSwitch';
+import { PullToRefresh } from '../../components/ui/PullToRefresh';
 import { cn } from '../../lib/cn';
 import { platformLogout } from '../../lib/platform-api';
 import { platformAuthKeys, usePlatformMeQuery } from '../../lib/platform-session';
@@ -20,6 +21,13 @@ function pageTitle(pathname: string, t: (key: string) => string) {
   return t('platform.nav.dashboard');
 }
 
+function browserTitle(pathname: string, t: (key: string) => string) {
+  if (pathname.startsWith('/platform/settings')) return t('platform.titles.settings');
+  if (/^\/platform\/subscriptions\/[^/]+/.test(pathname)) return t('platform.titles.subscriptionDetail');
+  if (pathname.startsWith('/platform/subscriptions')) return t('platform.titles.subscriptions');
+  return t('platform.titles.dashboard');
+}
+
 export function PlatformLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -30,6 +38,10 @@ export function PlatformLayout() {
   useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    document.title = browserTitle(location.pathname, t);
+  }, [location.pathname, t]);
 
   if (meQuery.isLoading) {
     return (
@@ -51,6 +63,10 @@ export function PlatformLayout() {
 
   const initial = (meQuery.data.name?.trim()?.[0] || meQuery.data.email[0] || '?').toUpperCase();
   const title = pageTitle(location.pathname, t);
+
+  const onPullRefresh = useCallback(async () => {
+    await queryClient.refetchQueries({ type: 'active' });
+  }, []);
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -167,7 +183,9 @@ export function PlatformLayout() {
         </header>
 
         <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-          <Outlet />
+          <PullToRefresh onRefresh={onPullRefresh}>
+            <Outlet />
+          </PullToRefresh>
         </main>
       </div>
     </div>

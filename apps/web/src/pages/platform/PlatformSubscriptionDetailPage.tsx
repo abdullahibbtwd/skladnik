@@ -230,8 +230,15 @@ export function PlatformSubscriptionDetailPage() {
         <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="font-display text-[1.35rem] font-semibold tracking-tight text-ops-ink">
-              {sub.company?.name || sub.companyNameHint || t('platform.subscriptions.unbound')}
+              {sub.company?.name || t('platform.subscriptions.unbound')}
             </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {t('platform.subscriptions.colBuyer')}:{' '}
+              {sub.invoiceBuyer?.name || sub.companyNameHint || '—'}
+              {sub.invoiceBuyer?.eik
+                ? ` · ${t('platform.subscriptions.eikLabel', { eik: sub.invoiceBuyer.eik })}`
+                : ''}
+            </p>
             <p className="mt-1 font-mono text-xs text-slate-400">{sub.id}</p>
           </div>
           <span className={`rounded-full border px-3 py-1 text-xs font-medium ${platformStatusTone(sub.status)}`}>

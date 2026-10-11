@@ -8,6 +8,8 @@ export type ApiErrorBody = {
   code: string;
   message: string;
   params?: ApiErrorParams;
+  /** Field → stable error code (or message) for form UIs. */
+  fieldErrors?: Record<string, string>;
   warnings?: string[];
   errors?: { code: string; message: string; params?: ApiErrorParams }[];
   existingDocument?: unknown;
@@ -27,6 +29,10 @@ function body(statusCode: number, error: string, code: string, message: string, 
 
 export function apiBadRequest(code: string, message: string, params?: ApiErrorParams, extra?: Partial<ApiErrorBody>) {
   return new BadRequestException(body(400, 'Bad Request', code, message, params, extra));
+}
+
+export function apiValidationFailed(fieldErrors: Record<string, string>, message = 'Validation failed') {
+  return apiBadRequest('VALIDATION_FAILED', message, undefined, { fieldErrors });
 }
 
 export function apiConflict(code: string, message: string, params?: ApiErrorParams, extra?: Partial<ApiErrorBody>) {

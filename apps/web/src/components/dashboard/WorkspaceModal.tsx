@@ -24,6 +24,9 @@ export function WorkspaceModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={`max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl border border-slate-200 bg-white text-ops-ink shadow-[0_24px_80px_-20px_rgba(30,27,75,0.28)] sm:rounded-2xl ${wide ? 'max-w-[640px]' : 'max-w-[520px]'}`}
         onClick={(event) => event.stopPropagation()}
       >

@@ -8,6 +8,7 @@ import {
 } from '@skladnik/shared';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { promoteDueQueuedSubscriptions } from './redeem-activation';
 
 const REMINDER_STATUSES = ['TRIAL', 'ACTIVE'] as const;
 
@@ -24,6 +25,18 @@ export class SubscriptionRemindersService {
   /** Daily UTC morning sweep for 30/14/7/1-day expiry reminders. */
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async sendDueReminders(now = new Date()) {
+    const promoted = await this.prisma
+      .$transaction((tx) => promoteDueQueuedSubscriptions(tx, now))
+      .catch((error) => {
+        this.logger.warn(
+          `Queued promotion failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return 0;
+      });
+    if (promoted > 0) {
+      this.logger.log(`Promoted ${promoted} queued subscription(s)`);
+    }
+
     let sent = 0;
     for (const daysBefore of EXPIRY_REMINDER_DAYS) {
       sent += await this.sendForBucket(daysBefore, now);

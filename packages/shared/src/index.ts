@@ -383,5 +383,7 @@ export * from './quantity';
 export * from './recipe-units';
 export * from './amount-in-words-bg';
 export * from './subscription';
+export * from './subscription-activation';
 export * from './subscription-reminders';
+export * from './create-platform-subscription';
 export * from './invoice';

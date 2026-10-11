@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ACTIVATION_EIK_MISMATCH_MODES } from '@skladnik/shared';
 
 export class UpdatePlatformBillingSettingsDto {
   @IsString()
@@ -19,4 +20,8 @@ export class UpdatePlatformBillingSettingsDto {
   @IsEmail()
   @MaxLength(200)
   sellerEmail!: string;
+
+  @IsOptional()
+  @IsIn([...ACTIVATION_EIK_MISMATCH_MODES])
+  activationEikMismatchMode?: (typeof ACTIVATION_EIK_MISMATCH_MODES)[number];
 }

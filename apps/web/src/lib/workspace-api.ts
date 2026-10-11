@@ -1493,7 +1493,28 @@ export function fetchCurrentSubscription() {
   return requestJson<TenantSubscriptionCurrent>('/subscriptions/current', freshInit(true));
 }
 
-export function activateSubscription(code: string) {
+export type ActivationPreview = {
+  plan: string;
+  termMonths: number;
+  kind: 'new' | 'renew' | 'upgrade' | 'downgrade';
+  currentPlan: string | null;
+  currentExpires: string | null;
+  resultingExpires: string;
+  resultingStartsAt: string;
+  resultingStatus: 'ACTIVE' | 'QUEUED';
+  buyerEik: string | null;
+  eikMatchesCompany: boolean;
+  eikMismatchMode: 'WARN' | 'BLOCK';
+};
+
+export function previewActivation(code: string) {
+  return requestJson<ActivationPreview>('/subscriptions/activate/preview', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}
+
+export function activateSubscription(code: string, options?: { confirmEikMismatch?: boolean }) {
   return requestJson<{
     subscription: {
       id: string;
@@ -1503,9 +1524,13 @@ export function activateSubscription(code: string) {
       termMonths: number;
       startsAt: string;
       expiresAt: string;
+      kind?: string;
     };
   }>('/subscriptions/activate', {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({
+      code,
+      ...(options?.confirmEikMismatch ? { confirmEikMismatch: true } : {}),
+    }),
   });
 }

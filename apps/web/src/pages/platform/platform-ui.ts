@@ -7,6 +7,11 @@ import type { SelectOption } from '../../components/ui/Select';
 export const platformInputClass =
   'w-full rounded-xl border border-slate-200 bg-ops-canvas px-3 py-2.5 font-sans text-[0.88rem] text-ops-ink outline-none transition-colors placeholder:text-slate-400 focus:border-ops-teal/50 focus:bg-white focus:ring-1 focus:ring-ops-teal/30';
 
+export const platformInputErrorClass =
+  'w-full rounded-xl border border-ops-danger/50 bg-ops-danger/5 px-3 py-2.5 font-sans text-[0.88rem] text-ops-ink outline-none transition-colors placeholder:text-slate-400 focus:border-ops-danger focus:bg-white focus:ring-1 focus:ring-ops-danger/30';
+
+export const platformFieldErrorClass = 'mt-1 font-sans text-[0.72rem] text-ops-danger';
+
 export const platformLabelClass = 'mb-1.5 block font-display text-[0.78rem] font-medium text-slate-500';
 
 export const platformPrimaryBtnClass =
@@ -54,10 +59,10 @@ export function platformStatusTone(status: string): string {
   if (status === 'ACTIVE' || status === 'TRIAL') {
     return 'border-ops-teal/20 bg-teal-50 text-ops-teal';
   }
-  if (status === 'PENDING') {
+  if (status === 'PENDING' || status === 'QUEUED') {
     return 'border-ops-accent/20 bg-indigo-50 text-ops-accent';
   }
-  if (status === 'SUSPENDED' || status === 'EXPIRED') {
+  if (status === 'SUSPENDED' || status === 'EXPIRED' || status === 'SUPERSEDED') {
     return 'border-ops-warn/25 bg-orange-50 text-ops-warn';
   }
   return 'border-ops-danger/20 bg-ops-danger/5 text-ops-danger';

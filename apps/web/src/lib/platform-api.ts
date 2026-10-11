@@ -21,6 +21,8 @@ export type PlatformInvoiceSummary = {
   paidAt?: string | null;
   voidedAt?: string | null;
   version?: number;
+  buyerName?: string;
+  buyerEik?: string;
 };
 
 export type PlatformSubscriptionListItem = {
@@ -35,7 +37,10 @@ export type PlatformSubscriptionListItem = {
   contactEmail: string | null;
   externalInvoiceRef: string | null;
   version: number;
+  /** ERP company that redeemed the code (null while PENDING). */
   company: { id: string; name: string; eik: string | null } | null;
+  /** Invoice buyer — may differ from redeemed company. */
+  invoiceBuyer: { name: string; eik: string | null } | null;
   openCodePrefix: string | null;
   openCodeExpiresAt: string | null;
   codeRevealable: boolean;
@@ -373,6 +378,7 @@ export type PlatformBillingSettings = {
   sellerEik: string;
   sellerAddress: string;
   sellerEmail: string;
+  activationEikMismatchMode: 'WARN' | 'BLOCK';
   configured: boolean;
   updatedAt: string;
 };
@@ -386,6 +392,7 @@ export async function updatePlatformBillingSettings(input: {
   sellerEik: string;
   sellerAddress: string;
   sellerEmail: string;
+  activationEikMismatchMode?: 'WARN' | 'BLOCK';
 }): Promise<PlatformBillingSettings> {
   return platformJson('/platform/settings/billing', {
     method: 'PATCH',

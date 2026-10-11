@@ -10,12 +10,14 @@ export const SUBSCRIPTION_STATUSES = [
   'EXPIRED',
   'SUSPENDED',
   'REVOKED',
+  'SUPERSEDED',
+  'QUEUED',
 ] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 /**
  * Statuses that occupy the "one live subscription per company" slot.
- * PENDING is unbound; REVOKED is terminal and frees the slot.
+ * PENDING is unbound; REVOKED / SUPERSEDED / QUEUED do not occupy the live slot.
  */
 export const LIVE_SUBSCRIPTION_STATUSES = [
   'TRIAL',
@@ -30,26 +32,66 @@ export function isLiveSubscriptionStatus(status: SubscriptionStatus): status is 
 }
 
 /**
- * Allowed status transitions. Initial create uses PENDING / TRIAL
- * (not represented as edges from a prior status).
+ * Manual (platform admin) status transitions.
+ * PENDING → ACTIVE is intentionally removed — activation is via code redeem only.
+ * ACTIVE → EXPIRED is system-only (see SYSTEM_SUBSCRIPTION_STATUS_TRANSITIONS).
  */
-export const SUBSCRIPTION_STATUS_TRANSITIONS: Readonly<
+export const MANUAL_SUBSCRIPTION_STATUS_TRANSITIONS: Readonly<
   Record<SubscriptionStatus, readonly SubscriptionStatus[]>
 > = {
-  PENDING: ['ACTIVE', 'REVOKED'],
-  TRIAL: ['ACTIVE', 'EXPIRED', 'SUSPENDED', 'REVOKED'],
-  ACTIVE: ['EXPIRED', 'SUSPENDED', 'REVOKED'],
-  EXPIRED: ['ACTIVE', 'REVOKED'],
-  SUSPENDED: ['ACTIVE', 'EXPIRED', 'REVOKED'],
+  PENDING: ['REVOKED'],
+  TRIAL: ['SUSPENDED', 'REVOKED'],
+  ACTIVE: ['SUSPENDED', 'REVOKED'],
+  EXPIRED: ['REVOKED'],
+  SUSPENDED: ['ACTIVE', 'REVOKED'],
   REVOKED: [],
+  SUPERSEDED: [],
+  QUEUED: ['REVOKED'],
 };
+
+/**
+ * System-driven transitions (cron / redeem internals may also write status directly).
+ */
+export const SYSTEM_SUBSCRIPTION_STATUS_TRANSITIONS: Readonly<
+  Record<SubscriptionStatus, readonly SubscriptionStatus[]>
+> = {
+  PENDING: [],
+  TRIAL: ['EXPIRED', 'ACTIVE'],
+  ACTIVE: ['EXPIRED', 'SUPERSEDED'],
+  EXPIRED: ['SUPERSEDED'],
+  SUSPENDED: ['EXPIRED', 'SUPERSEDED'],
+  REVOKED: [],
+  SUPERSEDED: [],
+  QUEUED: ['ACTIVE', 'SUPERSEDED', 'REVOKED'],
+};
+
+/**
+ * @deprecated Prefer MANUAL_ / SYSTEM_ maps. Kept as the platform/UI-facing map
+ * (manual transitions only).
+ */
+export const SUBSCRIPTION_STATUS_TRANSITIONS = MANUAL_SUBSCRIPTION_STATUS_TRANSITIONS;
 
 export function canTransitionSubscriptionStatus(
   from: SubscriptionStatus,
   to: SubscriptionStatus,
 ): boolean {
+  return canManualTransitionSubscriptionStatus(from, to);
+}
+
+export function canManualTransitionSubscriptionStatus(
+  from: SubscriptionStatus,
+  to: SubscriptionStatus,
+): boolean {
   if (from === to) return false;
-  return SUBSCRIPTION_STATUS_TRANSITIONS[from].includes(to);
+  return MANUAL_SUBSCRIPTION_STATUS_TRANSITIONS[from].includes(to);
+}
+
+export function canSystemTransitionSubscriptionStatus(
+  from: SubscriptionStatus,
+  to: SubscriptionStatus,
+): boolean {
+  if (from === to) return false;
+  return SYSTEM_SUBSCRIPTION_STATUS_TRANSITIONS[from].includes(to);
 }
 
 /** Statuses that may be written on insert (no prior row). */
@@ -85,6 +127,7 @@ export type Entitlement = {
 /**
  * Shared entitlement decision for guards and UI.
  * Expired / past-expiresAt tenants stay read-only and may still export.
+ * QUEUED / SUPERSEDED / PENDING do not grant write access by themselves.
  */
 export function resolveEntitlement(subscription: EntitlementInput, now: Date = new Date()): Entitlement {
   if (!subscription) {
@@ -116,7 +159,7 @@ export function resolveEntitlement(subscription: EntitlementInput, now: Date = n
     };
   }
 
-  if (subscription.status === 'REVOKED') {
+  if (subscription.status === 'REVOKED' || subscription.status === 'SUPERSEDED') {
     return {
       access: 'none',
       reason: 'REVOKED',
@@ -124,6 +167,17 @@ export function resolveEntitlement(subscription: EntitlementInput, now: Date = n
       expiresAt,
       canWrite: false,
       canExport: false,
+    };
+  }
+
+  if (subscription.status === 'QUEUED' || subscription.status === 'PENDING') {
+    return {
+      access: 'read_only',
+      reason: 'NO_SUBSCRIPTION',
+      status: subscription.status,
+      expiresAt,
+      canWrite: false,
+      canExport: true,
     };
   }
 
@@ -149,7 +203,6 @@ export function resolveEntitlement(subscription: EntitlementInput, now: Date = n
     };
   }
 
-  // PENDING unbound should not be attached to a company; treat as no subscription.
   return {
     access: 'read_only',
     reason: 'NO_SUBSCRIPTION',

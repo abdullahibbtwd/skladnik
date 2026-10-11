@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight,
@@ -36,9 +36,11 @@ import { useRequiredUser } from '../../lib/auth-store';
 import { useConnectivity } from '../../lib/connectivity';
 import { permissionsFor, type Permission } from '../../lib/permissions';
 import { usePhotoQueueCounts } from '../../lib/photo-queue-runtime';
+import { queryClient } from '../../lib/query-client';
 import { useSiteChoices } from '../../lib/workspace-session';
 import { LanguageSwitch } from '../LanguageSwitch';
 import { confirm } from '../ui/Dialog';
+import { PullToRefresh } from '../ui/PullToRefresh';
 import { PhotoQueueBadge } from './PhotoQueueBadge';
 import { SubscriptionExpiryBanner } from './SubscriptionExpiryBanner';
 
@@ -186,6 +188,10 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
         ),
     [],
   );
+
+  const onPullRefresh = useCallback(async () => {
+    await queryClient.refetchQueries({ type: 'active' });
+  }, []);
 
   return (
     <div className="relative min-h-dvh bg-ops-canvas font-geist text-ops-ink antialiased selection:bg-ops-accent/20">
@@ -426,19 +432,21 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
       </aside>
 
       <main className="min-h-dvh pt-16 pb-32 md:pb-8 md:pl-60 print:p-0">
-        <div className="mx-auto max-w-[1220px] px-3.5 py-5 sm:px-6 sm:py-7">
-          {!reachable && (
-            <div
-              className="mb-4 flex items-start gap-2.5 rounded-2xl border border-ops-warn/25 bg-orange-50 px-4 py-3 font-sans text-[0.8rem] text-ops-warn print:hidden"
-              data-testid="offline-banner"
-            >
-              <WifiOff size={16} className="mt-0.5 shrink-0" />
-              <p>{t('app.offlineBanner')}</p>
-            </div>
-          )}
-          <SubscriptionExpiryBanner />
-          <Outlet />
-        </div>
+        <PullToRefresh onRefresh={onPullRefresh}>
+          <div className="mx-auto max-w-[1220px] px-3.5 py-5 sm:px-6 sm:py-7">
+            {!reachable && (
+              <div
+                className="mb-4 flex items-start gap-2.5 rounded-2xl border border-ops-warn/25 bg-orange-50 px-4 py-3 font-sans text-[0.8rem] text-ops-warn print:hidden"
+                data-testid="offline-banner"
+              >
+                <WifiOff size={16} className="mt-0.5 shrink-0" />
+                <p>{t('app.offlineBanner')}</p>
+              </div>
+            )}
+            <SubscriptionExpiryBanner />
+            <Outlet />
+          </div>
+        </PullToRefresh>
       </main>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] md:hidden print:hidden">
