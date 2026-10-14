@@ -2,6 +2,8 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
 import bg from './locales/bg.json';
+import helpEn from './locales/help-en.json';
+import helpBg from './locales/help-bg.json';
 
 export const LANG_STORAGE_KEY = 'skladnik.lang';
 export const SUPPORTED_LANGS = ['en', 'bg'] as const;
@@ -35,8 +37,8 @@ export function persistLang(lang: AppLang) {
 
 void i18n.use(initReactI18next).init({
   resources: {
-    en: { translation: en },
-    bg: { translation: bg },
+    en: { translation: { ...en, help: helpEn } },
+    bg: { translation: { ...bg, help: helpBg } },
   },
   lng: detectLang(),
   fallbackLng: 'en',

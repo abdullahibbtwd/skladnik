@@ -47,6 +47,7 @@ import { StockRulesSettings } from './components/dashboard/StockRulesSettings';
 import { ActivityLogPanel } from './components/dashboard/ActivityLogPanel';
 import { SubscriptionSettings } from './components/dashboard/SubscriptionSettings';
 import { RequirePermission } from './components/dashboard/RequirePermission';
+import { HelpGuidePanel } from './components/dashboard/help/HelpGuidePanel';
 import { appReturnPath, useMeQuery } from './lib/auth-session';
 import { useIsAuthenticated } from './lib/auth-store';
 import { useTranslation } from 'react-i18next';
@@ -314,6 +315,7 @@ export default function App() {
         <Route element={<RequirePermission permission="audit" />}>
           <Route path="audit" element={<Annex38Panel />} />
         </Route>
+        <Route path="help" element={<HelpGuidePanel />} />
         <Route path="settings" element={<SettingsLayout />}>
           <Route index element={<SettingsAccountPanel />} />
           <Route element={<RequirePermission permission="companySettings" fallback="/app/settings" />}>

@@ -1,0 +1,690 @@
+{
+  "eyebrow": "Support",
+  "title": "Help & User Guide",
+  "description": "How to use Skladnik for your role — sign in, daily tasks, and what to do when something is missing.",
+  "searchPlaceholder": "Search your tasks…",
+  "searchResults": "{{count}} matching tasks",
+  "searchEmpty": "No tasks match that search. Try another word, or open your role guide.",
+  "nav": {
+    "start": "Getting started",
+    "roles": "Choose role",
+    "myRole": "My guide",
+    "troubleshoot": "Troubleshooting"
+  },
+  "yourRole": "Your role",
+  "roleOverview": "Role overview",
+  "viewMyGuide": "Open my step-by-step guide",
+  "viewFullGuide": "Open full step-by-step guide",
+  "viewRoleSummary": "See what this role does",
+  "allRoles": "All roles",
+  "openMyRole": "Open guide for {{role}}",
+  "tasksHeading": "Your everyday tasks",
+  "tasksHeadingForRole": "Everyday tasks for {{role}}",
+  "ownerViewingRole": "Role guide (Owner view)",
+  "ownerFullGuideNote": "You are viewing the full {{role}} guide so you can train or support your team. These steps describe what that role can do — not extra permissions on your account.",
+  "otherRoleTitle": "This is not your role",
+  "otherRoleHint": "Step-by-step instructions for this role stay with people who have it. Ask them when you need help with those tasks.",
+  "backToMyRole": "Back to my {{role}} guide",
+  "labels": {
+    "where": "Where:",
+    "needed": "What you need",
+    "next": "What happens next:",
+    "desktop": "Desktop",
+    "mobile": "Mobile",
+    "areas": "Use these sections:",
+    "whatToDo": "What to do:"
+  },
+  "start": {
+    "signIn": {
+      "title": "Sign in",
+      "body": [
+        "Open the Skladnik website and choose Login, or go to the login page.",
+        "Enter your email and password, then tap Log in to dashboard.",
+        "If your company uses Google sign-in, you can continue with Google instead.",
+        "After a successful login you land on Overview for your company."
+      ]
+    },
+    "forgotPassword": {
+      "title": "Forgot your password?",
+      "body": [
+        "On the login screen, tap Forgot password?",
+        "Enter the email for your store account and tap Send reset link.",
+        "Check your email for a link (it expires in one hour), open it, and choose a new password of at least 8 characters.",
+        "Then log in again with the new password."
+      ]
+    },
+    "navigate": {
+      "title": "Find your way around",
+      "body": [
+        "The top bar shows your active site, notifications, language, and your profile menu.",
+        "Switch site with the location chip next to the Skladnik logo when you work at more than one place.",
+        "Your role decides which menu items you see. Missing items usually mean your role does not include that job."
+      ],
+      "desktop": [
+        "Use the left sidebar: Workspace for day-to-day work, System for Audit and Settings.",
+        "Owners, site managers, and staff with receive rights also get Photograph invoice at the bottom of the sidebar."
+      ],
+      "mobile": [
+        "Use the bottom dock for your five main actions (they change by role).",
+        "Open your profile picture for the rest of the menu, Settings, and Log out.",
+        "There is no separate hamburger menu — the profile menu holds overflow links."
+      ]
+    },
+    "notifications": {
+      "title": "Notifications",
+      "body": [
+        "Tap the bell in the top bar to open Actionable Notices.",
+        "Notices point to things that need attention (for example pending documents or stock alerts).",
+        "Tap a notice to open the related screen when a link is available."
+      ]
+    },
+    "account": {
+      "title": "Account settings",
+      "body": [
+        "Open Settings from the sidebar (desktop) or your profile menu.",
+        "On Account you can see your name, company, role, and active site, change your password, and log out.",
+        "Changing your password signs other devices out. You need your current password and a new one of at least 8 characters."
+      ]
+    },
+    "desktopMobile": {
+      "title": "Desktop and phone",
+      "body": [
+        "The same account works on laptop and phone. Pull down on the main screen to refresh data.",
+        "On a phone, prefer the bottom dock and the profile menu. Tables often become cards on small screens.",
+        "If you are offline, a banner explains that you are seeing saved data; photos upload when you are back online."
+      ]
+    },
+    "permissions": {
+      "title": "When a feature is unavailable",
+      "body": [
+        "Menus and buttons you are not allowed to use are hidden. Opening a blocked link usually sends you back to Overview.",
+        "Some Settings tabs show owner-only messages if you can view but not edit.",
+        "If you need a missing action, ask an Owner (or the role listed in Choose role) — roles are fixed and cannot be customized per person beyond site assignment and till price override."
+      ]
+    }
+  },
+  "roles": {
+    "OWNER": {
+      "blurb": "Runs the whole company: users, sites, catalog, stock, till, reports, VAT, and subscription.",
+      "askWhen": "Ask an Owner to invite users, change company settings, set up sites, manage the product catalog, activate a subscription, or reverse posted documents.",
+      "areas": "Overview, Documents, Stock, Transfer, Stocktake, Reorder, Products, Expiry, Till, Sales, Recipes, Reports, VAT, Audit, and all Settings."
+    },
+    "SITE_MANAGER": {
+      "blurb": "Runs day-to-day operations for assigned sites: receive, post, transfer, stocktake, till, and reports.",
+      "askWhen": "Ask a Site manager to post goods receipts after review, run stocktakes and transfers, manage recipes, or void a sale.",
+      "areas": "Overview, Documents, Stock, Transfer, Stocktake, Reorder, Products (minimum stock), Expiry, Till, Sales, Recipes, Reports, and Account / Sites settings."
+    },
+    "STAFF": {
+      "blurb": "Receives goods, photographs invoices, writes off stock, and checks expiry — without using the till.",
+      "askWhen": "Ask Staff to photograph a delivery, enter a receipt draft, submit it for review, or write off damaged or expired goods.",
+      "areas": "Overview, Documents, Stock, Reorder, Products (view), Expiry, Write-off, Photo queue, and Account settings."
+    },
+    "CASHIER": {
+      "blurb": "Sells at the till and reviews their own sales. Does not create stock documents.",
+      "askWhen": "Ask a Cashier to ring up a sale or check their receipts for the day.",
+      "areas": "Overview, Stock, Expiry, Till, Sales (own receipts), Reorder, Products (view), and Account settings."
+    },
+    "ACCOUNTANT": {
+      "blurb": "Reads and exports financials, VAT, Annex 38 audit files, and document archives across the company.",
+      "askWhen": "Ask an Accountant for reports, VAT filings, export layouts, or the monthly Annex 38 file.",
+      "areas": "Overview, Documents (read), Stock (read), Sales, Reports, VAT, Audit, company settings (read), and Activity log."
+    }
+  },
+  "tasks": {
+    "ownerSites": {
+      "title": "Add or edit a site",
+      "where": "Settings → Sites",
+      "steps": [
+        "Open Settings, then Sites.",
+        "Tap Add site (or edit an existing row).",
+        "Enter the name and site type, then save.",
+        "Deactivate a site only when it should no longer be used."
+      ],
+      "needed": ["Site name", "Site type (store, warehouse, kitchen, bar, and so on)"],
+      "next": "The site appears in the location switcher for users who have access.",
+      "notes": ["Only Owners can add or deactivate sites. Other roles can view the list."]
+    },
+    "ownerInvite": {
+      "title": "Invite a team member",
+      "where": "Settings → Users",
+      "steps": [
+        "Open Settings → Users.",
+        "Tap Invite (or Add).",
+        "Enter their email, choose a role, and pick sites if the role is not Owner or Accountant.",
+        "Send the invite and share the link if needed.",
+        "They open the invite link, create a password, and join your company."
+      ],
+      "needed": ["Email address", "Role", "Site access for managers, staff, and cashiers"],
+      "next": "A pending invite appears until they join. You can resend or revoke it.",
+      "notes": [
+        "Owner and Accountant see all sites. Other roles need at least one site.",
+        "If you hit the user limit, activate a higher plan under Settings → Subscription first."
+      ]
+    },
+    "ownerReceive": {
+      "title": "Photograph or receive a delivery",
+      "where": "Documents, or Photograph invoice / Receive",
+      "steps": [
+        "Confirm the active site in the top bar.",
+        "Photograph the invoice or start Receive goods / New document.",
+        "Review the header and lines, fix matches if needed, then save the draft."
+      ],
+      "desktop": [
+        "Use Photograph invoice in the sidebar, or Documents → New document.",
+        "Attach photos, check lines, and keep the draft until you are ready to post."
+      ],
+      "mobile": [
+        "Tap Scan on the bottom dock, or Receive.",
+        "Use the camera or choose a photo, then review lines on the document screen."
+      ],
+      "needed": ["Active site", "Invoice photo or delivery details", "Matched products and quantities"],
+      "next": "The document stays as a draft (or moves to review) until you post it to stock.",
+      "notes": ["Unknown products can be created for review from a scan line."]
+    },
+    "ownerPost": {
+      "title": "Post a document to stock",
+      "where": "Documents → open the document",
+      "steps": [
+        "Open Documents and select the draft or review document.",
+        "Check quantities, products, batches, and expiry.",
+        "Tap Post when everything looks correct (or Submit for review first if you want a second look).",
+        "Use Cancel on a draft you no longer need."
+      ],
+      "needed": ["Complete lines", "No blocking errors on the document"],
+      "next": "Stock updates and the document becomes Posted. Posted documents cannot be edited — reverse them if you must undo.",
+      "notes": ["Reversing a posted document is for Owners and Site managers only."]
+    },
+    "ownerProducts": {
+      "title": "Manage the product catalog",
+      "where": "Products",
+      "steps": [
+        "Open Products.",
+        "Add a product, or open one to edit name, unit, group, barcodes, and costs.",
+        "Approve pending products created from scans.",
+        "Archive products you no longer sell."
+      ],
+      "needed": ["Product name", "Unit of measure", "Optional barcode / group / min stock"],
+      "next": "New products can match on the next invoice scan and appear in stock and till search.",
+      "notes": ["Site managers may change minimum stock only — full catalog edits need an Owner."]
+    },
+    "ownerTransfer": {
+      "title": "Transfer stock between sites",
+      "where": "Transfer",
+      "steps": [
+        "Open Transfer.",
+        "Choose from and to sites.",
+        "Add product lines and quantities.",
+        "Confirm Transfer."
+      ],
+      "needed": ["Two sites", "Products with enough stock at the source"],
+      "next": "Stock moves out of the source site and into the destination.",
+      "notes": ["Staff and Cashiers cannot create transfers."]
+    },
+    "ownerStocktake": {
+      "title": "Run a stocktake",
+      "where": "Stocktake",
+      "steps": [
+        "Open Stocktake and start a count.",
+        "Enter counted quantities (scan or search products as needed).",
+        "Optionally zero uncounted lines.",
+        "Post adjustments when the count is finished, or discard the count."
+      ],
+      "needed": ["Active site", "Physical counts"],
+      "next": "Posted variances adjust on-hand stock for that site.",
+      "notes": ["Only Owners and Site managers can run stocktakes."]
+    },
+    "ownerTill": {
+      "title": "Sell at the till",
+      "where": "Till",
+      "steps": [
+        "Open Till for the active site.",
+        "Scan or search products into the cart.",
+        "Choose payment and tap Charge.",
+        "Print or share the receipt if needed."
+      ],
+      "desktop": [
+        "Open Till from the sidebar.",
+        "Build the cart, charge, then open Sales if you need the receipt later."
+      ],
+      "mobile": [
+        "Open Till from the sidebar or profile menu (Owners), or use quick actions on Overview.",
+        "Complete Charge on the till screen."
+      ],
+      "needed": ["Products in stock (or allowed overrides)", "Payment method"],
+      "next": "A sale is recorded and stock decreases. Managers can void a sale from Sales when needed.",
+      "notes": ["Price override depends on company Stock rules. Accountants cannot use the till."]
+    },
+    "ownerReports": {
+      "title": "Run and export reports",
+      "where": "Reports",
+      "steps": [
+        "Open Reports and pick a report (turnover, stock value, write-offs, and others).",
+        "Set the period and filters.",
+        "Use CSV, Excel, or Print / PDF.",
+        "Optional: manage export layouts under Reports → layouts."
+      ],
+      "needed": ["Date range", "Optional site filter"],
+      "next": "You get an on-screen report and can download a file.",
+      "notes": ["Document archive (ZIP of original scans) is under Reports for Owners and Accountants."]
+    },
+    "ownerVat": {
+      "title": "Work with VAT",
+      "where": "VAT",
+      "steps": [
+        "Open VAT.",
+        "Review the return, purchase and sales ledgers, and filings for the period.",
+        "Generate or download NRA files when your period is ready.",
+        "Company VAT settings are edited under company settings (Owner)."
+      ],
+      "needed": ["Posted documents in the period", "Correct company VAT settings"],
+      "next": "Files and filings are ready for your accountant workflow.",
+      "notes": ["Site managers do not see VAT. Accountants can work filings; only Owners change core VAT settings."]
+    },
+    "ownerOpening": {
+      "title": "Post opening stock",
+      "where": "Opening stock (from Stock empty state or mobile menu)",
+      "steps": [
+        "Open Opening stock for the site.",
+        "Enter quantities and unit costs for catalog products.",
+        "Post opening stock."
+      ],
+      "needed": ["Product catalog", "Starting quantities and costs"],
+      "next": "On-hand stock is seeded for that site.",
+      "notes": [
+        "Only Owners can post opening stock.",
+        "It locks after the site’s first real posted document — set it up early."
+      ]
+    },
+    "ownerSubscription": {
+      "title": "Activate a subscription code",
+      "where": "Settings → Subscription",
+      "steps": [
+        "Open Settings → Subscription.",
+        "Paste the activation code from your invoice.",
+        "Confirm the preview (new, renew, upgrade, or downgrade).",
+        "Activate."
+      ],
+      "needed": ["One-time activation code"],
+      "next": "Plan, seat limit, and expiry update for the company.",
+      "notes": ["Expired subscriptions can still view and export, but writes may be locked."]
+    },
+    "mgrReceive": {
+      "title": "Receive goods at your site",
+      "where": "Documents / Photograph invoice / Receive",
+      "steps": [
+        "Select your site.",
+        "Photograph the invoice or start Receive.",
+        "Check lines and save the draft."
+      ],
+      "desktop": [
+        "Use Photograph invoice or Documents → New document.",
+        "Review OCR lines, then keep the draft or post."
+      ],
+      "mobile": [
+        "Use Scan or Receive on the bottom dock.",
+        "Finish the document on the Documents screen."
+      ],
+      "needed": ["Assigned site", "Invoice or delivery details"],
+      "next": "Draft is ready for you to post, or for review if someone submitted it.",
+      "notes": ["You cannot change company users, VAT settings, or the full product catalog."]
+    },
+    "mgrPost": {
+      "title": "Post or reverse documents",
+      "where": "Documents → open document",
+      "steps": [
+        "Open a draft or review document for your site.",
+        "Verify lines, then Post.",
+        "To undo a posted document, use Reverse when available."
+      ],
+      "needed": ["Document with no blocking errors"],
+      "next": "Stock updates on post. Reverse creates the correcting movement.",
+      "notes": ["Staff may submit paper receipts for your review — they cannot post those themselves."]
+    },
+    "mgrWriteoff": {
+      "title": "Write off stock",
+      "where": "Write-off (dock or Overview)",
+      "steps": [
+        "Open Write-off.",
+        "Choose a reason (expired, damaged, spoiled, lost, or other).",
+        "Add lines and optional evidence photo.",
+        "Confirm Write off."
+      ],
+      "desktop": [
+        "Start Write-off from Overview or open the write-off screen.",
+        "Complete reason and lines, then confirm."
+      ],
+      "mobile": [
+        "Tap Write-off on the bottom dock.",
+        "Finish the form and confirm."
+      ],
+      "needed": ["Reason", "Products and quantities at the active site"],
+      "next": "Write-off posts immediately and removes stock.",
+      "notes": ["This action cannot be edited afterwards — reverse from Documents if you must undo."]
+    },
+    "mgrTransfer": {
+      "title": "Transfer between sites",
+      "where": "Transfer",
+      "steps": [
+        "Open Transfer.",
+        "Pick from/to sites and lines.",
+        "Confirm Transfer."
+      ],
+      "needed": ["Access to the sites involved", "Available stock"],
+      "next": "Quantities move between sites.",
+      "notes": []
+    },
+    "mgrStocktake": {
+      "title": "Count stock",
+      "where": "Stocktake",
+      "steps": [
+        "Start a count for the site.",
+        "Enter counted quantities.",
+        "Post adjustments or discard."
+      ],
+      "needed": ["Physical count sheet or device"],
+      "next": "Variances update on-hand quantities.",
+      "notes": []
+    },
+    "mgrTill": {
+      "title": "Use the till",
+      "where": "Till",
+      "steps": [
+        "Open Till.",
+        "Add products, charge, and take payment."
+      ],
+      "desktop": ["Open Till from the sidebar.", "Charge and review Sales as needed."],
+      "mobile": ["Open Till from the menu or Overview quick action.", "Complete Charge on the till screen."],
+      "needed": ["Active site with sellable products"],
+      "next": "Sale is stored; stock decreases.",
+      "notes": ["You may void sales. Price override follows company Stock rules."]
+    },
+    "mgrMinstock": {
+      "title": "Set minimum stock for reorder",
+      "where": "Products",
+      "steps": [
+        "Open Products and select an item.",
+        "Change the minimum stock for your site.",
+        "Save."
+      ],
+      "needed": ["Existing product"],
+      "next": "Reorder suggestions use the new minimum.",
+      "notes": ["You cannot create or archive catalog products — ask an Owner."]
+    },
+    "mgrRecipes": {
+      "title": "Maintain recipes (café / kitchen)",
+      "where": "Recipes",
+      "steps": [
+        "Open Recipes.",
+        "Create a new recipe or open an existing dish.",
+        "Add ingredients and quantities, then Save recipe."
+      ],
+      "needed": ["Finished product", "Ingredient products"],
+      "next": "The till can sell the dish and deduct ingredients according to the recipe.",
+      "notes": []
+    },
+    "mgrReports": {
+      "title": "Check reports and margins",
+      "where": "Reports / Sales → Margins",
+      "steps": [
+        "Open Reports for stock and sales summaries.",
+        "Open Sales → Margins when you need margin detail.",
+        "Export CSV or Excel as needed."
+      ],
+      "needed": ["Date range"],
+      "next": "You see company/site performance you are allowed to view.",
+      "notes": ["VAT, Audit, and document archive are Owner / Accountant only."]
+    },
+    "staffScan": {
+      "title": "Photograph a supplier invoice",
+      "where": "Scan (dock) / Photograph invoice",
+      "steps": [
+        "Select your site.",
+        "Open Scan and take or choose a photo.",
+        "Wait for lines to appear, then check matches."
+      ],
+      "desktop": [
+        "Use Photograph invoice in the sidebar or Overview.",
+        "Review the document draft after OCR finishes."
+      ],
+      "mobile": [
+        "Tap Scan in the center of the bottom dock.",
+        "Use the camera or library, then review the draft."
+      ],
+      "needed": ["Active assigned site", "Clear photo of the invoice"],
+      "next": "A draft document is created for you to fix and submit.",
+      "notes": [
+        "You can edit only your own drafts.",
+        "If you are offline, the photo waits in the photo queue until upload."
+      ]
+    },
+    "staffReceive": {
+      "title": "Enter a delivery without a photo",
+      "where": "Receive",
+      "steps": [
+        "Tap Receive (or New document for a receipt).",
+        "Fill the header and add lines.",
+        "Save the draft."
+      ],
+      "desktop": ["Start Receive from Overview or Documents.", "Add lines manually, then save."],
+      "mobile": ["Tap Receive on the bottom dock.", "Complete the form on the new document screen."],
+      "needed": ["Site", "Products and quantities"],
+      "next": "Your draft is ready to Submit for review.",
+      "notes": ["You cannot create transfers, stocktakes, or opening stock."]
+    },
+    "staffSubmit": {
+      "title": "Submit a receipt for review",
+      "where": "Documents → your draft",
+      "steps": [
+        "Open your draft document.",
+        "Check every line.",
+        "Tap Submit for review."
+      ],
+      "needed": ["Your own draft with complete lines"],
+      "next": "A Site manager or Owner posts it to stock. You cannot post paper receipts yourself.",
+      "notes": [
+        "After submit, you cannot edit or cancel that document — ask a manager.",
+        "Write-offs are different: you post those directly."
+      ]
+    },
+    "staffWriteoff": {
+      "title": "Write off expired or damaged goods",
+      "where": "Write-off",
+      "steps": [
+        "Open Write-off.",
+        "Choose a reason and add lines.",
+        "Confirm Write off."
+      ],
+      "desktop": ["Start Write-off from Overview.", "Confirm to post immediately."],
+      "mobile": ["Tap Write-off on the dock.", "Confirm to post immediately."],
+      "needed": ["Reason", "Products on the shelf"],
+      "next": "Stock is removed right away.",
+      "notes": ["You will not see purchase costs or stock value — that is by design."]
+    },
+    "staffStock": {
+      "title": "Check stock and expiry",
+      "where": "Check stock / Expiring",
+      "steps": [
+        "Open Check stock (or Stock) to see quantities.",
+        "Open Expiring to sell or write off soon-to-expire batches.",
+        "Open a product from Stock for movement history when needed."
+      ],
+      "needed": [],
+      "next": "You know what is on the shelf and what to use first.",
+      "notes": ["Cost and value columns stay hidden for Staff."]
+    },
+    "staffPending": {
+      "title": "Create a pending product from a scan line",
+      "where": "Documents → open your draft → line action",
+      "steps": [
+        "On a scan line with no match, create a product from the line.",
+        "Fill the required name and unit details.",
+        "Save — the product waits for manager/owner approval."
+      ],
+      "needed": ["Your draft document", "Line details from the invoice"],
+      "next": "The line can use the pending product; an Owner or Site manager reviews it in Products.",
+      "notes": ["You cannot edit the full catalog or archive products."]
+    },
+    "staffQueue": {
+      "title": "Retry photos in the photo queue",
+      "where": "Photo queue badge in the top bar",
+      "steps": [
+        "Tap the photo queue badge when photos are waiting.",
+        "Upload now, retry failed items, or discard bad photos.",
+        "Finish the related document when the photo is attached."
+      ],
+      "needed": ["Network connection for upload"],
+      "next": "Photos attach to documents and OCR can run.",
+      "notes": ["Logging out while photos are queued asks you to confirm."]
+    },
+    "cashTill": {
+      "title": "Ring up a sale",
+      "where": "Till",
+      "steps": [
+        "Open Till.",
+        "Scan or search products.",
+        "Choose payment and Charge."
+      ],
+      "desktop": ["Open Till from the sidebar.", "Complete Charge."],
+      "mobile": ["Tap Till in the center of the bottom dock.", "Complete Charge."],
+      "needed": ["Active site", "Products to sell"],
+      "next": "Receipt is saved under Sales. Stock decreases.",
+      "notes": [
+        "You cannot create documents or photograph invoices.",
+        "You do not see purchase costs. Price changes follow company rules."
+      ]
+    },
+    "cashSales": {
+      "title": "Review your sales",
+      "where": "Sales",
+      "steps": [
+        "Open Sales.",
+        "Check the day report and open a receipt for details."
+      ],
+      "needed": [],
+      "next": "You see your own sales for the selected day.",
+      "notes": ["Cashiers only see their own sales, not everyone’s. Voiding a sale needs a manager."]
+    },
+    "cashStock": {
+      "title": "Check stock or expiry before selling",
+      "where": "Stock / Expiring",
+      "steps": [
+        "Open Stock or Expiring from the dock.",
+        "Confirm quantity or sell-by before you ring the item."
+      ],
+      "needed": [],
+      "next": "You avoid selling out-of-stock or expired goods when possible.",
+      "notes": []
+    },
+    "accReports": {
+      "title": "Export operational and financial reports",
+      "where": "Reports",
+      "steps": [
+        "Open Reports from the dock or sidebar.",
+        "Choose a report and period.",
+        "Download CSV or Excel, or print PDF.",
+        "Create or edit export layouts if you need a custom column set."
+      ],
+      "needed": ["Period filters"],
+      "next": "Files are ready for bookkeeping.",
+      "notes": ["You cannot create stock documents or use the till."]
+    },
+    "accArchive": {
+      "title": "Download original document scans",
+      "where": "Reports → Archive",
+      "steps": [
+        "Open Reports, then Archive.",
+        "Set the period and preview.",
+        "Download ZIP."
+      ],
+      "needed": ["Documents with attached photos in the period"],
+      "next": "You get a ZIP of original invoice images/PDFs.",
+      "notes": ["Only Owners and Accountants can use the archive."]
+    },
+    "accVat": {
+      "title": "Prepare VAT filings",
+      "where": "VAT",
+      "steps": [
+        "Open VAT.",
+        "Review return, ledgers, and manual entries for the period.",
+        "Generate filings / NRA files (DEKLAR, POKUPKI, PRODAGBI) when ready.",
+        "Mark submitted according to your process."
+      ],
+      "needed": ["Posted period data", "Company VAT configuration (Owner sets this)"],
+      "next": "Filing artifacts are available to download or archive.",
+      "notes": ["Core VAT company settings are Owner-only. Ask an Owner if settings look wrong."]
+    },
+    "accAudit": {
+      "title": "Generate Annex 38 audit file",
+      "where": "Audit",
+      "steps": [
+        "Open Audit.",
+        "Choose site and month.",
+        "Review checks, then Generate XML.",
+        "Use the Orders / Refunds / Versions / Archive tabs as needed."
+      ],
+      "needed": ["Posted e-shop sales for the month"],
+      "next": "XML is ready for NRA submission workflows.",
+      "notes": ["Site-level Annex 38 settings may require an Owner."]
+    },
+    "accSales": {
+      "title": "Review company sales",
+      "where": "Sales",
+      "steps": [
+        "Open Sales.",
+        "Inspect the day report and open receipts.",
+        "Use Margins when you need margin analysis."
+      ],
+      "needed": [],
+      "next": "You see sales across the company for reporting.",
+      "notes": ["You cannot void sales — ask a Site manager or Owner."]
+    },
+    "accDocs": {
+      "title": "Read documents and activity",
+      "where": "Documents / Settings → Activity log",
+      "steps": [
+        "Open Documents to review headers, lines, and status.",
+        "Open Settings → Activity log for an audit trail of important actions."
+      ],
+      "needed": [],
+      "next": "You can verify what was posted and by whom.",
+      "notes": ["Creating, posting, or reversing documents is not available for Accountants."]
+    }
+  },
+  "trouble": {
+    "missingMenu": {
+      "title": "I cannot see a menu item",
+      "cause": "Usually a permission limit: your role does not include that area, so Skladnik hides it.",
+      "fix": "Check Choose role for who owns that job. Ask an Owner to change your role or assign the right sites. On mobile, also open your profile menu — some links live there instead of the dock."
+    },
+    "pageRedirect": {
+      "title": "The page sends me back to Overview",
+      "cause": "You opened a link your role cannot use. The app redirects instead of showing an error page.",
+      "fix": "Use a screen from your own menu. If you still need that page, ask someone with the right role."
+    },
+    "cannotCreate": {
+      "title": "I cannot create, edit, or delete",
+      "cause": "Write actions are role-based. Cashiers cannot create documents; Staff cannot edit the catalog; Accountants are mostly read-only; many Settings writes are Owner-only.",
+      "fix": "Confirm your role under Settings → Account. Ask an Owner or Site manager for the write action you need."
+    },
+    "needsApproval": {
+      "title": "My document is waiting on someone else",
+      "cause": "Staff submit paper receipts for review. Managers or Owners post them. Pending products also need review.",
+      "fix": "Tell a Site manager or Owner which document or product is waiting. Write-offs you create as Staff post immediately and do not wait for approval."
+    },
+    "formBlocked": {
+      "title": "I cannot submit a form",
+      "cause": "Validation errors (missing fields, future dates, empty lines) or subscription / seat limits can block saving.",
+      "fix": "Read the red messages on the form. Fix required fields. If you see a subscription or user-limit banner, ask an Owner to activate a code or free a seat."
+    },
+    "reportMissing": {
+      "title": "Reports or export are missing",
+      "cause": "Reports need a financial manager role (Owner, Site manager, or Accountant). Archive and some layouts need Owner or Accountant. Cashiers and Staff do not get the Reports hub.",
+      "fix": "Ask an Owner, Site manager, or Accountant to run the export, or to change your role if that is intended."
+    },
+    "mobileControl": {
+      "title": "I see a button on desktop but not on my phone",
+      "cause": "Mobile uses a role-specific bottom dock. Extra screens are under your profile menu.",
+      "fix": "Tap your avatar, open the item there, or rotate/widen the screen. Photograph invoice is Scan on the dock for Staff and managers."
+    }
+  }
+}

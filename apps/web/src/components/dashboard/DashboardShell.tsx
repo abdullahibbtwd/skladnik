@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   ClipboardList,
+  CircleHelp,
   FileCode2,
   FileSpreadsheet,
   Landmark,
@@ -64,6 +65,7 @@ const PRIMARY_NAV: NavItem[] = [
 
 const SYSTEM_NAV: NavItem[] = [
   { to: '/app/audit', labelKey: 'app.audit', icon: FileCode2, requires: 'audit' },
+  { to: '/app/help', labelKey: 'app.help', icon: CircleHelp },
   { to: '/app/settings', labelKey: 'app.settings', icon: Settings },
 ];
 
@@ -354,6 +356,17 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                       {t(item.labelKey)}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      navigate('/app/help');
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 font-display text-[0.82rem] text-slate-600 transition-colors hover:bg-ops-canvas hover:text-ops-ink"
+                  >
+                    <CircleHelp size={15} />
+                    {t('app.help')}
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
