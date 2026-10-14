@@ -27,6 +27,20 @@ export const authKeys = {
   me: ['auth', 'me'] as const,
 };
 
+export class AuthApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly email: string | null;
+
+  constructor(status: number, message: string, code?: string | null, email?: string | null) {
+    super(message);
+    this.name = 'AuthApiError';
+    this.status = status;
+    this.code = code ?? null;
+    this.email = email ?? null;
+  }
+}
+
 function errorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === 'object' && 'message' in payload) {
     const message = (payload as { message: unknown }).message;
@@ -34,6 +48,18 @@ function errorMessage(payload: unknown, fallback: string) {
     if (Array.isArray(message)) return message.filter((item) => typeof item === 'string').join('. ');
   }
   return fallback;
+}
+
+function throwAuthError(response: Response, payload: unknown, fallback: string): never {
+  const code =
+    payload && typeof payload === 'object' && 'code' in payload && typeof (payload as { code: unknown }).code === 'string'
+      ? (payload as { code: string }).code
+      : null;
+  const email =
+    payload && typeof payload === 'object' && 'email' in payload && typeof (payload as { email: unknown }).email === 'string'
+      ? (payload as { email: string }).email
+      : null;
+  throw new AuthApiError(response.status, errorMessage(payload, fallback), code, email);
 }
 
 function mapUser(user: ApiUser): SessionUser {
@@ -58,10 +84,16 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(errorMessage(payload, 'Something went wrong. Please try again.'));
+    throwAuthError(response, payload, 'Something went wrong. Please try again.');
   }
   return payload as T;
 }
+
+export type SignupResult =
+  | { status: 'EMAIL_VERIFICATION_REQUIRED'; email: string; delivered?: boolean; devCode?: string }
+  | { status: 'OK'; user: SessionUser };
+
+export type VerifyEmailResult = { user: SessionUser };
 
 async function requestMe(): Promise<SessionUser | 'unauthorized'> {
   const response = await fetch('/auth/me', { credentials: 'include' });
@@ -110,9 +142,37 @@ export async function signupRequest(input: {
   password: string;
   name: string;
   companyName: string;
-}): Promise<SessionUser> {
-  const data = await postJson<{ user: ApiUser }>('/auth/signup', input);
+}): Promise<SignupResult> {
+  const data = await postJson<
+    | { status: 'EMAIL_VERIFICATION_REQUIRED'; email: string; delivered?: boolean; devCode?: string }
+    | { user: ApiUser }
+  >('/auth/signup', input);
+  if (data && typeof data === 'object' && 'status' in data && data.status === 'EMAIL_VERIFICATION_REQUIRED') {
+    return {
+      status: 'EMAIL_VERIFICATION_REQUIRED',
+      email: data.email,
+      delivered: data.delivered,
+      devCode: data.devCode,
+    };
+  }
+  if (data && typeof data === 'object' && 'user' in data && data.user) {
+    return { status: 'OK', user: mapUser(data.user) };
+  }
+  throw new Error('Unexpected signup response');
+}
+
+export async function verifyEmailRequest(email: string, code: string): Promise<SessionUser> {
+  const data = await postJson<{ user: ApiUser }>('/auth/verify-email', { email, code });
   return mapUser(data.user);
+}
+
+export async function resendVerificationRequest(email: string): Promise<{
+  ok: true;
+  email: string;
+  delivered?: boolean;
+  devCode?: string;
+}> {
+  return postJson('/auth/resend-verification', { email });
 }
 
 export async function signupWithInviteRequest(input: {

@@ -34,7 +34,14 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,
-      includeAssets: ['favicon.ico', 'apple-touch-icon-180x180.png', 'pwa-icon.svg'],
+      includeAssets: [
+        'favicon.ico',
+        'apple-touch-icon-180x180.png',
+        'oborotix-favicon.png',
+        'oborotix-logo.png',
+        'oborotix-logo-white.png',
+        'og-image.png',
+      ],
       manifest: {
         id: '/',
         lang: 'bg',

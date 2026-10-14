@@ -5,7 +5,6 @@ import {
   BarChart3,
   Bell,
   ChefHat,
-  Boxes,
   Camera,
   CheckCircle2,
   ChevronDown,
@@ -38,6 +37,7 @@ import { useConnectivity } from '../../lib/connectivity';
 import { permissionsFor, type Permission } from '../../lib/permissions';
 import { usePhotoQueueCounts } from '../../lib/photo-queue-runtime';
 import { queryClient } from '../../lib/query-client';
+import { BrandLogo } from '../BrandLogo';
 import { useSiteChoices } from '../../lib/workspace-session';
 import { LanguageSwitch } from '../LanguageSwitch';
 import { confirm } from '../ui/Dialog';
@@ -205,12 +205,11 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           <button
             type="button"
             onClick={() => navigate('/app')}
-            className="group flex min-w-0 items-center gap-2.5 font-display text-[1.05rem] font-semibold tracking-tight text-ops-ink transition-opacity active:opacity-80"
+            className="group flex min-w-0 items-center transition-opacity active:opacity-80"
+            aria-label={t('brand.name')}
           >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.65rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
-              <Boxes size={18} strokeWidth={2.2} />
-            </span>
-            <span className="hidden tracking-tight font-semibold sm:inline">{t('brand.name')}</span>
+            <BrandLogo className="hidden h-7 sm:block" />
+            <BrandLogo variant="mark" className="size-8 sm:hidden" />
           </button>
 
           <div className="relative min-w-0 flex-1 md:flex-none">

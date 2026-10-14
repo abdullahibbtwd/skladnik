@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Boxes, CreditCard, LayoutDashboard, LogOut, Menu, Settings, X } from 'lucide-react';
+import { CreditCard, LayoutDashboard, LogOut, Menu, Settings, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { BrandLogo } from '../../components/BrandLogo';
 import { LanguageSwitch } from '../../components/LanguageSwitch';
 import { PullToRefresh } from '../../components/ui/PullToRefresh';
 import { cn } from '../../lib/cn';
@@ -83,9 +84,7 @@ export function PlatformLayout() {
         className="flex items-center gap-2.5 px-4 py-5 font-display text-[1.05rem] font-semibold tracking-tight text-ops-ink"
         onClick={() => setMobileNavOpen(false)}
       >
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.65rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
-          <Boxes size={18} />
-        </span>
+        <BrandLogo variant="mark" className="size-9 shrink-0" />
         <span className="min-w-0 leading-tight">
           <span className="block truncate">{t('brand.name')}</span>
           <span className="block truncate font-sans text-[0.68rem] font-medium tracking-wide text-slate-400 uppercase">

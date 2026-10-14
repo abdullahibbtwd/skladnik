@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Boxes, Menu, X, ShieldCheck } from 'lucide-react';
+import { Menu, X, ShieldCheck } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { useTranslation } from 'react-i18next';
 import { useLogout } from '../lib/auth-session';
 import { useAuthUser } from '../lib/auth-store';
+import { BrandLogo } from './BrandLogo';
 import { LanguageSwitch } from './LanguageSwitch';
 
 const navLinkClass =
@@ -41,11 +42,8 @@ export const Navbar: React.FC = () => {
       <header className="fixed inset-x-0 top-0 z-[80] border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-[1200px] px-4 md:px-6">
           <div className="flex h-[4.5rem] items-center justify-between gap-3">
-            <Link to="/" className="flex min-w-0 items-center gap-2.5 font-display text-[1.1rem] font-semibold tracking-tight text-ops-ink md:gap-3 md:text-[1.25rem]">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-ops-teal text-white shadow-[0_4px_14px_rgba(13,148,136,0.28)] md:size-10">
-                <Boxes size={18} strokeWidth={2} />
-              </div>
-              <span>{t('brand.name')}</span>
+            <Link to="/" className="flex min-w-0 items-center" aria-label={t('brand.name')}>
+              <BrandLogo className="h-8 md:h-9" />
             </Link>
 
             <nav className="hidden lg:block">

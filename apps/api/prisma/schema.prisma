@@ -319,6 +319,8 @@ model User {
   name         String
   role         UserRole
   isActive     Boolean  @default(true)
+  /// Set when the email is confirmed (signup code, invite accept, or Google).
+  emailVerifiedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

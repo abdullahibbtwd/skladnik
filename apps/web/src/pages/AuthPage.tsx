@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
-import { ArrowLeft, Boxes, Camera, FileCheck2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Camera, FileCheck2, ShieldCheck } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AuthForm } from '../components/AuthForm';
+import { BrandLogo } from '../components/BrandLogo';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 import { useTranslation } from 'react-i18next';
 
@@ -36,11 +37,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode, onSuccess }) => {
 
       <div className="relative grid min-h-dvh lg:grid-cols-2">
         <section className="relative hidden flex-col justify-between overflow-hidden border-r border-slate-200 bg-white px-12 py-10 lg:flex xl:px-16">
-          <Link to="/" className="inline-flex w-fit items-center gap-3 font-display text-[1.2rem] font-semibold tracking-tight text-ops-ink">
-            <span className="flex size-10 items-center justify-center rounded-[0.7rem] bg-ops-teal text-white shadow-[0_8px_24px_rgba(13,148,136,0.28)]">
-              <Boxes size={18} strokeWidth={2} />
-            </span>
-            {t('brand.name')}
+          <Link to="/" className="inline-flex w-fit items-center" aria-label={t('brand.name')}>
+            <BrandLogo className="h-9" />
           </Link>
 
           <div className="max-w-md">
@@ -75,11 +73,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode, onSuccess }) => {
 
         <section className="relative flex flex-col px-4 py-5 sm:px-8 sm:py-8">
           <div className="mb-6 flex items-center justify-between gap-3">
-            <Link to="/" className="inline-flex items-center gap-2.5 font-display text-[1.1rem] font-semibold text-ops-ink lg:hidden">
-              <span className="flex size-8 items-center justify-center rounded-[0.6rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
-                <Boxes size={16} />
-              </span>
-              {t('brand.name')}
+            <Link to="/" className="inline-flex items-center lg:hidden" aria-label={t('brand.name')}>
+              <BrandLogo className="h-8" />
             </Link>
             <div className="ml-auto flex items-center gap-2">
               <LanguageSwitch compact />

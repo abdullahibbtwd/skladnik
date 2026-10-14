@@ -1,8 +1,9 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Boxes, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useTranslation } from 'react-i18next';
+import { BrandLogo } from '../../components/BrandLogo';
 import { LanguageSwitch } from '../../components/LanguageSwitch';
 import { FieldLabel, PasswordField } from '../../components/PasswordField';
 import {
@@ -127,11 +128,8 @@ export function PlatformLoginPage() {
 
       <div className="relative mx-auto flex min-h-dvh w-full max-w-[440px] flex-col px-4 py-5 sm:px-8 sm:py-8">
         <div className="mb-6 flex items-center justify-between gap-3">
-          <Link to="/" className="inline-flex items-center gap-2.5 font-display text-[1.1rem] font-semibold text-ops-ink">
-            <span className="flex size-8 items-center justify-center rounded-[0.6rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
-              <Boxes size={16} />
-            </span>
-            {t('brand.name')}
+          <Link to="/" className="inline-flex items-center" aria-label={t('brand.name')}>
+            <BrandLogo className="h-8" />
           </Link>
           <div className="flex items-center gap-2">
             <LanguageSwitch compact />

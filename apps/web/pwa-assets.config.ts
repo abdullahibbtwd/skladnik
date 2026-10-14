@@ -9,5 +9,5 @@ export default defineConfig({
     maskable: { ...minimal2023Preset.maskable, sizes: [192, 512], resizeOptions: { background: brand } },
     apple: { ...minimal2023Preset.apple, resizeOptions: { background: brand } },
   },
-  images: ['public/pwa-icon.svg'],
+  images: ['public/oborotix-favicon.png'],
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Boxes } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { BrandLogo } from './BrandLogo';
 
 export const Footer: React.FC = () => {
   const { t } = useTranslation();
@@ -10,11 +10,8 @@ export const Footer: React.FC = () => {
       <div className="mx-auto w-full max-w-[1200px] px-4 md:px-6">
         <div className="mb-10 grid grid-cols-1 gap-8 md:mb-14 md:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1.2fr] lg:gap-12">
           <div>
-            <div className="mb-[0.85rem] flex items-center gap-[0.6rem] font-display text-lg font-semibold text-ops-ink md:text-xl">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-ops-teal text-white">
-                <Boxes size={18} />
-              </div>
-              <span>{t('brand.name')}</span>
+            <div className="mb-[0.85rem]">
+              <BrandLogo className="h-8" />
             </div>
             <p className="mb-5 max-w-80 text-[0.9rem] leading-relaxed">{t('footer.blurb')}</p>
             <div className="inline-flex items-center gap-2 rounded-full border border-ops-teal/20 bg-teal-50 px-[0.7rem] py-[0.3rem] text-[0.78rem] font-medium text-ops-teal">

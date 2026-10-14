@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Boxes, Mail, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Mail, ShieldCheck } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { BrandLogo } from '../components/BrandLogo';
 import { LanguageSwitch } from '../components/LanguageSwitch';
 import { FieldError, FieldLabel, PasswordField, textFieldClass } from '../components/PasswordField';
 import { useForgotPasswordMutation, useResetPasswordMutation } from '../lib/auth-session';
@@ -77,11 +78,8 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({ mode }) =>
 
       <div className="relative mx-auto flex min-h-dvh w-full max-w-[440px] flex-col px-4 py-5 sm:px-8 sm:py-8">
         <div className="mb-6 flex items-center justify-between gap-3">
-          <Link to="/" className="inline-flex items-center gap-2.5 font-display text-[1.1rem] font-semibold text-ops-ink">
-            <span className="flex size-8 items-center justify-center rounded-[0.6rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
-              <Boxes size={16} />
-            </span>
-            {t('brand.name')}
+          <Link to="/" className="inline-flex items-center" aria-label={t('brand.name')}>
+            <BrandLogo className="h-8" />
           </Link>
           <div className="flex items-center gap-2">
             <LanguageSwitch compact />

@@ -16,11 +16,20 @@ import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SignupDto } from './dto/signup.dto';
 import { SignupWithInviteDto } from './dto/signup-with-invite.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { InvitesService } from '../invites/invites.service';
 
 const SIGNUP_LIMIT: RateLimitRule = { name: 'signup', limit: 10, windowSeconds: 60 * 60, by: 'ip' };
 const RESET_LIMIT: RateLimitRule = { name: 'password-reset', limit: 10, windowSeconds: 15 * 60, by: 'ip' };
+const VERIFY_LIMIT: RateLimitRule = { name: 'email-verify', limit: 20, windowSeconds: 15 * 60, by: 'ip+email' };
+const RESEND_VERIFY_LIMIT: RateLimitRule = {
+  name: 'email-verify-resend',
+  limit: 5,
+  windowSeconds: 15 * 60,
+  by: 'ip+email',
+};
 const CHANGE_PASSWORD_LIMIT: RateLimitRule = {
   name: 'change-password',
   limit: 10,
@@ -49,6 +58,22 @@ export class AuthController {
   @Post('signup')
   signup(@Body() dto: SignupDto, @Res({ passthrough: true }) res: Response) {
     return this.auth.signup(dto, res);
+  }
+
+  @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(VERIFY_LIMIT)
+  @Post('verify-email')
+  verifyEmail(@Body() dto: VerifyEmailDto, @Res({ passthrough: true }) res: Response) {
+    return this.auth.verifyEmail(dto.email, dto.code, res);
+  }
+
+  @Public()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(RESEND_VERIFY_LIMIT)
+  @Post('resend-verification')
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.auth.resendEmailVerification(dto.email);
   }
 
   @Public()

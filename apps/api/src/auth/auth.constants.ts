@@ -6,6 +6,9 @@ export const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 7;
 export const ACCESS_TTL_SECONDS = 60 * 15;
 /** Password-reset links expire after one hour. */
 export const RESET_TTL_SECONDS = 60 * 60;
+/** Email verification codes expire after 15 minutes. */
+export const EMAIL_VERIFY_TTL_SECONDS = 60 * 15;
+export const EMAIL_VERIFY_MAX_ATTEMPTS = 5;
 
 export function refreshRedisKey(jti: string) {
   return `auth:refresh:${jti}`;
@@ -13,6 +16,10 @@ export function refreshRedisKey(jti: string) {
 
 export function resetRedisKey(token: string) {
   return `auth:reset:${token}`;
+}
+
+export function emailVerifyRedisKey(userId: string) {
+  return `auth:email-verify:${userId}`;
 }
 
 /** Tracks refresh JTIs for a user so password reset can revoke every session. */

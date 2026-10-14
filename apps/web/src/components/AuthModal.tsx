@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Boxes, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AuthForm } from './AuthForm';
+import { BrandLogo } from './BrandLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -35,12 +36,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 md:px-6 md:py-5">
-          <div className="flex items-center gap-[0.65rem]">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-ops-teal text-white">
-              <Boxes size={16} strokeWidth={2} />
-            </div>
-            <span className="font-display text-[1.05rem] font-semibold text-ops-ink">{t('brand.name')}</span>
-          </div>
+          <BrandLogo className="h-7" />
           <button onClick={onClose} className="rounded-md p-1.5 text-slate-400 hover:bg-ops-canvas hover:text-ops-ink" aria-label={t('common.closeModal')}>
             <X size={18} />
           </button>

@@ -9,10 +9,13 @@ import {
   googleAuthRequest,
   loginRequest,
   logoutRequest,
+  resendVerificationRequest,
   resetPasswordRequest,
   signupRequest,
   signupWithInviteRequest,
+  verifyEmailRequest,
   type SessionUser,
+  type SignupResult,
 } from './auth-api';
 import { applySession, clearSession, useAuthStore } from './auth-store';
 import { clearOfflineSession, saveOfflineUser } from './offline-session';
@@ -91,7 +94,23 @@ export function useSignupMutation() {
   return useMutation({
     mutationFn: (input: { email: string; password: string; name: string; companyName: string }) =>
       signupRequest(input),
+    onSuccess: (result: SignupResult) => {
+      if (result.status === 'OK') cacheSession(queryClient, result.user);
+    },
+  });
+}
+
+export function useVerifyEmailMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ email, code }: { email: string; code: string }) => verifyEmailRequest(email, code),
     onSuccess: (user) => cacheSession(queryClient, user),
+  });
+}
+
+export function useResendVerificationMutation() {
+  return useMutation({
+    mutationFn: (email: string) => resendVerificationRequest(email),
   });
 }
 

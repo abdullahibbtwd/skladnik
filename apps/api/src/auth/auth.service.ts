@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -9,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { User, UserRole } from '@prisma/client';
 import { isCompanyWideRole, type AuthUser } from '@skladnik/shared';
 import * as bcrypt from 'bcrypt';
-import { randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import type { CookieOptions, Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { recordActivity } from '../activity/record-activity';
@@ -25,14 +26,22 @@ import { createSignupTrialSubscription } from '../subscriptions/create-signup-tr
 import {
   ACCESS_COOKIE,
   ACCESS_TTL_SECONDS,
+  EMAIL_VERIFY_MAX_ATTEMPTS,
+  EMAIL_VERIFY_TTL_SECONDS,
   REFRESH_COOKIE,
   REFRESH_TTL_SECONDS,
   RESET_TTL_SECONDS,
+  emailVerifyRedisKey,
   refreshRedisKey,
   resetRedisKey,
   sessionSetKey,
 } from './auth.constants';
 import { SignupDto } from './dto/signup.dto';
+
+type EmailVerifyChallenge = {
+  codeHash: string;
+  attempts: number;
+};
 
 export type SessionUser = {
   id: string;
@@ -84,6 +93,7 @@ export class AuthService {
           name: dto.name.trim(),
           role: UserRole.OWNER,
           companyId: company.id,
+          emailVerifiedAt: null,
         },
       });
       await recordActivity(tx, { ...created, companyId: company.id }, {
@@ -96,7 +106,16 @@ export class AuthService {
       return created;
     });
 
-    return this.establishSession(user, res, 'SIGNUP');
+    // Do not leave a previous browser session active while waiting for verification.
+    this.clearCookies(res);
+
+    const issued = await this.issueEmailVerificationCode(user);
+    return {
+      status: 'EMAIL_VERIFICATION_REQUIRED' as const,
+      email: user.email,
+      delivered: issued.delivered,
+      ...(issued.devCode ? { devCode: issued.devCode } : {}),
+    };
   }
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -111,7 +130,87 @@ export class AuthService {
   }
 
   async login(user: User, res: Response) {
+    if (!user.emailVerifiedAt) {
+      await this.issueEmailVerificationCode(user);
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Verify your email before signing in',
+        email: user.email,
+      });
+    }
     return this.establishSession(user, res, 'LOGIN');
+  }
+
+  async verifyEmail(emailRaw: string, code: string, res: Response) {
+    const email = emailRaw.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.isActive) {
+      throw new BadRequestException('Invalid verification code');
+    }
+    if (user.emailVerifiedAt) {
+      return this.establishSession(user, res, 'LOGIN');
+    }
+
+    await this.ensureRedis();
+    const key = emailVerifyRedisKey(user.id);
+    const raw = await this.redis.client.get(key);
+    if (!raw) {
+      throw new BadRequestException('This verification code is invalid or has expired');
+    }
+
+    let challenge: EmailVerifyChallenge;
+    try {
+      challenge = JSON.parse(raw) as EmailVerifyChallenge;
+    } catch {
+      await this.redis.client.del(key);
+      throw new BadRequestException('This verification code is invalid or has expired');
+    }
+
+    if (challenge.attempts >= EMAIL_VERIFY_MAX_ATTEMPTS) {
+      await this.redis.client.del(key);
+      throw new BadRequestException('Too many incorrect attempts. Request a new code.');
+    }
+
+    if (this.hashVerificationCode(code) !== challenge.codeHash) {
+      challenge.attempts += 1;
+      if (challenge.attempts >= EMAIL_VERIFY_MAX_ATTEMPTS) {
+        await this.redis.client.del(key);
+        throw new BadRequestException('Too many incorrect attempts. Request a new code.');
+      }
+      const ttl = await this.redis.client.ttl(key);
+      await this.redis.client.set(
+        key,
+        JSON.stringify(challenge),
+        'EX',
+        ttl > 0 ? ttl : EMAIL_VERIFY_TTL_SECONDS,
+      );
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    await this.redis.client.del(key);
+    const verified = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date() },
+    });
+
+    return this.establishSession(verified, res, 'SIGNUP');
+  }
+
+  async resendEmailVerification(emailRaw: string) {
+    const email = emailRaw.trim().toLowerCase();
+    const opaque = { ok: true as const, email };
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.isActive || user.emailVerifiedAt) {
+      return opaque;
+    }
+
+    const issued = await this.issueEmailVerificationCode(user);
+    if (this.config.get<string>('NODE_ENV') !== 'production') {
+      return { ...opaque, delivered: issued.delivered, ...(issued.devCode ? { devCode: issued.devCode } : {}) };
+    }
+    return { ...opaque, delivered: issued.delivered };
   }
 
   async issueSession(user: User, res: Response, activity?: 'LOGIN' | 'SIGNUP') {
@@ -267,10 +366,13 @@ export class AuthService {
       if (user.googleSub && user.googleSub !== googleSub) {
         throw new UnauthorizedException('Google sign-in could not be verified');
       }
-      if (!user.googleSub) {
+      if (!user.googleSub || !user.emailVerifiedAt) {
         user = await this.prisma.user.update({
           where: { id: user.id },
-          data: { googleSub },
+          data: {
+            googleSub: user.googleSub ?? googleSub,
+            emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+          },
         });
       }
       return this.establishSession(user, res, 'LOGIN');
@@ -289,6 +391,7 @@ export class AuthService {
           passwordHash: null,
           role: UserRole.OWNER,
           companyId: company.id,
+          emailVerifiedAt: new Date(),
         },
       });
       await recordActivity(tx, { ...owner, companyId: company.id }, {
@@ -363,7 +466,53 @@ export class AuthService {
     return { ok: true };
   }
 
+  private async issueEmailVerificationCode(user: User): Promise<{ delivered: boolean; devCode?: string }> {
+    await this.ensureRedis();
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const challenge: EmailVerifyChallenge = {
+      codeHash: this.hashVerificationCode(code),
+      attempts: 0,
+    };
+    await this.redis.client.set(
+      emailVerifyRedisKey(user.id),
+      JSON.stringify(challenge),
+      'EX',
+      EMAIL_VERIFY_TTL_SECONDS,
+    );
+
+    let delivered = false;
+    try {
+      ({ delivered } = await this.mail.sendEmailVerificationCode({
+        to: user.email,
+        name: user.name,
+        code,
+      }));
+    } catch (error) {
+      if (this.config.get<string>('NODE_ENV') === 'production') {
+        throw error;
+      }
+    }
+
+    if (this.config.get<string>('NODE_ENV') !== 'production') {
+      return { delivered, devCode: code };
+    }
+    return { delivered };
+  }
+
+  private hashVerificationCode(code: string) {
+    return createHash('sha256').update(code.trim()).digest('hex');
+  }
+
   private async establishSession(user: User, res: Response, activity?: 'LOGIN' | 'SIGNUP') {
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Verify your email before signing in',
+        email: user.email,
+      });
+    }
+
     const session = await this.toSessionUser(user.id);
     const jti = randomUUID();
 

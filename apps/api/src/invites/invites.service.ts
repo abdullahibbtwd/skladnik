@@ -190,6 +190,8 @@ export class InvitesService {
           name: dto.name.trim(),
           role: invite.role,
           companyId: invite.companyId,
+          // Invite was sent to this address by an owner — treat as verified.
+          emailVerifiedAt: new Date(),
         },
       });
 
