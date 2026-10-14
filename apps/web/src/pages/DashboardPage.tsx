@@ -106,13 +106,18 @@ export const DashboardPage: React.FC = () => {
 
   const canCreateDocuments = user.role === 'OWNER' || user.role === 'SITE_MANAGER' || user.role === 'STAFF';
 
+  const goAddSite = (message: string) => {
+    toast.info(message);
+    navigate('/app/settings/sites?new=1');
+  };
+
   const onStartDocument = (type: 'RECEIPT' | 'WRITE_OFF') => {
     if (!canCreateDocuments) {
       toast.error(t('app.docStaffBlocked'));
       return;
     }
     if (!siteId) {
-      toast.error(t('app.docNeedSite'));
+      goAddSite(t('app.docNeedSite'));
       return;
     }
     navigate(type === 'WRITE_OFF' ? '/app/write-off' : `/app/invoices/new?type=${type}`);
@@ -133,7 +138,7 @@ export const DashboardPage: React.FC = () => {
       return;
     }
     if (!siteId) {
-      toast.error(t('app.scanNeedSite'));
+      goAddSite(t('app.scanNeedSite'));
       return;
     }
     setScanOpen(true);

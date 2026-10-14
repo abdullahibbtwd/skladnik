@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MapPin, Plus } from 'lucide-react';
 import { SITE_TYPES, type SiteType } from '@skladnik/shared';
 import { useAuthRole } from '../../lib/auth-store';
@@ -41,6 +42,8 @@ const emptyForm: SiteFormState = { name: '', type: 'STORE', address: '', manager
 
 export const SitesSettings: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isOwner = useAuthRole() === 'OWNER';
   const sitesQuery = useSitesQuery();
   const usersQuery = useUsersQuery(isOwner);
@@ -61,6 +64,14 @@ export const SitesSettings: React.FC = () => {
     setError(null);
     setModal('create');
   };
+
+  useEffect(() => {
+    if (searchParams.get('new') !== '1' || !isOwner) return;
+    setForm(emptyForm);
+    setError(null);
+    setModal('create');
+    navigate('/app/settings/sites', { replace: true });
+  }, [searchParams, isOwner, navigate]);
 
   const openEdit = (site: SiteRecord) => {
     setForm({
@@ -126,7 +137,10 @@ export const SitesSettings: React.FC = () => {
         {sitesQuery.isPending ? (
           <p className="px-5 py-8 font-sans text-sm text-slate-500">{t('sites.loading')}</p>
         ) : sites.length === 0 ? (
-          <p className="px-5 py-8 font-sans text-sm text-slate-500">{t('sites.empty')}</p>
+          <div className="flex flex-col items-start gap-4 px-5 py-8">
+            <p className="font-sans text-sm text-slate-500">{t('sites.empty')}</p>
+            {isOwner && <ActionButton icon={Plus} label={t('sites.add')} onClick={openCreate} primary />}
+          </div>
         ) : (
           <>
             <ul className={mobileCardListClass()}>

@@ -44,7 +44,6 @@ require('ts-node/register/transpile-only');
   require('../src/compliance/compliance.test.ts');
   require('../src/vat/vat-ledger.test.ts');
   require('../src/annex38/annex38.test.ts');
-  require('../src/seed/seed-eik.test.ts');
   require('../src/company/settings.test.ts');
   require('../src/subscriptions/subscription-status.test.ts');
   require('../src/subscriptions/resolve-entitlement.test.ts');

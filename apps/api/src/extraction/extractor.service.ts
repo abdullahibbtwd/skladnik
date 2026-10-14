@@ -4,7 +4,7 @@ import { extractDocumentFromImage, type ExtractDocumentResult, type ReasoningEff
 import { DEFAULT_LAYOUT_STRUCT_MODEL, extractDocumentViaLayout } from './extract-document-layout';
 
 const EFFORTS: ReasoningEffort[] = ['low', 'high', 'max'];
-/** Chosen with scripts/bench-extraction.cjs (audit F-17); GLM's own default is max. */
+/** Measured for the 20 s target (audit F-17); GLM's own default is max. */
 const DEFAULT_EFFORT: ReasoningEffort = 'low';
 
 export type OcrEngine = 'vision' | 'layout';

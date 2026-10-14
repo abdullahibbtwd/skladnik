@@ -1,6 +1,6 @@
 /**
  * Expected extraction for qa_invoice.jpg (Fig. 5 / SKL-06 regression).
- * Used by live prove-scan scripts and offline post-process / schema tests.
+ * Used by offline post-process / schema tests.
  */
 export const QA_INVOICE_FIG5_EXPECTED = {
   documentNumber: '0000459999',

@@ -40,7 +40,7 @@ export function PageHeader({
         <h1 className="mt-1 font-display text-[1.35rem] font-semibold tracking-tight text-ops-ink">{title}</h1>
         <p className="mt-1 max-w-xl font-sans text-[0.8rem] text-slate-500">{description}</p>
       </div>
-      {action && <div className="hidden md:block">{action}</div>}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }

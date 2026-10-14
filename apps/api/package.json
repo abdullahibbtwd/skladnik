@@ -11,19 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:ready": "prisma generate && prisma migrate deploy",
-    "db:seed": "prisma db seed",
-    "auth:prove": "node scripts/prove-isolation.mjs",
-    "auth:prove-roles": "node scripts/prove-roles.mjs",
-    "auth:prove-reset": "node scripts/prove-password-reset.mjs",
     "platform:create-admin": "node scripts/create-platform-admin.cjs",
-    "reports:prove-sequence": "node scripts/prove-reports-sequence.mjs",
-    "documents:prove": "node scripts/prove-document-post.mjs",
-    "governance:prove": "node scripts/prove-governance.mjs",
-    "test": "node scripts/run-posting-unit.cjs",
-    "extract:image": "node scripts/extract-image.cjs",
-    "extract:layout": "node scripts/extract-layout.cjs",
-    "scans:cleanup": "node scripts/cleanup-empty-scans.mjs",
-    "scans:cleanup-junk": "node scripts/cleanup-junk-documents.mjs"
+    "test": "node scripts/run-posting-unit.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.893.0",
@@ -73,8 +62,5 @@
     "@types/pdfkit": "^0.17.6",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.cjs"
   }
 }

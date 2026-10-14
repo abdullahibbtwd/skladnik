@@ -24,7 +24,7 @@ Turborepo with a Vite + React web app, a NestJS API, a shared package, and Postg
 ## Layout
 
 ```
-apps/api          NestJS API, Prisma schema + migrations, seed, proof scripts
+apps/api          NestJS API, Prisma schema + migrations
 apps/web          Vite + React 19 + Tailwind 4, i18n (en / bg), PWA service worker
 packages/shared   roles, document types, VAT / compliance / report helpers used by both apps
 ```
@@ -45,7 +45,7 @@ Runs Postgres, Redis, and MinIO in Docker (`docker-compose.dev.yml`) and the API
 ```bash
 cp .env.example .env
 npm install
-npm run dev:all        # infra:up → db:wait → db:migrate → db:seed → dev
+npm run dev:all        # infra:up → db:wait → db:migrate → dev
 ```
 
 Or step by step:
@@ -53,9 +53,10 @@ Or step by step:
 ```bash
 npm run infra:up       # postgres, redis, minio
 npm run db:migrate
-npm run db:seed
 npm run dev            # nest --watch + vite
 ```
+
+The database starts empty. Create a store account through signup in the web app, and a platform operator with `npm run platform:create-admin` (see below).
 
 | Service | URL |
 | --- | --- |
@@ -144,14 +145,10 @@ RESEND_FROM_EMAIL=Skladnik <noreply@your-domain>
 
 Push, then redeploy. If it fails, open the **api** logs and look for `skladnik-api: port=`, `prisma generate failed`, or `prisma migrate deploy failed`.
 
-To load seed users on a server, open a terminal in the `api` container (or use `docker compose exec`). The image has no TypeScript sources, so the seed runs the compiled copy in `dist/seed/`. Empty tenants always seed; demo companies need `SEED_DEMO=1` when `NODE_ENV=production`. One password covers every seed user:
+After the first deploy, create the platform operator from a terminal in the `api` container (or with `docker compose exec`):
 
 ```bash
-# Empty tenants only (Metro / Riverside — no stock history)
-docker compose exec -e SEED_PASSWORD='choose-one' api npm run db:seed
-
-# Empty tenants + demo companies (same password for all)
-docker compose exec -e SEED_DEMO=1 -e SEED_PASSWORD='choose-one' api npm run db:seed
+docker compose exec api npm run platform:create-admin -- --email you@your-domain --password '<12+ chars>' --name 'Your Name'
 ```
 
 ## Environment variables
@@ -168,7 +165,6 @@ One `.env` at the repo root, read by the API in local dev (see `.env.example`).
 | Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES` (15m), `JWT_REFRESH_EXPIRES` (7d), `JWT_PLATFORM_ACCESS_SECRET`, `JWT_PLATFORM_REFRESH_SECRET`, `PLATFORM_TOTP_ENCRYPTION_KEY`, `ACTIVATION_CODE_PEPPER`, `ACTIVATION_CODE_ENCRYPTION_KEY`, `COOKIE_SECURE`, `GOOGLE_CLIENT_ID` (optional) |
 | OCR | `GLM_API_KEY` or `ZAI_API_KEY`, `GLM_BASE_URL`, `GLM_MODEL` |
 | Email | `RESEND_API_KEY` (optional), `RESEND_FROM_EMAIL` |
-| Seed | `SEED_PASSWORD` (shared by every seed user), `SEED_RESET=1`, `SEED_DEMO=1` (include demo companies when `NODE_ENV=production`) |
 
 ## Auth, tenancy, and roles
 
@@ -219,35 +215,12 @@ All routes need a session cookie except signup, login, refresh, logout, `GET /in
 
 New API prefixes must also be proxied in `apps/web/vite.config.ts` and `apps/web/nginx.conf`, or the web app gets a 404.
 
-## Seed data
-
-`npm run db:seed` is safe to re-run; history is written once. `SEED_RESET=1 npm run db:seed` rebuilds the demo companies with dates relative to today. The password for every seed user is `DevPassword123!` unless `SEED_PASSWORD` is set.
-
-- `owner-a@skladnik.dev` — Metro Corner Market (all sites)
-- `manager-a@skladnik.dev` — Metro Corner Market (Main Store only)
-- `owner-b@skladnik.dev` — Riverside Cafe (all sites)
-
-Demo companies with a month of history (invoices, a transfer, write-offs, till sales, recipes, expiring batches, low stock):
-
-- `demo-owner@skladnik.dev` — Demo Mini Market (all sites)
-- `demo-manager@skladnik.dev` — Demo Mini Market (Main Store only)
-- `demo-cashier@skladnik.dev` — Demo Mini Market till (Main Store only)
-- `demo-storekeeper@skladnik.dev` — Demo Mini Market (Warehouse only)
-- `demo-accountant@skladnik.dev` — Demo Mini Market (accountant)
-- `cafe-owner@skladnik.dev` — Demo Café (all sites)
-- `cafe-barista@skladnik.dev` — Demo Café till (Café Bar only)
-
 ## Tests and scripts
 
 | Command | What it does |
 | --- | --- |
 | `npm test --workspace=@skladnik/api` | Unit tests: posting rules, stock and costing, FEFO, OCR parsing and matching, recipes, reports, exports, compliance checksums, VAT ledgers and NRA file layouts |
-| `npm run auth:prove` | Tenant isolation between the two seed companies |
-| `npm run documents:prove` | Creates a draft, posts it, checks totals mismatch, duplicates, future/old dates, missing supplier, expired-batch confirmation |
-| `node --env-file=../../.env scripts/fix-l110526.mjs` (in `apps/api`) | Dry-run (or `--apply`) data fix for invoice L110526 wrong line totals / date — see script header for options |
-| `node --env-file=../../.env scripts/prove-annex38.mjs` (in `apps/api`) | Annex 38 end to end: e-shop settings, pre-checks, generate, SHA-256 archive, xmllint vs `dec_audit.xsd` |
-| `npx dotenv -e .env -- npm run extract:image --workspace=@skladnik/api -- invoice.jpg` | Runs OCR on one image against the real GLM API |
-| `npm run scans:cleanup --workspace=@skladnik/api [-- --apply]` | Lists (or cancels) old empty `SCAN-…` drafts |
+| `npm run platform:create-admin -- --email … --password … --name …` | Creates a platform operator account |
 | `npm run i18n:translate --workspace=@skladnik/web` | Regenerates `bg.json` from `en.json` with Google Translate (overwrites manual edits) |
 | `npm run pwa:icons --workspace=@skladnik/web` | Regenerates the PWA icons |
 

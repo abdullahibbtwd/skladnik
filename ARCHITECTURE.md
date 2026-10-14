@@ -97,11 +97,9 @@ Repeated failed redemptions on a known code hash increment `ActivationCode.faile
 - Dashboard **expiring-soon banner** when `expiresAt` is within 30 days (or status is expired/suspended).
 - Platform: `/platform` — create (invoice fields + idempotency), list inline status transitions, detail (reveal TOTP, invoices PDF / paid / void). Suspend/revoke warns when the invoice is `PAID` (no auto-void).
 
-### Proof scripts & tests
+### Scripts & tests
 
 ```bash
-npm run auth:prove           # tenant isolation + subscription isolation + activation race safety
-npm run auth:prove-roles     # role matrix
 npm run platform:create-admin
 npm test --workspace=@skladnik/api   # includes invoice immutability, number concurrency, VAT, PDF smoke, reveal crypto, transition 409
 ```
