@@ -682,6 +682,7 @@
     "hidePassword": "Hide password",
     "showPassword": "Show password",
     "passwordHint": "At least 8 characters",
+    "passwordHintLong": "At least {{count}} characters",
     "create": "Create",
     "saveChanges": "Save changes",
     "deactivate": "Deactivate",
@@ -1259,7 +1260,13 @@
     "company": "Company",
     "role": "Role",
     "currentSite": "Current site",
-    "site": "site"
+    "site": "site",
+    "changePassword": "Change password",
+    "changePasswordHint": "Enter your current password, then choose a new one of at least 8 characters. Other devices will be signed out.",
+    "currentPassword": "Current password",
+    "savePassword": "Save new password",
+    "passwordChanged": "Password updated.",
+    "passwordChangeFailed": "Could not change the password."
   },
   "camera": {
     "title": "Add a picture",
@@ -2334,7 +2341,13 @@
       "saveFailed": "Could not save seller settings",
       "loadFailed": "Could not load seller settings",
       "session": "Session",
-      "sessionHint": "Sign out of the platform operator session on this device."
+      "sessionHint": "Sign out of the platform operator session on this device.",
+      "changePassword": "Change password",
+      "changePasswordHint": "Requires your current password and a fresh authenticator code. New password must be at least 12 characters. Other devices will be signed out.",
+      "currentPassword": "Current password",
+      "savePassword": "Save new password",
+      "passwordChanged": "Password updated.",
+      "passwordChangeFailed": "Could not change the password."
     },
     "login": {
       "title": "Platform login — Skladnik",

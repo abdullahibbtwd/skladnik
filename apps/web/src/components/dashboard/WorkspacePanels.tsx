@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, type FormEvent } from 'react';
 import { CheckCircle2, Timer } from 'lucide-react';
-import { useLogout } from '../../lib/auth-session';
+import { useChangePasswordMutation, useLogout } from '../../lib/auth-session';
 import { useRequiredUser } from '../../lib/auth-store';
 import { useSitesQuery } from '../../lib/workspace-session';
+import { PasswordField } from '../PasswordField';
+import { toast } from '../ui/Toaster';
 import { useDashboard } from './dashboard-context';
 import { ExpiringBatches } from './ExpiringBatches';
 import { ExpiryChip, GhostButton, GlassPanel, LiveBadge, PageHeader, SpecularRim, glassClass } from './dashboard-ui';
@@ -62,6 +64,29 @@ export const SettingsAccountPanel: React.FC = () => {
   const user = useRequiredUser();
   const logout = useLogout();
   const sitesQuery = useSitesQuery();
+  const changePassword = useChangePasswordMutation();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  const onChangePassword = async (event: FormEvent) => {
+    event.preventDefault();
+    setPasswordError(null);
+    if (newPassword !== confirmPassword) {
+      setPasswordError(t('auth.passwordMismatch'));
+      return;
+    }
+    try {
+      await changePassword.mutateAsync({ currentPassword, newPassword });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      toast.success(t('account.passwordChanged'));
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : t('account.passwordChangeFailed'));
+    }
+  };
 
   return (
     <div className="flex flex-col gap-5 sm:gap-6">
@@ -90,6 +115,43 @@ export const SettingsAccountPanel: React.FC = () => {
             {t('account.logOut')}
           </GhostButton>
         </div>
+      </GlassPanel>
+
+      <GlassPanel title={t('account.changePassword')}>
+        <p className="mb-4 font-sans text-[0.8rem] text-slate-500">{t('account.changePasswordHint')}</p>
+        <form className="flex max-w-md flex-col gap-3.5" onSubmit={(event) => void onChangePassword(event)}>
+          <PasswordField
+            id="account-current-password"
+            label={t('account.currentPassword')}
+            value={currentPassword}
+            onChange={setCurrentPassword}
+            autoComplete="current-password"
+            minLength={1}
+            placeholder=""
+          />
+          <PasswordField
+            id="account-new-password"
+            label={t('auth.newPassword')}
+            value={newPassword}
+            onChange={setNewPassword}
+            autoComplete="new-password"
+          />
+          <PasswordField
+            id="account-confirm-password"
+            label={t('auth.confirmPassword')}
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            autoComplete="new-password"
+          />
+          {passwordError ? <p className="font-sans text-[0.78rem] text-ops-danger">{passwordError}</p> : null}
+          <button
+            type="submit"
+            disabled={changePassword.isPending}
+            className="inline-flex items-center justify-center gap-2 self-start rounded-xl bg-ops-teal px-4 py-2.5 font-display text-[0.82rem] font-medium text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)] hover:bg-ops-teal-hover disabled:opacity-60"
+          >
+            {changePassword.isPending ? t('common.saving') : t('account.savePassword')}
+          </button>
+        </form>
       </GlassPanel>
 
       <GlassPanel title={t('account.activeSite')} action={<LiveBadge>{t('account.controlsWorkspace')}</LiveBadge>}>

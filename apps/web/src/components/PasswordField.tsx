@@ -17,6 +17,7 @@ type PasswordFieldProps = {
   autoComplete: string;
   placeholder?: string;
   required?: boolean;
+  minLength?: number;
 };
 
 export function PasswordField({
@@ -27,12 +28,18 @@ export function PasswordField({
   autoComplete,
   placeholder,
   required = true,
+  minLength = 8,
 }: PasswordFieldProps) {
   const { t } = useTranslation();
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const [visible, setVisible] = useState(false);
-  const hint = placeholder ?? t('common.passwordHint');
+  const hint =
+    placeholder !== undefined
+      ? placeholder
+      : minLength > 8
+        ? t('common.passwordHintLong', { count: minLength })
+        : t('common.passwordHint');
 
   return (
     <div>
@@ -47,7 +54,7 @@ export function PasswordField({
           id={inputId}
           type={visible ? 'text' : 'password'}
           required={required}
-          minLength={8}
+          minLength={minLength}
           value={value}
           autoComplete={autoComplete}
           placeholder={hint}

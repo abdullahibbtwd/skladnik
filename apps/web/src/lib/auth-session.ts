@@ -2,6 +2,7 @@ import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/re
 import { useNavigate } from 'react-router-dom';
 import {
   authKeys,
+  changePasswordRequest,
   fetchAuthProviders,
   fetchCurrentUser,
   forgotPasswordRequest,
@@ -113,6 +114,15 @@ export function useResetPasswordMutation() {
   return useMutation({
     mutationFn: ({ token, password }: { token: string; password: string }) =>
       resetPasswordRequest(token, password),
+  });
+}
+
+export function useChangePasswordMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>
+      changePasswordRequest(currentPassword, newPassword),
+    onSuccess: (user) => cacheSession(queryClient, user),
   });
 }
 

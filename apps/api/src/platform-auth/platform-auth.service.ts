@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
@@ -125,6 +126,48 @@ export class PlatformAuthService {
       name: admin.name,
       totpEnabled: admin.totpEnabled,
     };
+  }
+
+  async changePassword(
+    authAdmin: PlatformAuthUser,
+    currentPassword: string,
+    newPassword: string,
+    totpCode: string,
+    res: Response,
+  ) {
+    const admin = await this.prisma.platformAdmin.findUnique({ where: { id: authAdmin.id } });
+    if (!admin || !admin.isActive) {
+      throw new UnauthorizedException();
+    }
+    if (!admin.totpEnabled || !admin.totpSecret) {
+      throw new ForbiddenException('TOTP must be enabled before changing the password');
+    }
+
+    const passwordOk = await bcrypt.compare(currentPassword, admin.passwordHash);
+    if (!passwordOk) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const secret = decryptTotpSecret(admin.totpSecret, this.totpKey());
+    if (!verifyTotpCode(totpCode, secret)) {
+      throw new UnauthorizedException('Invalid authentication code');
+    }
+
+    if (await bcrypt.compare(newPassword, admin.passwordHash)) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+    if (newPassword.length < 12) {
+      throw new BadRequestException('Password must be at least 12 characters');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.platformAdmin.update({
+      where: { id: admin.id },
+      data: { passwordHash },
+    });
+
+    await this.revokeAllSessions(admin.id);
+    return this.establishSession(admin.id, res);
   }
 
   async refresh(refreshToken: string | undefined, res: Response) {
@@ -260,6 +303,21 @@ export class PlatformAuthService {
       throw new UnauthorizedException();
     }
     return payload;
+  }
+
+  private async revokeAllSessions(adminId: string) {
+    await this.ensureRedis();
+    const jtis = await this.redis.client.smembers(platformSessionSetKey(adminId));
+    if (jtis.length > 0) {
+      const pipeline = this.redis.client.pipeline();
+      for (const jti of jtis) {
+        pipeline.del(platformRefreshRedisKey(jti));
+      }
+      pipeline.del(platformSessionSetKey(adminId));
+      await pipeline.exec();
+    } else {
+      await this.redis.client.del(platformSessionSetKey(adminId));
+    }
   }
 
   private totpKey() {

@@ -235,6 +235,17 @@ export async function platformLogout(): Promise<void> {
   }
 }
 
+export async function platformChangePassword(input: {
+  currentPassword: string;
+  newPassword: string;
+  totpCode: string;
+}): Promise<{ user: PlatformSessionUser }> {
+  return platformJson('/platform-auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export type PlatformSubscriptionsPage = {
   subscriptions: PlatformSubscriptionListItem[];
   page: number;

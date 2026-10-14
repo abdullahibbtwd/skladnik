@@ -4,10 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitch } from '../../components/LanguageSwitch';
+import { PasswordField } from '../../components/PasswordField';
 import { GlassPanel } from '../../components/dashboard/dashboard-ui';
+import { toast } from '../../components/ui/Toaster';
 import {
   PlatformApiError,
   getPlatformBillingSettings,
+  platformChangePassword,
   platformLogout,
   updatePlatformBillingSettings,
 } from '../../lib/platform-api';
@@ -44,6 +47,11 @@ export function PlatformSettingsPage() {
   const [eikMismatchMode, setEikMismatchMode] = useState<'WARN' | 'BLOCK'>('WARN');
   const [formError, setFormError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     const data = billingQuery.data;
@@ -79,6 +87,39 @@ export function PlatformSettingsPage() {
     e.preventDefault();
     setFormError(null);
     saveMutation.mutate();
+  };
+
+  const passwordMutation = useMutation({
+    mutationFn: () =>
+      platformChangePassword({
+        currentPassword,
+        newPassword,
+        totpCode: totpCode.trim(),
+      }),
+    onSuccess: async (data) => {
+      setPasswordError(null);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTotpCode('');
+      await qc.setQueryData(platformAuthKeys.me, data.user);
+      toast.success(t('platform.settings.passwordChanged'));
+    },
+    onError: (err) => {
+      setPasswordError(
+        err instanceof PlatformApiError ? err.message : t('platform.settings.passwordChangeFailed'),
+      );
+    },
+  });
+
+  const onChangePassword = (e: FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    if (newPassword !== confirmPassword) {
+      setPasswordError(t('auth.passwordMismatch'));
+      return;
+    }
+    passwordMutation.mutate();
   };
 
   const logout = async () => {
@@ -134,6 +175,60 @@ export function PlatformSettingsPage() {
           <p className="max-w-md font-sans text-[0.8rem] text-slate-500">{t('platform.settings.languageHint')}</p>
           <LanguageSwitch />
         </div>
+      </GlassPanel>
+
+      <GlassPanel title={t('platform.settings.changePassword')}>
+        <p className="mb-4 font-sans text-[0.8rem] text-slate-500">{t('platform.settings.changePasswordHint')}</p>
+        <form className="flex max-w-md flex-col gap-3.5" onSubmit={onChangePassword}>
+          <PasswordField
+            id="platform-current-password"
+            label={t('platform.settings.currentPassword')}
+            value={currentPassword}
+            onChange={setCurrentPassword}
+            autoComplete="current-password"
+            minLength={1}
+            placeholder=""
+          />
+          <PasswordField
+            id="platform-new-password"
+            label={t('auth.newPassword')}
+            value={newPassword}
+            onChange={setNewPassword}
+            autoComplete="new-password"
+            minLength={12}
+          />
+          <PasswordField
+            id="platform-confirm-password"
+            label={t('auth.confirmPassword')}
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            autoComplete="new-password"
+            minLength={12}
+          />
+          <div>
+            <label className={platformLabelClass} htmlFor="platform-password-totp">
+              {t('platform.login.totpCode')}
+            </label>
+            <input
+              id="platform-password-totp"
+              className={platformInputClass}
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+              pattern="\d{6}"
+              placeholder="000000"
+            />
+          </div>
+          {passwordError ? <div className={platformErrorClass}>{passwordError}</div> : null}
+          <button type="submit" className={platformPrimaryBtnClass} disabled={passwordMutation.isPending}>
+            <Save size={16} />
+            {passwordMutation.isPending
+              ? t('common.saving')
+              : t('platform.settings.savePassword')}
+          </button>
+        </form>
       </GlassPanel>
 
       <GlassPanel title={t('platform.settings.invoiceSeller')}>

@@ -196,6 +196,47 @@ export class AuthService {
     return { ok: true };
   }
 
+  async changePassword(
+    authUser: AuthUser,
+    currentPassword: string,
+    newPassword: string,
+    res: Response,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: authUser.id } });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException();
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account has no password. Use Forgot password to set one, or continue with Google.',
+      );
+    }
+    const matches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    await this.revokeAllSessions(user.id);
+    await recordActivity(this.prisma, user, {
+      entityType: 'User',
+      entityId: user.id,
+      label: user.name || user.email,
+      action: 'UPDATE',
+      metadata: { via: 'password-change' },
+    });
+
+    return this.establishSession(user, res);
+  }
+
   async loginWithGoogle(credential: string, res: Response) {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID')?.trim();
     if (!clientId) {

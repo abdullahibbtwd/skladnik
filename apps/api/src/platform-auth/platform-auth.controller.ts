@@ -5,6 +5,7 @@ import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
 import { Platform } from '../auth/decorators/auth-realm.decorator';
 import { CurrentPlatformAdmin } from './decorators/current-platform-admin.decorator';
+import { PlatformChangePasswordDto } from './dto/platform-change-password.dto';
 import { PlatformLoginDto } from './dto/platform-login.dto';
 import { PlatformTotpCodeDto } from './dto/platform-totp-code.dto';
 import {
@@ -75,5 +76,17 @@ export class PlatformAuthController {
   @Get('me')
   me(@CurrentPlatformAdmin() admin: PlatformAuthUser) {
     return this.auth.me(admin);
+  }
+
+  @Platform()
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ name: 'platform-change-password', limit: 10, windowSeconds: 15 * 60, by: 'user' })
+  @Post('change-password')
+  changePassword(
+    @CurrentPlatformAdmin() admin: PlatformAuthUser,
+    @Body() dto: PlatformChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.auth.changePassword(admin, dto.currentPassword, dto.newPassword, dto.totpCode, res);
   }
 }

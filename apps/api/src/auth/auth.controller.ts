@@ -9,6 +9,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { Public, Tenant } from './decorators/auth-realm.decorator';
 import { RateLimit, type RateLimitRule } from './decorators/rate-limit.decorator';
 import { AllowWithoutSubscription } from '../subscriptions/decorators/allow-without-subscription.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { LoginDto } from './dto/login.dto';
@@ -20,6 +21,12 @@ import { InvitesService } from '../invites/invites.service';
 
 const SIGNUP_LIMIT: RateLimitRule = { name: 'signup', limit: 10, windowSeconds: 60 * 60, by: 'ip' };
 const RESET_LIMIT: RateLimitRule = { name: 'password-reset', limit: 10, windowSeconds: 15 * 60, by: 'ip' };
+const CHANGE_PASSWORD_LIMIT: RateLimitRule = {
+  name: 'change-password',
+  limit: 10,
+  windowSeconds: 15 * 60,
+  by: 'user',
+};
 const GOOGLE_LIMIT: RateLimitRule = { name: 'google-auth', limit: 30, windowSeconds: 15 * 60, by: 'ip' };
 
 @Tenant()
@@ -110,5 +117,17 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
     return this.auth.me(user);
+  }
+
+  @AllowWithoutSubscription()
+  @UseGuards(RateLimitGuard)
+  @RateLimit(CHANGE_PASSWORD_LIMIT)
+  @Post('change-password')
+  changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangePasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.auth.changePassword(user, dto.currentPassword, dto.newPassword, res);
   }
 }

@@ -164,3 +164,14 @@ export async function forgotPasswordRequest(email: string): Promise<{
 export async function resetPasswordRequest(token: string, password: string): Promise<{ ok: true }> {
   return postJson('/auth/reset-password', { token, password });
 }
+
+export async function changePasswordRequest(
+  currentPassword: string,
+  newPassword: string,
+): Promise<SessionUser> {
+  const data = await postJson<{ user: ApiUser }>('/auth/change-password', {
+    currentPassword,
+    newPassword,
+  });
+  return mapUser(data.user);
+}
