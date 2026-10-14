@@ -87,7 +87,7 @@ export function PlatformLayout() {
           <Boxes size={18} />
         </span>
         <span className="min-w-0 leading-tight">
-          <span className="block truncate">Skladnik</span>
+          <span className="block truncate">{t('brand.name')}</span>
           <span className="block truncate font-sans text-[0.68rem] font-medium tracking-wide text-slate-400 uppercase">
             {t('platform.brand')}
           </span>

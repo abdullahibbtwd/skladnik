@@ -21,6 +21,7 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({ mode }) =>
   const [sent, setSent] = useState(false);
   const [done, setDone] = useState(false);
   const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
+  const [devDelivered, setDevDelivered] = useState<boolean | null>(null);
   const forgot = useForgotPasswordMutation();
   const reset = useResetPasswordMutation();
   const loading = forgot.isPending || reset.isPending;
@@ -37,10 +38,12 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({ mode }) =>
     event.preventDefault();
     setError(null);
     setDevResetUrl(null);
+    setDevDelivered(null);
     try {
       const result = await forgot.mutateAsync(email.trim());
       setSent(true);
       if (result.resetUrl) setDevResetUrl(result.resetUrl);
+      if (typeof result.delivered === 'boolean') setDevDelivered(result.delivered);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : t('auth.genericError'));
     }
@@ -78,7 +81,7 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({ mode }) =>
             <span className="flex size-8 items-center justify-center rounded-[0.6rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
               <Boxes size={16} />
             </span>
-            Skladnik
+            {t('brand.name')}
           </Link>
           <div className="flex items-center gap-2">
             <LanguageSwitch compact />
@@ -100,8 +103,19 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({ mode }) =>
                   {t('auth.forgotSentTitle')}
                 </h1>
                 <p className="font-sans text-[0.9rem] text-slate-500">{t('auth.forgotSentBody')}</p>
+                {devDelivered !== null && (
+                  <p
+                    className={`mt-4 rounded-lg border px-3 py-2 font-sans text-[0.75rem] ${
+                      devDelivered
+                        ? 'border-teal-200 bg-teal-50 text-teal-900'
+                        : 'border-rose-200 bg-rose-50 text-rose-900'
+                    }`}
+                  >
+                    {devDelivered ? t('auth.devEmailDelivered') : t('auth.devEmailNotDelivered')}
+                  </p>
+                )}
                 {devResetUrl && (
-                  <p className="mt-4 break-all rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-sans text-[0.75rem] text-amber-900">
+                  <p className="mt-3 break-all rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-sans text-[0.75rem] text-amber-900">
                     {t('auth.devResetLink')}:{' '}
                     <a href={devResetUrl} className="font-medium underline">
                       {devResetUrl}

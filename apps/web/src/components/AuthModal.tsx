@@ -39,7 +39,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="flex size-8 items-center justify-center rounded-lg bg-ops-teal text-white">
               <Boxes size={16} strokeWidth={2} />
             </div>
-            <span className="font-display text-[1.05rem] font-semibold text-ops-ink">Skladnik</span>
+            <span className="font-display text-[1.05rem] font-semibold text-ops-ink">{t('brand.name')}</span>
           </div>
           <button onClick={onClose} className="rounded-md p-1.5 text-slate-400 hover:bg-ops-canvas hover:text-ops-ink" aria-label={t('common.closeModal')}>
             <X size={18} />

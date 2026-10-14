@@ -1,7 +1,7 @@
 {
   "eyebrow": "Support",
   "title": "Help & User Guide",
-  "description": "How to use Skladnik for your role — sign in, daily tasks, and what to do when something is missing.",
+  "description": "How to use Oborotix for your role — sign in, daily tasks, and what to do when something is missing.",
   "searchPlaceholder": "Search your tasks…",
   "searchResults": "{{count}} matching tasks",
   "searchEmpty": "No tasks match that search. Try another word, or open your role guide.",
@@ -38,7 +38,7 @@
     "signIn": {
       "title": "Sign in",
       "body": [
-        "Open the Skladnik website and choose Login, or go to the login page.",
+        "Open the Oborotix website and choose Login, or go to the login page.",
         "Enter your email and password, then tap Log in to dashboard.",
         "If your company uses Google sign-in, you can continue with Google instead.",
         "After a successful login you land on Overview for your company."
@@ -57,7 +57,7 @@
       "title": "Find your way around",
       "body": [
         "The top bar shows your active site, notifications, language, and your profile menu.",
-        "Switch site with the location chip next to the Skladnik logo when you work at more than one place.",
+        "Switch site with the location chip next to the Oborotix logo when you work at more than one place.",
         "Your role decides which menu items you see. Missing items usually mean your role does not include that job."
       ],
       "desktop": [
@@ -653,7 +653,7 @@
   "trouble": {
     "missingMenu": {
       "title": "I cannot see a menu item",
-      "cause": "Usually a permission limit: your role does not include that area, so Skladnik hides it.",
+      "cause": "Usually a permission limit: your role does not include that area, so Oborotix hides it.",
       "fix": "Check Choose role for who owns that job. Ask an Owner to change your role or assign the right sites. On mobile, also open your profile menu — some links live there instead of the dock."
     },
     "pageRedirect": {

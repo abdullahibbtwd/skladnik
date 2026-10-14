@@ -14,7 +14,7 @@ export const Footer: React.FC = () => {
               <div className="flex size-8 items-center justify-center rounded-lg bg-ops-teal text-white">
                 <Boxes size={18} />
               </div>
-              <span>Skladnik</span>
+              <span>{t('brand.name')}</span>
             </div>
             <p className="mb-5 max-w-80 text-[0.9rem] leading-relaxed">{t('footer.blurb')}</p>
             <div className="inline-flex items-center gap-2 rounded-full border border-ops-teal/20 bg-teal-50 px-[0.7rem] py-[0.3rem] text-[0.78rem] font-medium text-ops-teal">

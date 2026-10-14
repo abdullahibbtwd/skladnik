@@ -210,7 +210,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
             <span className="flex size-9 shrink-0 items-center justify-center rounded-[0.65rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
               <Boxes size={18} strokeWidth={2.2} />
             </span>
-            <span className="hidden tracking-tight font-semibold sm:inline">Skladnik</span>
+            <span className="hidden tracking-tight font-semibold sm:inline">{t('brand.name')}</span>
           </button>
 
           <div className="relative min-w-0 flex-1 md:flex-none">

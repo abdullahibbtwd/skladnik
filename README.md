@@ -133,8 +133,12 @@ JWT_REFRESH_SECRET=<different random, 64+ chars>
 GOOGLE_CLIENT_ID=<optional Google OAuth web client id>
 
 GLM_API_KEY=<Z.AI key>
-RESEND_API_KEY=<optional, required for invite + password-reset emails>
-RESEND_FROM_EMAIL=Skladnik <noreply@your-domain>
+SMTP_HOST=<mail host>
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=<smtp username>
+SMTP_PASS=<smtp password>
+MAIL_FROM=Oborotix <noreply@your-domain>
 ```
 
 - Use a real domain with TLS before production (not a raw-IP `sslip.io` host). Set `WEB_ORIGIN` and `COOKIE_SECURE=true` to match.
@@ -164,13 +168,13 @@ One `.env` at the repo root, read by the API in local dev (see `.env.example`).
 | MinIO (signed links for browsers) | `MINIO_PUBLIC_ENDPOINT`, `MINIO_PUBLIC_PORT`, `MINIO_PUBLIC_USE_SSL` (port and SSL default to the internal values) |
 | Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES` (15m), `JWT_REFRESH_EXPIRES` (7d), `JWT_PLATFORM_ACCESS_SECRET`, `JWT_PLATFORM_REFRESH_SECRET`, `PLATFORM_TOTP_ENCRYPTION_KEY`, `ACTIVATION_CODE_PEPPER`, `ACTIVATION_CODE_ENCRYPTION_KEY`, `COOKIE_SECURE`, `GOOGLE_CLIENT_ID` (optional) |
 | OCR | `GLM_API_KEY` or `ZAI_API_KEY`, `GLM_BASE_URL`, `GLM_MODEL` |
-| Email | `RESEND_API_KEY` (optional), `RESEND_FROM_EMAIL` |
+| Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` (optional locally; links logged when unset) |
 
 ## Auth, tenancy, and roles
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for auth realms, SaaS subscriptions, platform invoices, code reveal, entitlement enforcement, reminder emails, and proof scripts.
 
-Signup creates a `Company` and its `Owner` in one transaction. Sessions are JWTs in httpOnly cookies: a 15-minute access token and a 7-day refresh token that rotates on every use and is stored in Redis. Login and signup are rate-limited per IP. Password reset sends a one-hour email link (via Resend) and revokes every refresh session for that user. Optional Google sign-in uses Google Identity Services: set `GOOGLE_CLIENT_ID` and add `WEB_ORIGIN` under Authorized JavaScript origins. Every query is scoped to the `companyId` from the token, never from the request body, and site managers and staff only see the sites they are assigned to.
+Signup creates a `Company` and its `Owner` in one transaction. Sessions are JWTs in httpOnly cookies: a 15-minute access token and a 7-day refresh token that rotates on every use and is stored in Redis. Login and signup are rate-limited per IP. Password reset sends a one-hour email link (via SMTP) and revokes every refresh session for that user. Optional Google sign-in uses Google Identity Services: set `GOOGLE_CLIENT_ID` and add `WEB_ORIGIN` under Authorized JavaScript origins. Every query is scoped to the `companyId` from the token, never from the request body, and site managers and staff only see the sites they are assigned to.
 
 Platform operators use a separate auth realm (`/platform-auth/*`): cookies `skladnik_platform_*`, secrets `JWT_PLATFORM_*`, JWT audience `skladnik-platform`, and mandatory TOTP. Create admins with `npm run platform:create-admin -- --email … --password … --name …` (password ≥ 12 chars). In Coolify, open a terminal on the **api** service and run that command there (do not nest `docker compose` inside the container). Redeploy after this Dockerfile change so `scripts/create-platform-admin.cjs` is present. Every controller route must be marked `@Public`, `@Tenant`, or `@Platform` (default-deny). The operator UI lives at `/platform` (login, subscriptions, invoices, status transitions, Settings). Activation codes use `ACTIVATION_CODE_PEPPER` (HMAC) plus optional AES-GCM ciphertext (`ACTIVATION_CODE_ENCRYPTION_KEY`) for TOTP-gated reveal while `PENDING`. Creating a deal also issues an immutable proforma (seller identity from platform Settings); marking an invoice paid does not activate the subscription.
 

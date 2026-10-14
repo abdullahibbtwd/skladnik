@@ -38,8 +38,8 @@ export default defineConfig({
       manifest: {
         id: '/',
         lang: 'bg',
-        name: 'Skladnik — Smart Retail & Stock Management',
-        short_name: 'Skladnik',
+        name: 'Oborotix — Smart Retail & Stock Management',
+        short_name: 'Oborotix',
         description: 'Stock, invoices, till and reports for grocery stores, cafés and retail outlets.',
         start_url: '/',
         scope: '/',

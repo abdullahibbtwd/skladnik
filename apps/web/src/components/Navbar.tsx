@@ -45,7 +45,7 @@ export const Navbar: React.FC = () => {
               <div className="flex size-8 shrink-0 items-center justify-center rounded-[0.6rem] bg-ops-teal text-white shadow-[0_4px_14px_rgba(13,148,136,0.28)] md:size-10">
                 <Boxes size={18} strokeWidth={2} />
               </div>
-              <span>Skladnik</span>
+              <span>{t('brand.name')}</span>
             </Link>
 
             <nav className="hidden lg:block">

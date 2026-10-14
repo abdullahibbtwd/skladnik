@@ -86,8 +86,12 @@ services:
       VISION_MAX_EDGE: ${VISION_MAX_EDGE:-}
       GLM_HEADER_MODEL: ${GLM_HEADER_MODEL:-}
       GLM_COMPACT_OUTPUT: ${GLM_COMPACT_OUTPUT:-}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-Skladnik <beth.t@example.com>}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-Oborotix <oborotix@oborotix.com>}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     depends_on:
       postgres:

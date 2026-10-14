@@ -5,7 +5,7 @@
     "bg": "Bulgarian"
   },
   "brand": {
-    "name": "Skladnik",
+    "name": "Oborotix",
     "tagline": "Retail stock, from paper invoices"
   },
   "nav": {
@@ -79,7 +79,7 @@
   "features": {
     "badge": "Core capabilities",
     "title": "Engineered for Busy Store Fronts & Back Rooms",
-    "subtitle": "No more hours spent keying delivery notes into spreadsheets. Skladnik replaces manual data entry with smart vision, proactive waste management, and tax readiness.",
+    "subtitle": "No more hours spent keying delivery notes into spreadsheets. Oborotix replaces manual data entry with smart vision, proactive waste management, and tax readiness.",
     "ocrTag": "Snap & Stock",
     "ocrTitle": "Instant OCR Document Processing",
     "ocrBody": "Hold your smartphone or tablet over any delivery slip or vendor invoice. Our specialized retail model detects SKU codes, descriptions, quantities, and prices in under 20 seconds.",
@@ -171,16 +171,16 @@
     "privacy": "Privacy Policy",
     "compatibility": "Compatibility",
     "compatibleWith": "Compatible with iOS, Android, macOS, Windows, and standard receipt printers.",
-    "rights": "Skladnik Technologies. All rights reserved.",
+    "rights": "Oborotix Technologies. All rights reserved.",
     "terms": "Terms of Service",
     "security": "Security Overview",
     "systemStatus": "System Status",
     "support": "Support Portal"
   },
   "auth": {
-    "loginTitle": "Log in | Skladnik",
-    "signupTitle": "Create account | Skladnik",
-    "homeTitle": "Skladnik | Smart Retail & Stock Management",
+    "loginTitle": "Log in | Oborotix",
+    "signupTitle": "Create account | Oborotix",
+    "homeTitle": "Oborotix | Smart Retail & Stock Management",
     "backHome": "Back to homepage",
     "loginTab": "Log in",
     "signupTab": "Sign up",
@@ -232,7 +232,7 @@
     "openSignup": "Open sign up",
     "willImport": "{{lines}} lines ({{units}} units) will import into your dashboard.",
     "forgotPassword": "Forgot password?",
-    "forgotTitle": "Reset password | Skladnik",
+    "forgotTitle": "Reset password | Oborotix",
     "forgotHeading": "Forgot your password?",
     "forgotBody": "Enter the email for your store account and we’ll send a reset link.",
     "sendResetLink": "Send reset link",
@@ -240,7 +240,9 @@
     "forgotSentTitle": "Check your email",
     "forgotSentBody": "If an account exists for that address, we’ve sent a link to choose a new password. The link expires in one hour.",
     "devResetLink": "Dev reset link",
-    "resetTitle": "Choose a new password | Skladnik",
+    "devEmailDelivered": "Dev: SMTP accepted the email for that address. Check inbox and spam.",
+    "devEmailNotDelivered": "Dev: SMTP did not send (not configured or send failed). Use the link below.",
+    "resetTitle": "Choose a new password | Oborotix",
     "resetHeading": "Choose a new password",
     "resetBody": "Pick a password of at least 8 characters. You’ll sign in again afterwards.",
     "newPassword": "New password",
@@ -257,7 +259,7 @@
   "session": {
     "restoring": "Restoring session…",
     "loadingPanel": "Loading…",
-    "unreachableTitle": "Can’t reach Skladnik",
+    "unreachableTitle": "Can’t reach Oborotix",
     "unreachableBody": "Check your internet connection. Your session is kept; try again when you’re back online.",
     "retry": "Try again"
   },
@@ -1438,9 +1440,9 @@
   },
   "opening": {
     "title": "Opening stock",
-    "desc": "Enter what was already on the shelf when you started using Skladnik, with what it cost you.",
+    "desc": "Enter what was already on the shelf when you started using Oborotix, with what it cost you.",
     "date": "Stock as of",
-    "dateHint": "Usually the day before your first invoice in Skladnik.",
+    "dateHint": "Usually the day before your first invoice in Oborotix.",
     "itemsTitle": "Items on hand",
     "search": "Search the catalog…",
     "empty": "No items yet. Search the catalog above to add what you have.",
@@ -1861,7 +1863,7 @@
     },
     "entries": {
       "title": "Manual entries",
-      "desc": "Documents that are not in Skladnik: customs declarations, protocols, invoices you issued, corrections.",
+      "desc": "Documents that are not in Oborotix: customs declarations, protocols, invoices you issued, corrections.",
       "add": "Add entry",
       "edit": "Edit entry",
       "empty": "No manual entries this month.",
@@ -1901,11 +1903,11 @@
   "pwa": {
     "update": {
       "title": "Update available",
-      "body": "A new version of Skladnik is ready.",
+      "body": "A new version of Oborotix is ready.",
       "reload": "Reload"
     },
     "install": {
-      "title": "Install Skladnik",
+      "title": "Install Oborotix",
       "body": "Add it to your home screen or desktop. It opens in its own window and starts faster.",
       "action": "Install",
       "later": "Not now"
@@ -2275,12 +2277,12 @@
     "INVALID_STATUS_TRANSITION": "That status change is not allowed."
   },
   "platform": {
-    "brand": "Skladnik Platform",
+    "brand": "Oborotix Platform",
     "titles": {
-      "dashboard": "Dashboard — Skladnik",
-      "subscriptions": "Subscriptions — Skladnik",
-      "subscriptionDetail": "Subscription — Skladnik",
-      "settings": "Settings — Skladnik"
+      "dashboard": "Dashboard — Oborotix",
+      "subscriptions": "Subscriptions — Oborotix",
+      "subscriptionDetail": "Subscription — Oborotix",
+      "settings": "Settings — Oborotix"
     },
     "session": {
       "restoring": "Restoring platform session…"
@@ -2351,7 +2353,7 @@
       "passwordChangeFailed": "Could not change the password."
     },
     "login": {
-      "title": "Platform login — Skladnik",
+      "title": "Platform login — Oborotix",
       "heading": "Platform operator login",
       "sub": "Separate from company ERP accounts. TOTP is required.",
       "totpHeading": "Two-factor authentication",

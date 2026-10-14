@@ -3,7 +3,7 @@ import { authenticator } from 'otplib';
 
 authenticator.options = { window: 1 };
 
-const ISSUER = 'Skladnik Platform';
+const ISSUER = 'Oborotix Platform';
 
 /** AES-256-GCM encrypt; `keyMaterial` is any high-entropy secret (hashed to 32 bytes). */
 export function encryptTotpSecret(plaintext: string, keyMaterial: string): string {

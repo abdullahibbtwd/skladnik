@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  Allow,
   IsEmail,
   IsIn,
   IsInt,
@@ -16,6 +17,9 @@ import { SUBSCRIPTION_PLANS, type SubscriptionPlan } from '@skladnik/shared';
  * Transport DTO. Business rules (EIK checksum, price ≥ 0, VAT 0–100, …) are
  * enforced by validateCreatePlatformSubscription() so every field error is
  * returned together — class-validator alone would still allow invalid EIKs.
+ *
+ * priceMinor / vatRate use @Allow() (not @IsNumber) so whitelist keeps them
+ * while negative/NaN values still reach the shared validator.
  */
 export class CreatePlatformSubscriptionDto {
   @IsIn(SUBSCRIPTION_PLANS)
@@ -34,6 +38,7 @@ export class CreatePlatformSubscriptionDto {
   termMonths!: number;
 
   /** May be negative or NaN at the pipe boundary — shared validator rejects. */
+  @Allow()
   @Type(() => Number)
   priceMinor!: number;
 
@@ -43,6 +48,7 @@ export class CreatePlatformSubscriptionDto {
   currency!: string;
 
   /** Non-numeric strings become NaN — shared validator rejects. */
+  @Allow()
   @Type(() => Number)
   vatRate!: number;
 

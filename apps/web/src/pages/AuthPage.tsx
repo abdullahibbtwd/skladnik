@@ -40,7 +40,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode, onSuccess }) => {
             <span className="flex size-10 items-center justify-center rounded-[0.7rem] bg-ops-teal text-white shadow-[0_8px_24px_rgba(13,148,136,0.28)]">
               <Boxes size={18} strokeWidth={2} />
             </span>
-            Skladnik
+            {t('brand.name')}
           </Link>
 
           <div className="max-w-md">
@@ -79,7 +79,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ mode, onSuccess }) => {
               <span className="flex size-8 items-center justify-center rounded-[0.6rem] bg-ops-teal text-white shadow-[0_6px_16px_rgba(13,148,136,0.28)]">
                 <Boxes size={16} />
               </span>
-              Skladnik
+              {t('brand.name')}
             </Link>
             <div className="ml-auto flex items-center gap-2">
               <LanguageSwitch compact />
