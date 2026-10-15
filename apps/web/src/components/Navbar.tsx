@@ -172,24 +172,25 @@ export const Navbar: React.FC = () => {
               </button>
             </>
           ) : (
-            <>
-              <div className="flex w-full gap-2">
-                <Link
-                  to="/login"
-                  onClick={closeMobileMenu}
-                  className={cn(ghostBtnClass, 'inline-flex flex-1 justify-center border border-slate-200 py-[0.65rem] text-[0.9rem]')}
-                >
-                  {t('nav.login')}
-                </Link>
-                <Link
-                  to="/signup"
-                  onClick={closeMobileMenu}
-                  className={cn(primaryBtnClass, 'inline-flex flex-1 justify-center py-[0.65rem] text-[0.9rem]')}
-                >
-                  <span>{t('nav.signup')}</span>
-                </Link>
-              </div>
-            </>
+            <div className="flex w-full flex-col gap-2">
+              <Link
+                to="/login"
+                onClick={closeMobileMenu}
+                className={cn(ghostBtnClass, 'inline-flex w-full justify-center border border-slate-200 py-[0.65rem] text-[0.9rem]')}
+              >
+                {t('nav.login')}
+              </Link>
+              <Link
+                to="/signup"
+                onClick={closeMobileMenu}
+                className={cn(
+                  primaryBtnClass,
+                  'inline-flex w-full justify-center px-3 py-[0.65rem] text-center text-[0.85rem] leading-snug',
+                )}
+              >
+                <span className="text-balance">{t('nav.signup')}</span>
+              </Link>
+            </div>
           )}
         </div>
       </aside>
