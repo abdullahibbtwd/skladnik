@@ -1,0 +1,6 @@
+node_modules/
+guide-screenshots/output/
+test-results/
+playwright-report/
+blob-report/
+_guide.html

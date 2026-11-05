@@ -18,7 +18,9 @@
     "db:migrate:dev": "dotenv -e .env -- npm run db:migrate --workspace=@skladnik/api",
     "platform:create-admin": "dotenv -e .env -- npm run platform:create-admin --workspace=@skladnik/api",
     "docker:up": "docker compose up --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "guide:screenshots": "npm --prefix e2e run guide:owner",
+    "guide:pdf": "npm --prefix e2e run guide:pdf"
   },
   "devDependencies": {
     "dotenv-cli": "^10.0.0",

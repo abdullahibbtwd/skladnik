@@ -528,6 +528,8 @@
     "notesEmpty": "Няма бележки",
     "unmatched": "несравнимо",
     "pendingReview": "в очакване на преглед",
+    "missingPrice": "липсва цена",
+    "freeOfCharge": "без стойност",
     "notBatchTracked": "Не се проследява партидно",
     "noMatchingProducts": "Няма съответстващи продукти",
     "searchProducts": "Търсене на продукти",
@@ -735,7 +737,8 @@
     "prevMonth": "Предишен месец",
     "nextMonth": "Следващ месец",
     "today": "Днес",
-    "clear": "Изчисти"
+    "clear": "Изчисти",
+    "retry": "Опитай отново"
   },
   "notices": {
     "fefo3": "{{count}} партидите достигат 3-дневния праг на FEFO",

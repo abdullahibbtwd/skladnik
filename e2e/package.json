@@ -1,0 +1,26 @@
+{
+  "name": "@skladnik/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "guide": "playwright test guide-screenshots/guide.spec.ts",
+    "guide:owner": "GUIDE_ROLE=OWNER playwright test guide-screenshots/guide.spec.ts",
+    "guide:manager": "GUIDE_ROLE=SITE_MANAGER playwright test guide-screenshots/guide.spec.ts",
+    "guide:staff": "GUIDE_ROLE=STAFF playwright test guide-screenshots/guide.spec.ts",
+    "guide:cashier": "GUIDE_ROLE=CASHIER playwright test guide-screenshots/guide.spec.ts",
+    "guide:accountant": "GUIDE_ROLE=ACCOUNTANT playwright test guide-screenshots/guide.spec.ts",
+    "guide:all": "npm run guide:owner && npm run guide:manager && npm run guide:staff && npm run guide:cashier && npm run guide:accountant",
+    "guide:missing": "GUIDE_ONLY_MISSING=1 playwright test guide-screenshots/guide.spec.ts",
+    "guide:missing:manager": "GUIDE_ROLE=SITE_MANAGER GUIDE_ONLY_MISSING=1 playwright test guide-screenshots/guide.spec.ts",
+    "guide:missing:staff": "GUIDE_ROLE=STAFF GUIDE_ONLY_MISSING=1 playwright test guide-screenshots/guide.spec.ts",
+    "guide:missing:cashier": "GUIDE_ROLE=CASHIER GUIDE_ONLY_MISSING=1 playwright test guide-screenshots/guide.spec.ts",
+    "guide:missing:accountant": "GUIDE_ROLE=ACCOUNTANT GUIDE_ONLY_MISSING=1 playwright test guide-screenshots/guide.spec.ts",
+
+    "guide:ui": "playwright test guide-screenshots/guide.spec.ts --ui",
+    "guide:pdf": "node guide-screenshots/build-guide-pdf.mjs",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  }
+}

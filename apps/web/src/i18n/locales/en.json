@@ -529,6 +529,8 @@
     "notesEmpty": "No notes",
     "unmatched": "Unmatched",
     "pendingReview": "pending review",
+    "missingPrice": "missing price",
+    "freeOfCharge": "free of charge",
     "notBatchTracked": "Not batch-tracked",
     "noMatchingProducts": "No matching products",
     "searchProducts": "Search products",
@@ -735,7 +737,8 @@
     "prevMonth": "Previous month",
     "nextMonth": "Next month",
     "today": "Today",
-    "clear": "Clear"
+    "clear": "Clear",
+    "retry": "Try again"
   },
   "notices": {
     "fefo3": "{{count}} batches hit the 3-day FEFO threshold",
