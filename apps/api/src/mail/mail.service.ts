@@ -294,7 +294,10 @@ export class MailService {
     });
   }
 
-  /** Transactional trial status mail — informational only, no unsubscribe. */
+  /**
+   * Transactional trial status mail — account information only, no marketing
+   * consent and no unsubscribe (same class as expiry reminders).
+   */
   private async sendLifecycleCopy(input: {
     copy: { subject: string; preheader: string; heading: string; greeting: (n: string) => string; body: string; ctaLabel: string; footnote: string };
     to: string;

@@ -2,7 +2,7 @@
 
 Export for a single native review pass. Mark edits inline and return.
 
-**Status:** lifecycle emails gated by `LIFECYCLE_EMAILS_ENABLED=false` until this review lands.
+**Status:** native BG review approved (2026-11-18). Lifecycle crons enabled by default (`LIFECYCLE_EMAILS_ENABLED=true`).
 
 ## 1. Live-facing web (priority)
 
@@ -149,4 +149,4 @@ export function renderUnsubscribePage(input: {
 - [ ] Trial ending
 - [ ] Trial ended
 - [ ] Unsubscribe pages
-- [ ] After fixes: set `LIFECYCLE_EMAILS_ENABLED=true` in production
+- [x] After fixes: set `LIFECYCLE_EMAILS_ENABLED=true` in production

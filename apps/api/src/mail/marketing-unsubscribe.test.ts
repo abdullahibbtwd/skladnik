@@ -31,17 +31,11 @@ const secret = 'test-marketing-unsub-secret';
 }
 
 {
-  const config = {
-    get: (key: string) => {
-      if (key === 'LIFECYCLE_EMAILS_ENABLED') return 'false';
-      return undefined;
-    },
-  };
-  assert.equal(isLifecycleEmailsEnabled(config as never), false);
-  assert.equal(
-    isLifecycleEmailsEnabled({ get: () => 'true' } as never),
-    true,
-  );
+  assert.equal(isLifecycleEmailsEnabled({ get: () => undefined } as never), true);
+  assert.equal(isLifecycleEmailsEnabled({ get: () => '' } as never), true);
+  assert.equal(isLifecycleEmailsEnabled({ get: () => 'true' } as never), true);
+  assert.equal(isLifecycleEmailsEnabled({ get: () => 'false' } as never), false);
+  assert.equal(isLifecycleEmailsEnabled({ get: () => 'off' } as never), false);
 }
 
 export default (async () => {
