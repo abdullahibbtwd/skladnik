@@ -78,7 +78,10 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode, on
       callback: (response) => {
         void (async () => {
           try {
-            await googleAuth.mutateAsync(response.credential);
+            await googleAuth.mutateAsync({
+              credential: response.credential,
+              locale: i18n.language?.startsWith('bg') ? 'bg' : 'en',
+            });
             onSuccessRef.current();
           } catch (error) {
             onErrorRef.current(error instanceof Error ? error.message : t('auth.genericError'));

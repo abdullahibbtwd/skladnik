@@ -33,7 +33,8 @@ export const AuthForm: React.FC<AuthFormProps> = ({
   idPrefix,
   variant,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const requestLocale = i18n.language?.startsWith('bg') ? 'bg' : 'en';
   const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -121,6 +122,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
             email: invite.email,
             password,
             name: storeName.trim(),
+            locale: requestLocale,
           });
           onSuccess();
           return;
@@ -131,6 +133,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
           password,
           name: storeName.trim(),
           companyName: storeName.trim(),
+          locale: requestLocale,
         });
         if (result.status === 'EMAIL_VERIFICATION_REQUIRED') {
           beginVerification(result.email, result.devCode);

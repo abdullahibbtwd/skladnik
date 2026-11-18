@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { APP_LOCALES } from '@skladnik/shared';
 
 export class SignupDto {
   @IsEmail()
@@ -18,4 +19,8 @@ export class SignupDto {
   @MinLength(1)
   @MaxLength(160)
   companyName!: string;
+
+  @IsOptional()
+  @IsIn([...APP_LOCALES])
+  locale?: string;
 }

@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { User, UserRole } from '@prisma/client';
-import { isCompanyWideRole, type AuthUser } from '@skladnik/shared';
+import { isCompanyWideRole, parseAppLocale, type AuthUser } from '@skladnik/shared';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import type { CookieOptions, Response } from 'express';
@@ -94,6 +94,7 @@ export class AuthService {
           role: UserRole.OWNER,
           companyId: company.id,
           emailVerifiedAt: null,
+          locale: parseAppLocale(dto.locale),
         },
       });
       await recordActivity(tx, { ...created, companyId: company.id }, {
@@ -336,7 +337,7 @@ export class AuthService {
     return this.establishSession(user, res);
   }
 
-  async loginWithGoogle(credential: string, res: Response) {
+  async loginWithGoogle(credential: string, res: Response, localeRaw?: string) {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID')?.trim();
     if (!clientId) {
       throw new BadRequestException('Google sign-in is not configured');
@@ -354,6 +355,7 @@ export class AuthService {
     const email = payload.email.trim().toLowerCase();
     const googleSub = payload.sub;
     const name = (payload.name || payload.given_name || email.split('@')[0] || 'User').trim().slice(0, 120);
+    const locale = parseAppLocale(localeRaw);
 
     let user = await this.prisma.user.findFirst({
       where: { OR: [{ googleSub }, { email }] },
@@ -392,6 +394,7 @@ export class AuthService {
           role: UserRole.OWNER,
           companyId: company.id,
           emailVerifiedAt: new Date(),
+          locale,
         },
       });
       await recordActivity(tx, { ...owner, companyId: company.id }, {

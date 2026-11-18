@@ -84,7 +84,8 @@ export function useLoginMutation() {
 export function useGoogleAuthMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (credential: string) => googleAuthRequest(credential),
+    mutationFn: (input: { credential: string; locale?: string }) =>
+      googleAuthRequest(input.credential, input.locale),
     onSuccess: (user) => cacheSession(queryClient, user),
   });
 }
@@ -92,8 +93,13 @@ export function useGoogleAuthMutation() {
 export function useSignupMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { email: string; password: string; name: string; companyName: string }) =>
-      signupRequest(input),
+    mutationFn: (input: {
+      email: string;
+      password: string;
+      name: string;
+      companyName: string;
+      locale?: string;
+    }) => signupRequest(input),
     onSuccess: (result: SignupResult) => {
       if (result.status === 'OK') cacheSession(queryClient, result.user);
     },
@@ -117,8 +123,13 @@ export function useResendVerificationMutation() {
 export function useSignupWithInviteMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { token: string; email: string; password: string; name: string }) =>
-      signupWithInviteRequest(input),
+    mutationFn: (input: {
+      token: string;
+      email: string;
+      password: string;
+      name: string;
+      locale?: string;
+    }) => signupWithInviteRequest(input),
     onSuccess: (user) => cacheSession(queryClient, user),
   });
 }

@@ -105,7 +105,7 @@ export class AuthController {
   @RateLimit(GOOGLE_LIMIT)
   @Post('google')
   google(@Body() dto: GoogleAuthDto, @Res({ passthrough: true }) res: Response) {
-    return this.auth.loginWithGoogle(dto.credential, res);
+    return this.auth.loginWithGoogle(dto.credential, res, dto.locale);
   }
 
   @Public()

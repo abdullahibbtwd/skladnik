@@ -142,6 +142,7 @@ export async function signupRequest(input: {
   password: string;
   name: string;
   companyName: string;
+  locale?: string;
 }): Promise<SignupResult> {
   const data = await postJson<
     | { status: 'EMAIL_VERIFICATION_REQUIRED'; email: string; delivered?: boolean; devCode?: string }
@@ -180,6 +181,7 @@ export async function signupWithInviteRequest(input: {
   email: string;
   password: string;
   name: string;
+  locale?: string;
 }): Promise<SessionUser> {
   const data = await postJson<{ user: ApiUser }>('/auth/signup-with-invite', input);
   return mapUser(data.user);
@@ -208,8 +210,8 @@ export async function fetchAuthProviders(): Promise<AuthProviders> {
   return { googleClientId: payload.googleClientId?.trim() || null };
 }
 
-export async function googleAuthRequest(credential: string): Promise<SessionUser> {
-  const data = await postJson<{ user: ApiUser }>('/auth/google', { credential });
+export async function googleAuthRequest(credential: string, locale?: string): Promise<SessionUser> {
+  const data = await postJson<{ user: ApiUser }>('/auth/google', { credential, locale });
   return mapUser(data.user);
 }
 

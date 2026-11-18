@@ -9,7 +9,13 @@ import { ConfigService } from '@nestjs/config';
 import { Invitation, User, UserRole } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
-import { isCompanyWideRole, ROLE_LABELS, type AuthUser, type UserRole as SharedRole } from '@skladnik/shared';
+import {
+  isCompanyWideRole,
+  parseAppLocale,
+  ROLE_LABELS,
+  type AuthUser,
+  type UserRole as SharedRole,
+} from '@skladnik/shared';
 import { MailService } from '../mail/mail.service';
 import { recordActivity } from '../activity/record-activity';
 import { PrismaService } from '../prisma/prisma.service';
@@ -192,6 +198,7 @@ export class InvitesService {
           companyId: invite.companyId,
           // Invite was sent to this address by an owner — treat as verified.
           emailVerifiedAt: new Date(),
+          locale: parseAppLocale(dto.locale),
         },
       });
 

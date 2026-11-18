@@ -387,3 +387,4 @@ export * from './subscription-activation';
 export * from './subscription-reminders';
 export * from './create-platform-subscription';
 export * from './invoice';
+export * from './locale';
