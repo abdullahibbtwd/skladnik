@@ -153,7 +153,10 @@ export default function App() {
   };
 
   const landing = (
-    <div className="w-full max-w-full overflow-x-hidden bg-ops-canvas pt-[4.5rem] font-sans text-ops-ink">
+    <div
+      className="w-full max-w-full overflow-x-hidden bg-ops-canvas pt-[4.5rem] font-sans text-ops-ink"
+      data-prerender-ready="1"
+    >
       <Navbar />
 
       <main>

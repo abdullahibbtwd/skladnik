@@ -12,10 +12,13 @@ COPY packages/shared/package.json ./packages/shared/
 RUN npm ci --include=dev
 
 FROM node:22-alpine AS build
-RUN apk add --no-cache libc6-compat
+# Chromium for post-build landing prerender (Puppeteer). Skip Puppeteer's own download.
+RUN apk add --no-cache libc6-compat chromium nss freetype harfbuzz ca-certificates ttf-freefont
 WORKDIR /app
 # Coolify may inject NODE_ENV=production as a build ARG; keep tooling available.
 ENV NODE_ENV=development
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 # Vite inlines VITE_* at build time into the static bundle — runtime Coolify
 # env alone is not enough. Pass these as Docker build args in Coolify.
 ARG VITE_ANALYTICS_SCRIPT_URL=
