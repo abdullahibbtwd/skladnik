@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "dotenv -e .env -- turbo dev",
     "build": "turbo build",
+    "typecheck": "npm run typecheck --workspace=@skladnik/shared && npm run typecheck --workspace=@skladnik/api && npm run typecheck --workspace=@skladnik/web",
+    "test": "npm test --workspace=@skladnik/api",
     "infra:up": "docker compose -f docker-compose.dev.yml up -d",
     "infra:down": "docker compose -f docker-compose.dev.yml down",
     "infra:logs": "docker compose -f docker-compose.dev.yml logs -f",
