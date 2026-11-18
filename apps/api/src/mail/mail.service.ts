@@ -9,6 +9,7 @@ import {
   renderMailHtml,
 } from './mail-layout';
 import { firstScanNudgeCopyForLocale } from './first-scan-nudge-copy';
+import { trialEndedCopyForLocale, trialEndingCopyForLocale } from './trial-lifecycle-copy';
 import { welcomeCopyForLocale } from './welcome-copy';
 
 @Injectable()
@@ -253,6 +254,73 @@ export class MailService {
       text,
       missingLog: `Quote notify for ${q.id} → ${input.to}`,
       failureLabel: 'quote notify',
+      replyTo: this.replyTo,
+      allowMissingSmtp: true,
+    });
+  }
+
+  async sendTrialEndingEmail(input: {
+    to: string;
+    name: string;
+    locale: AppLocale;
+    settingsUrl: string;
+  }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
+    return this.sendLifecycleCopy({
+      copy: trialEndingCopyForLocale(input.locale),
+      to: input.to,
+      name: input.name,
+      locale: input.locale,
+      ctaUrl: input.settingsUrl,
+      failureLabel: 'trial-ending',
+    });
+  }
+
+  async sendTrialEndedEmail(input: {
+    to: string;
+    name: string;
+    locale: AppLocale;
+    quoteUrl: string;
+  }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
+    return this.sendLifecycleCopy({
+      copy: trialEndedCopyForLocale(input.locale),
+      to: input.to,
+      name: input.name,
+      locale: input.locale,
+      ctaUrl: input.quoteUrl,
+      failureLabel: 'trial-ended',
+    });
+  }
+
+  private async sendLifecycleCopy(input: {
+    copy: { subject: string; preheader: string; heading: string; greeting: (n: string) => string; body: string; ctaLabel: string; footnote: string };
+    to: string;
+    name: string;
+    locale: AppLocale;
+    ctaUrl: string;
+    failureLabel: string;
+  }) {
+    const displayName = input.name.trim() || (input.locale === 'bg' ? 'колега' : 'there');
+    const text =
+      `${input.copy.greeting(displayName)}\n\n` +
+      `${input.copy.body}\n\n` +
+      `${input.copy.ctaLabel}: ${input.ctaUrl}\n`;
+
+    return this.send({
+      to: input.to,
+      subject: input.copy.subject,
+      html: renderMailHtml({
+        preheader: input.copy.preheader,
+        heading: input.copy.heading,
+        bodyHtml:
+          mailParagraph(escapeHtml(input.copy.greeting(displayName))) +
+          mailParagraph(escapeHtml(input.copy.body)),
+        cta: { label: input.copy.ctaLabel, url: input.ctaUrl },
+        footnoteHtml: escapeHtml(input.copy.footnote),
+        siteUrl: this.siteUrl,
+      }),
+      text,
+      missingLog: `${input.failureLabel} for ${input.to} (locale=${input.locale})`,
+      failureLabel: input.failureLabel,
       replyTo: this.replyTo,
       allowMissingSmtp: true,
     });

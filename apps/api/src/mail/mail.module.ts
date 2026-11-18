@@ -7,6 +7,12 @@ import {
 import { FirstScanNudgeProcessor } from './first-scan-nudge.processor';
 import { FirstScanNudgeMailService } from './first-scan-nudge.service';
 import { MailService } from './mail.service';
+import {
+  TRIAL_LIFECYCLE_JOB_OPTIONS,
+  TRIAL_LIFECYCLE_QUEUE,
+} from './trial-lifecycle.constants';
+import { TrialLifecycleProcessor } from './trial-lifecycle.processor';
+import { TrialLifecycleMailService } from './trial-lifecycle.service';
 import { WELCOME_JOB_OPTIONS, WELCOME_QUEUE } from './welcome.constants';
 import { WelcomeMailProcessor } from './welcome.processor';
 import { WelcomeMailService } from './welcome.service';
@@ -22,6 +28,10 @@ import { WelcomeMailService } from './welcome.service';
       name: FIRST_SCAN_NUDGE_QUEUE,
       defaultJobOptions: FIRST_SCAN_NUDGE_JOB_OPTIONS,
     }),
+    BullModule.registerQueue({
+      name: TRIAL_LIFECYCLE_QUEUE,
+      defaultJobOptions: TRIAL_LIFECYCLE_JOB_OPTIONS,
+    }),
   ],
   providers: [
     MailService,
@@ -29,7 +39,15 @@ import { WelcomeMailService } from './welcome.service';
     WelcomeMailProcessor,
     FirstScanNudgeMailService,
     FirstScanNudgeProcessor,
+    TrialLifecycleMailService,
+    TrialLifecycleProcessor,
   ],
-  exports: [MailService, WelcomeMailService, FirstScanNudgeMailService, BullModule],
+  exports: [
+    MailService,
+    WelcomeMailService,
+    FirstScanNudgeMailService,
+    TrialLifecycleMailService,
+    BullModule,
+  ],
 })
 export class MailModule {}

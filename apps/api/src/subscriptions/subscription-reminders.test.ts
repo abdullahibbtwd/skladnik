@@ -31,49 +31,28 @@ assert.equal(isExpiringSoon(new Date('2026-11-06T12:00:00.000Z'), now), false);
 assert.equal(isExpiringSoon(new Date('2026-10-05T12:00:00.000Z'), now), false);
 assert.equal(isExpiringSoon(null, now), false);
 
-// Reproduce: signup-day 14-day trial lands in the "14 days left" bucket.
+// TRIAL never uses the paid 30/14/7/1 buckets (dedicated trial-lifecycle emails instead).
 {
   const signupAt = new Date('2026-10-06T07:30:00.000Z');
   const cronAt = new Date('2026-10-06T08:00:00.000Z');
   const trialExpiresAt = new Date(signupAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
   assert.equal(reminderDaysForExpiry(trialExpiresAt, cronAt), 14);
+  for (const daysBefore of [30, 14, 7, 1] as const) {
+    assert.equal(
+      shouldSendExpiryReminder({
+        status: 'TRIAL',
+        startsAt: signupAt,
+        daysBefore,
+        now: cronAt,
+      }),
+      false,
+      `TRIAL must skip paid expiry bucket ${daysBefore}`,
+    );
+  }
+  const olderTrialStart = new Date('2026-09-22T12:00:00.000Z');
   assert.equal(
-    shouldSendExpiryReminder({
-      status: 'TRIAL',
-      startsAt: signupAt,
-      daysBefore: 14,
-      now: cronAt,
-    }),
+    shouldSendExpiryReminder({ status: 'TRIAL', startsAt: olderTrialStart, daysBefore: 7, now: cronAt }),
     false,
-    'new 14-day trial must not get the signup-day "14 days left" email',
-  );
-  assert.equal(
-    shouldSendExpiryReminder({
-      status: 'TRIAL',
-      startsAt: signupAt,
-      daysBefore: 30,
-      now: cronAt,
-    }),
-    false,
-    'trial must skip reminder buckets >= trial length',
-  );
-}
-
-// After 24h, TRIAL still skips buckets >= trial length, but allows shorter ones.
-{
-  const startsAt = new Date('2026-09-22T12:00:00.000Z');
-  const day7 = new Date('2026-10-06T08:00:00.000Z');
-  assert.equal(
-    shouldSendExpiryReminder({ status: 'TRIAL', startsAt, daysBefore: 14, now: day7 }),
-    false,
-  );
-  assert.equal(
-    shouldSendExpiryReminder({ status: 'TRIAL', startsAt, daysBefore: 7, now: day7 }),
-    true,
-  );
-  assert.equal(
-    shouldSendExpiryReminder({ status: 'TRIAL', startsAt, daysBefore: 1, now: day7 }),
-    true,
   );
 }
 

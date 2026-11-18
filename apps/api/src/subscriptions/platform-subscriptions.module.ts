@@ -8,6 +8,7 @@ import { PlatformSubscriptionsService } from './platform-subscriptions.service';
 import { SubscriptionRemindersService } from './subscription-reminders.service';
 import { TenantSubscriptionsController } from './tenant-subscriptions.controller';
 import { TenantSubscriptionsService } from './tenant-subscriptions.service';
+import { TrialLifecycleCron } from './trial-lifecycle.cron';
 
 @Module({
   imports: [PlatformSettingsModule],
@@ -17,6 +18,7 @@ import { TenantSubscriptionsService } from './tenant-subscriptions.service';
     TenantSubscriptionsService,
     SubscriptionRemindersService,
     FirstScanNudgeCron,
+    TrialLifecycleCron,
     ActivationFailureAlertsService,
     ActivationCiphertextSweepService,
   ],

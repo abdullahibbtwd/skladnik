@@ -69,8 +69,8 @@ export class SubscriptionRemindersService {
             id: true,
             name: true,
             users: {
-              where: { role: 'OWNER', isActive: true },
-              select: { email: true, name: true },
+              where: { role: 'OWNER', isActive: true, emailVerifiedAt: { not: null } },
+              select: { email: true, name: true, emailVerifiedAt: true },
             },
           },
         },
