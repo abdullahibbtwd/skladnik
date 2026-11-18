@@ -22,6 +22,7 @@ require('ts-node/register/transpile-only');
   require('../src/extraction/extraction-fixtures.test.ts');
   await require('../src/extraction/original-image.test.ts');
   require('../src/extraction/ocr-errors.test.ts');
+  await require('../src/extraction/record-first-scan.test.ts');
   require('../src/extraction/name-matching.test.ts');
   require('../src/extraction/product-text.test.ts');
   require('../src/extraction/quantity-cell.test.ts');

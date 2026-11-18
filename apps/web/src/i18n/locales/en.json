@@ -2117,6 +2117,7 @@
       "CAPTURE_ADD": "Photo added",
       "CAPTURE_RETRY_OCR": "Scan retried",
       "CREATE": "Created",
+      "FIRST_SCAN": "First invoice scanned",
       "DEACTIVATE": "Deactivated",
       "DELETE": "Deleted",
       "GENERATE": "Generated",

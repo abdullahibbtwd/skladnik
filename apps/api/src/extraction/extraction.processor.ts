@@ -10,6 +10,7 @@ import { ExtractionApplyService } from './extraction-apply.service';
 import { ExtractorService } from './extractor.service';
 import { isUnrecoverableVisionError, isVisionTransientError } from './ocr-errors';
 import { OCR_QUEUE, type OcrJobData } from './ocr.constants';
+import { recordFirstSuccessfulScan } from './record-first-scan';
 
 async function streamToBuffer(body: Readable) {
   const chunks: Buffer[] = [];
@@ -91,6 +92,21 @@ export class ExtractionProcessor extends WorkerHost {
         await this.apply.apply(capture.id, extracted.data);
       } catch (error) {
         throw new UnrecoverableError(errorMessage(error, 'Saving OCR result failed'));
+      }
+      try {
+        const recorded = await recordFirstSuccessfulScan(this.prisma, {
+          companyId: capture.companyId,
+          documentId: capture.documentId,
+          captureId: capture.id,
+        });
+        if (recorded) {
+          this.logger.log(`Recorded first successful scan for company ${capture.companyId}`);
+        }
+      } catch (error) {
+        // Milestone must not fail the OCR job after lines were already applied.
+        this.logger.warn(
+          `First-scan milestone failed for company ${capture.companyId}: ${errorMessage(error, 'unknown')}`,
+        );
       }
       this.logger.log(
         `OCR timings for capture ${capture.id} (${extracted.model}, ${extracted.data.lines.length} lines): ` +
