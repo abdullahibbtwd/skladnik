@@ -15,6 +15,7 @@ import type { CookieOptions, Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { recordActivity } from '../activity/record-activity';
 import { MailService } from '../mail/mail.service';
+import { WelcomeMailService } from '../mail/welcome.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { seedUnitAliases } from '../units/seed-unit-aliases';
@@ -64,6 +65,7 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    private readonly welcomeMail: WelcomeMailService,
   ) {}
 
   providers() {
@@ -194,6 +196,11 @@ export class AuthService {
       where: { id: user.id },
       data: { emailVerifiedAt: new Date() },
     });
+
+    // Owner store signup only — invites never hit this path without an existing account.
+    if (verified.role === UserRole.OWNER) {
+      await this.welcomeMail.enqueueWelcome(verified.id);
+    }
 
     return this.establishSession(verified, res, 'SIGNUP');
   }
@@ -406,6 +413,8 @@ export class AuthService {
       });
       return owner;
     });
+
+    await this.welcomeMail.enqueueWelcome(created.id);
 
     return this.establishSession(created, res, 'SIGNUP');
   }

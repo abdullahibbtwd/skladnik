@@ -1,5 +1,6 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { AppLocale } from '@skladnik/shared';
 import nodemailer, { type Transporter } from 'nodemailer';
 import {
   MAIL_BRAND,
@@ -7,12 +8,14 @@ import {
   mailParagraph,
   renderMailHtml,
 } from './mail-layout';
+import { welcomeCopyForLocale } from './welcome-copy';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly transporter: Transporter | null;
   private readonly from: string;
+  private readonly replyTo: string | undefined;
   private readonly siteUrl: string;
 
   constructor(private readonly config: ConfigService) {
@@ -26,6 +29,7 @@ export class MailService {
     this.from =
       this.config.get<string>('MAIL_FROM')?.trim() ||
       (user ? `${MAIL_BRAND} <${user}>` : `${MAIL_BRAND} <noreply@oborotix.com>`);
+    this.replyTo = this.config.get<string>('MAIL_REPLY_TO')?.trim() || undefined;
     this.siteUrl = (this.config.get<string>('WEB_ORIGIN') ?? 'https://oborotix.com').replace(/\/$/, '');
 
     if (host && user && pass) {
@@ -200,6 +204,64 @@ export class MailService {
     });
   }
 
+  async sendWelcomeEmail(input: {
+    to: string;
+    name: string;
+    companyName: string;
+    locale: AppLocale;
+    trialEndsAt: Date | null;
+    scanUrl: string;
+    helpUrl: string;
+  }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
+    const copy = welcomeCopyForLocale(input.locale);
+    const displayName = input.name.trim() || (input.locale === 'bg' ? 'колега' : 'there');
+    const trialDate = input.trialEndsAt
+      ? input.trialEndsAt.toISOString().slice(0, 10)
+      : input.locale === 'bg'
+        ? 'края на пробния период'
+        : 'the end of your trial';
+    const stepsHtml =
+      `<ol style="margin:8px 0 18px;padding-left:22px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#0f172a;">` +
+      copy.steps.map((step) => `<li style="margin:0 0 8px;">${escapeHtml(step)}</li>`).join('') +
+      `</ol>`;
+    const helpHtml =
+      mailParagraph(escapeHtml(copy.helpHint)) +
+      `<p style="margin:0 0 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;">` +
+      `<a href="${escapeHtml(input.helpUrl)}" style="color:#0d9488;text-decoration:underline;">${escapeHtml(copy.helpLabel)}</a>` +
+      `</p>`;
+
+    const textSteps = copy.steps.map((step, index) => `${index + 1}. ${step}`).join('\n');
+    const text =
+      `${copy.greeting(displayName)}\n\n` +
+      `${copy.trialLine(trialDate)}\n\n` +
+      `${copy.stepsHeading}:\n${textSteps}\n\n` +
+      `${copy.ctaLabel}: ${input.scanUrl}\n` +
+      `${copy.helpLabel}: ${input.helpUrl}\n`;
+
+    return this.send({
+      to: input.to,
+      subject: copy.subject,
+      html: renderMailHtml({
+        preheader: copy.preheader,
+        heading: copy.heading,
+        bodyHtml:
+          mailParagraph(escapeHtml(copy.greeting(displayName))) +
+          mailParagraph(escapeHtml(copy.trialLine(trialDate))) +
+          mailParagraph(`<strong>${escapeHtml(copy.stepsHeading)}</strong>`) +
+          stepsHtml +
+          helpHtml,
+        cta: { label: copy.ctaLabel, url: input.scanUrl },
+        footnoteHtml: escapeHtml(copy.footnote),
+        siteUrl: this.siteUrl,
+      }),
+      text,
+      missingLog: `Welcome email for ${input.to} (locale=${input.locale})`,
+      failureLabel: 'welcome',
+      replyTo: this.replyTo,
+      allowMissingSmtp: true,
+    });
+  }
+
   private async send(input: {
     to: string;
     subject: string;
@@ -207,10 +269,15 @@ export class MailService {
     text: string;
     missingLog: string;
     failureLabel: string;
-  }): Promise<{ delivered: boolean }> {
+    replyTo?: string;
+    /** When true, missing SMTP returns skippedNoSmtp instead of only delivered:false. */
+    allowMissingSmtp?: boolean;
+  }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
     if (!this.transporter) {
       this.logger.warn(`SMTP is not configured. ${input.missingLog}`);
-      return { delivered: false };
+      return input.allowMissingSmtp
+        ? { delivered: false, skippedNoSmtp: true }
+        : { delivered: false };
     }
 
     try {
@@ -220,6 +287,7 @@ export class MailService {
         subject: input.subject,
         html: input.html,
         text: input.text,
+        ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       });
       return { delivered: true };
     } catch (error) {

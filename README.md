@@ -168,7 +168,7 @@ One `.env` at the repo root, read by the API in local dev (see `.env.example`).
 | MinIO (signed links for browsers) | `MINIO_PUBLIC_ENDPOINT`, `MINIO_PUBLIC_PORT`, `MINIO_PUBLIC_USE_SSL` (port and SSL default to the internal values) |
 | Auth | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRES` (15m), `JWT_REFRESH_EXPIRES` (7d), `JWT_PLATFORM_ACCESS_SECRET`, `JWT_PLATFORM_REFRESH_SECRET`, `PLATFORM_TOTP_ENCRYPTION_KEY`, `ACTIVATION_CODE_PEPPER`, `ACTIVATION_CODE_ENCRYPTION_KEY`, `COOKIE_SECURE`, `GOOGLE_CLIENT_ID` (optional) |
 | OCR | `GLM_API_KEY` or `ZAI_API_KEY`, `GLM_BASE_URL`, `GLM_MODEL` |
-| Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` (optional locally; links logged when unset) |
+| Email | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, optional `MAIL_REPLY_TO` (optional locally; links logged when unset) |
 
 ## Auth, tenancy, and roles
 
