@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { CoreFeatures } from './components/CoreFeatures';
 import { HowItWorks } from './components/HowItWorks';
+import { FaqSection } from './components/FaqSection';
 import { PricingSection } from './components/PricingSection';
 import { QuoteSection } from './components/QuoteSection';
 import { Footer } from './components/Footer';
@@ -160,6 +161,7 @@ export default function App() {
         <CoreFeatures />
         <HowItWorks />
         <PricingSection />
+        <FaqSection />
         <QuoteSection />
       </main>
 
