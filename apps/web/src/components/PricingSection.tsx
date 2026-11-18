@@ -4,6 +4,41 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/cn';
 
+function PlanCta({
+  to,
+  isPrimary,
+  label,
+}: {
+  to: string;
+  isPrimary: boolean;
+  label: string;
+}) {
+  const className = cn(
+    'inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 font-display text-[0.9rem] font-medium transition-all',
+    isPrimary
+      ? 'bg-ops-teal text-white shadow-[0_8px_18px_rgba(13,148,136,0.22)] hover:bg-ops-teal-hover'
+      : 'border border-slate-200 bg-white text-ops-ink shadow-sm hover:border-ops-teal/40 hover:bg-teal-50 hover:text-ops-teal',
+  );
+  const content = (
+    <>
+      <span>{label}</span>
+      <ArrowRight size={16} />
+    </>
+  );
+  if (to.startsWith('#')) {
+    return (
+      <a href={to} className={className}>
+        {content}
+      </a>
+    );
+  }
+  return (
+    <Link to={to} className={className}>
+      {content}
+    </Link>
+  );
+}
+
 export const PricingSection: React.FC = () => {
   const { t } = useTranslation();
   const plans = [
@@ -60,7 +95,8 @@ export const PricingSection: React.FC = () => {
         t('pricing.multiF5'),
       ],
       ctaText: t('pricing.contactSales'),
-      ctaTo: '/signup',
+      // TODO(phase-3): replace #quote with the real request-a-quote form once it ships.
+      ctaTo: '#quote',
       featured: false,
       isPrimary: false,
     },
@@ -131,18 +167,11 @@ export const PricingSection: React.FC = () => {
               </ul>
 
               <div className="mt-auto">
-                <Link
+                <PlanCta
                   to={plan.ctaTo}
-                  className={cn(
-                    'inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 font-display text-[0.9rem] font-medium transition-all',
-                    plan.isPrimary
-                      ? 'bg-ops-teal text-white shadow-[0_8px_18px_rgba(13,148,136,0.22)] hover:bg-ops-teal-hover'
-                      : 'border border-slate-200 bg-white text-ops-ink shadow-sm hover:border-ops-teal/40 hover:bg-teal-50 hover:text-ops-teal',
-                  )}
-                >
-                  <span>{plan.ctaText}</span>
-                  <ArrowRight size={16} />
-                </Link>
+                  isPrimary={plan.isPrimary}
+                  label={plan.ctaText}
+                />
                 <p className="mt-3 text-center font-sans text-[0.72rem] text-slate-400">{t('pricing.footnote')}</p>
               </div>
             </div>
