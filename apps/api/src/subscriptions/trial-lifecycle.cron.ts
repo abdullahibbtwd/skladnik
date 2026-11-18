@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { isEligibleForTrialEndedEmail, isEligibleForTrialEndingEmail } from '@skladnik/shared';
+import { isLifecycleEmailsEnabled } from '../mail/lifecycle-emails-enabled';
 import { TrialLifecycleMailService } from '../mail/trial-lifecycle.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -11,11 +13,16 @@ export class TrialLifecycleCron {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifecycleMail: TrialLifecycleMailService,
+    private readonly config: ConfigService,
   ) {}
 
   /** Daily UTC morning: trial "3 days left" + day-after-expiry emails. */
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async enqueueDue(now = new Date()) {
+    if (!isLifecycleEmailsEnabled(this.config)) {
+      this.logger.debug('LIFECYCLE_EMAILS_ENABLED is off — skipping trial lifecycle emails');
+      return { ending: 0, ended: 0 };
+    }
     const ending = await this.enqueueEnding(now);
     const ended = await this.enqueueEnded(now);
     if (ending + ended > 0) {

@@ -363,6 +363,8 @@ model User {
   locale       String   @default("en")
   /// When the post-signup welcome email was successfully handled (sent or skipped without SMTP).
   welcomeSentAt DateTime?
+  /// When the user opted out of marketing emails (first-scan nudge). Null = still opted in.
+  marketingOptOutAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

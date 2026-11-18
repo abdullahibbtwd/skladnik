@@ -13,9 +13,12 @@ import {
 } from './trial-lifecycle.constants';
 import { TrialLifecycleProcessor } from './trial-lifecycle.processor';
 import { TrialLifecycleMailService } from './trial-lifecycle.service';
+import { UnsubscribeController } from './unsubscribe.controller';
+import { UnsubscribeService } from './unsubscribe.service';
 import { WELCOME_JOB_OPTIONS, WELCOME_QUEUE } from './welcome.constants';
 import { WelcomeMailProcessor } from './welcome.processor';
 import { WelcomeMailService } from './welcome.service';
+import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
 
 @Global()
 @Module({
@@ -33,6 +36,7 @@ import { WelcomeMailService } from './welcome.service';
       defaultJobOptions: TRIAL_LIFECYCLE_JOB_OPTIONS,
     }),
   ],
+  controllers: [UnsubscribeController],
   providers: [
     MailService,
     WelcomeMailService,
@@ -41,12 +45,15 @@ import { WelcomeMailService } from './welcome.service';
     FirstScanNudgeProcessor,
     TrialLifecycleMailService,
     TrialLifecycleProcessor,
+    UnsubscribeService,
+    RateLimitGuard,
   ],
   exports: [
     MailService,
     WelcomeMailService,
     FirstScanNudgeMailService,
     TrialLifecycleMailService,
+    UnsubscribeService,
     BullModule,
   ],
 })

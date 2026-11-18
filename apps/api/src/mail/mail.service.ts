@@ -294,15 +294,7 @@ export class MailService {
     });
   }
 
-  private marketingFooter(locale: AppLocale) {
-    const unsubscribeUrl = marketingUnsubscribeMailto(this.replyTo ?? 'oborotix@oborotix.com');
-    return {
-      unsubscribeUrl,
-      html: marketingUnsubscribeFooterHtml({ locale, unsubscribeUrl }),
-      text: marketingUnsubscribeTextLine({ locale, unsubscribeUrl }),
-    };
-  }
-
+  /** Transactional trial status mail — informational only, no unsubscribe. */
   private async sendLifecycleCopy(input: {
     copy: { subject: string; preheader: string; heading: string; greeting: (n: string) => string; body: string; ctaLabel: string; footnote: string };
     to: string;
@@ -312,12 +304,10 @@ export class MailService {
     failureLabel: string;
   }) {
     const displayName = input.name.trim() || (input.locale === 'bg' ? 'колега' : 'there');
-    const marketing = this.marketingFooter(input.locale);
     const text =
       `${input.copy.greeting(displayName)}\n\n` +
       `${input.copy.body}\n\n` +
-      `${input.copy.ctaLabel}: ${input.ctaUrl}\n\n` +
-      `${marketing.text}\n`;
+      `${input.copy.ctaLabel}: ${input.ctaUrl}\n`;
 
     return this.send({
       to: input.to,
@@ -331,31 +321,40 @@ export class MailService {
         cta: { label: input.copy.ctaLabel, url: input.ctaUrl },
         footnoteHtml: escapeHtml(input.copy.footnote),
         siteUrl: this.siteUrl,
-        marketingFooterHtml: marketing.html,
       }),
       text,
       missingLog: `${input.failureLabel} for ${input.to} (locale=${input.locale})`,
       failureLabel: input.failureLabel,
       replyTo: this.replyTo,
       allowMissingSmtp: true,
-      listUnsubscribe: marketing.unsubscribeUrl,
     });
   }
 
+  /** Marketing tip — includes one-click unsubscribe (https + mailto fallback). */
   async sendFirstScanNudgeEmail(input: {
     to: string;
     name: string;
     locale: AppLocale;
     appUrl: string;
+    /** Absolute https unsubscribe confirmation URL (GET shows confirm; POST opts out). */
+    unsubscribeUrl: string;
   }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
     const copy = firstScanNudgeCopyForLocale(input.locale);
     const displayName = input.name.trim() || (input.locale === 'bg' ? 'колега' : 'there');
-    const marketing = this.marketingFooter(input.locale);
+    const mailto = marketingUnsubscribeMailto(this.replyTo ?? 'oborotix@oborotix.com');
+    const footerHtml = marketingUnsubscribeFooterHtml({
+      locale: input.locale,
+      unsubscribeUrl: input.unsubscribeUrl,
+    });
+    const footerText = marketingUnsubscribeTextLine({
+      locale: input.locale,
+      unsubscribeUrl: input.unsubscribeUrl,
+    });
     const text =
       `${copy.greeting(displayName)}\n\n` +
       `${copy.body}\n\n` +
       `${copy.ctaLabel}: ${input.appUrl}\n\n` +
-      `${marketing.text}\n`;
+      `${footerText}\n`;
 
     return this.send({
       to: input.to,
@@ -369,14 +368,15 @@ export class MailService {
         cta: { label: copy.ctaLabel, url: input.appUrl },
         footnoteHtml: escapeHtml(copy.footnote),
         siteUrl: this.siteUrl,
-        marketingFooterHtml: marketing.html,
+        marketingFooterHtml: footerHtml,
       }),
       text,
       missingLog: `First-scan nudge for ${input.to} (locale=${input.locale})`,
       failureLabel: 'first-scan nudge',
       replyTo: this.replyTo,
       allowMissingSmtp: true,
-      listUnsubscribe: marketing.unsubscribeUrl,
+      listUnsubscribeHttps: input.unsubscribeUrl,
+      listUnsubscribeMailto: mailto,
     });
   }
 
@@ -448,8 +448,10 @@ export class MailService {
     replyTo?: string;
     /** When true, missing SMTP returns skippedNoSmtp instead of only delivered:false. */
     allowMissingSmtp?: boolean;
-    /** Marketing mails: RFC 2369 List-Unsubscribe (mailto until a preference centre exists). */
-    listUnsubscribe?: string;
+    /** Marketing only: https one-click URL for List-Unsubscribe. */
+    listUnsubscribeHttps?: string;
+    /** Marketing only: mailto fallback for List-Unsubscribe. */
+    listUnsubscribeMailto?: string;
   }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
     if (!this.transporter) {
       this.logger.warn(`SMTP is not configured. ${input.missingLog}`);
@@ -459,6 +461,10 @@ export class MailService {
     }
 
     try {
+      const listParts = [
+        input.listUnsubscribeHttps ? `<${input.listUnsubscribeHttps}>` : null,
+        input.listUnsubscribeMailto ? `<${input.listUnsubscribeMailto}>` : null,
+      ].filter(Boolean);
       await this.transporter.sendMail({
         from: this.from,
         to: input.to,
@@ -466,8 +472,15 @@ export class MailService {
         html: input.html,
         text: input.text,
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
-        ...(input.listUnsubscribe
-          ? { headers: { 'List-Unsubscribe': `<${input.listUnsubscribe}>` } }
+        ...(listParts.length
+          ? {
+              headers: {
+                'List-Unsubscribe': listParts.join(', '),
+                ...(input.listUnsubscribeHttps
+                  ? { 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
+                  : {}),
+              },
+            }
           : {}),
       });
       return { delivered: true };

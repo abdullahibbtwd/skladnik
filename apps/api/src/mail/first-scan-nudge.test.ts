@@ -71,6 +71,12 @@ assert.equal(
   'paid ACTIVE is not a trial nudge target',
 );
 
+assert.equal(
+  isEligibleForFirstScanNudge({ ...base, ownerMarketingOptOutAt: now }),
+  false,
+  'marketing opt-out skips nudge',
+);
+
 export default (async () => {
   {
     const calls: unknown[] = [];
@@ -108,10 +114,12 @@ export default (async () => {
           subscriptions: [{ status: 'TRIAL', expiresAt: trialExpires }],
           users: [
             {
+              id: 'user-1',
               email: 'owner@example.com',
               name: 'Owner',
               locale: 'en',
               emailVerifiedAt: verified,
+              marketingOptOutAt: null,
             },
           ],
         }),
@@ -123,14 +131,28 @@ export default (async () => {
       },
     };
     const mail = {
-      sendFirstScanNudgeEmail: async (input: { to: string; locale: string }) => {
+      sendFirstScanNudgeEmail: async (input: {
+        to: string;
+        locale: string;
+        unsubscribeUrl: string;
+      }) => {
         assert.equal(input.to, 'owner@example.com');
         assert.equal(input.locale, 'en');
+        assert.ok(input.unsubscribeUrl.includes('/public/unsubscribe'));
         return { delivered: true };
       },
     };
     const config = { get: () => 'https://oborotix.com' };
-    const processor = new FirstScanNudgeProcessor(prisma as never, mail as never, config as never);
+    const unsub = {
+      unsubscribeUrl: (userId: string) =>
+        `https://oborotix.com/public/unsubscribe?token=tok-${userId}`,
+    };
+    const processor = new FirstScanNudgeProcessor(
+      prisma as never,
+      mail as never,
+      config as never,
+      unsub as never,
+    );
     const result = await processor.run('co-ok', now);
     assert.equal((result as { delivered: boolean }).delivered, true);
     assert.equal(marked, true);
@@ -149,10 +171,12 @@ export default (async () => {
           subscriptions: [{ status: 'TRIAL', expiresAt: trialExpires }],
           users: [
             {
+              id: 'user-2',
               email: 'owner@example.com',
               name: 'Owner',
               locale: 'en',
               emailVerifiedAt: null,
+              marketingOptOutAt: null,
             },
           ],
         }),
@@ -168,7 +192,13 @@ export default (async () => {
       },
     };
     const config = { get: () => 'https://oborotix.com' };
-    const processor = new FirstScanNudgeProcessor(prisma as never, mail as never, config as never);
+    const unsub = { unsubscribeUrl: () => 'https://oborotix.com/public/unsubscribe?token=x' };
+    const processor = new FirstScanNudgeProcessor(
+      prisma as never,
+      mail as never,
+      config as never,
+      unsub as never,
+    );
     const result = await processor.run('co-skip', now);
     assert.deepEqual(result, { skipped: true, reason: 'not_eligible' });
     assert.equal(marked, false);

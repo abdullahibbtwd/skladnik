@@ -16,6 +16,8 @@ export type FirstScanNudgeEligibilityInput = {
   subscriptionStatus: string;
   subscriptionExpiresAt: Date | string | null | undefined;
   ownerEmailVerifiedAt: Date | string | null | undefined;
+  /** When set, owner opted out of marketing tip emails. */
+  ownerMarketingOptOutAt?: Date | string | null | undefined;
 };
 
 function asDate(value: Date | string | null | undefined): Date | null {
@@ -45,6 +47,7 @@ export function isEligibleForFirstScanNudge(input: FirstScanNudgeEligibilityInpu
   if (asDate(input.nudgeSentAt)) return false;
   if (asDate(input.firstScanAt)) return false;
   if (!asDate(input.ownerEmailVerifiedAt)) return false;
+  if (asDate(input.ownerMarketingOptOutAt)) return false;
 
   const createdAt = asDate(input.companyCreatedAt);
   if (!createdAt) return false;

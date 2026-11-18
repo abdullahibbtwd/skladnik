@@ -40,4 +40,7 @@ const transactional = renderMailHtml({
 });
 assert.equal(transactional.includes('Unsubscribe'), false);
 
+// Trial/lifecycle transactional templates must not ship marketing unsubscribe chrome.
+assert.equal(transactional.includes('List-Unsubscribe'), false);
+
 console.log('mail-marketing-footer.test.ts: ok');

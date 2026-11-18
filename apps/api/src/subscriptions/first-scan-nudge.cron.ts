@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { isEligibleForFirstScanNudge } from '@skladnik/shared';
 import { FirstScanNudgeMailService } from '../mail/first-scan-nudge.service';
+import { isLifecycleEmailsEnabled } from '../mail/lifecycle-emails-enabled';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -11,11 +13,17 @@ export class FirstScanNudgeCron {
   constructor(
     private readonly prisma: PrismaService,
     private readonly nudgeMail: FirstScanNudgeMailService,
+    private readonly config: ConfigService,
   ) {}
 
   /** Daily UTC morning: enqueue first-scan nudges for eligible trial companies. */
   @Cron(CronExpression.EVERY_DAY_AT_8AM)
   async enqueueDueNudges(now = new Date()) {
+    if (!isLifecycleEmailsEnabled(this.config)) {
+      this.logger.debug('LIFECYCLE_EMAILS_ENABLED is off — skipping first-scan nudges');
+      return 0;
+    }
+
     const companies = await this.prisma.company.findMany({
       where: {
         nudgeSentAt: null,
@@ -27,6 +35,7 @@ export class FirstScanNudgeCron {
             role: 'OWNER',
             isActive: true,
             emailVerifiedAt: { not: null },
+            marketingOptOutAt: null,
           },
         },
       },
@@ -42,8 +51,13 @@ export class FirstScanNudgeCron {
           select: { status: true, expiresAt: true },
         },
         users: {
-          where: { role: 'OWNER', isActive: true, emailVerifiedAt: { not: null } },
-          select: { emailVerifiedAt: true },
+          where: {
+            role: 'OWNER',
+            isActive: true,
+            emailVerifiedAt: { not: null },
+            marketingOptOutAt: null,
+          },
+          select: { emailVerifiedAt: true, marketingOptOutAt: true },
           take: 1,
         },
       },
@@ -65,6 +79,7 @@ export class FirstScanNudgeCron {
           subscriptionStatus: sub.status,
           subscriptionExpiresAt: sub.expiresAt,
           ownerEmailVerifiedAt: owner.emailVerifiedAt,
+          ownerMarketingOptOutAt: owner.marketingOptOutAt,
         })
       ) {
         continue;

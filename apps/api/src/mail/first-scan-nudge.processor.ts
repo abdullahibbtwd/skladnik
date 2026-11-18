@@ -7,6 +7,7 @@ import type { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { FIRST_SCAN_NUDGE_QUEUE, type FirstScanNudgeJobData } from './first-scan-nudge.constants';
 import { MailService } from './mail.service';
+import { UnsubscribeService } from './unsubscribe.service';
 
 @Processor(FIRST_SCAN_NUDGE_QUEUE, { concurrency: 2 })
 export class FirstScanNudgeProcessor extends WorkerHost {
@@ -16,6 +17,7 @@ export class FirstScanNudgeProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly unsubscribe: UnsubscribeService,
   ) {
     super();
   }
@@ -43,10 +45,12 @@ export class FirstScanNudgeProcessor extends WorkerHost {
         users: {
           where: { role: 'OWNER', isActive: true },
           select: {
+            id: true,
             email: true,
             name: true,
             locale: true,
             emailVerifiedAt: true,
+            marketingOptOutAt: true,
           },
           take: 1,
         },
@@ -74,6 +78,7 @@ export class FirstScanNudgeProcessor extends WorkerHost {
         subscriptionStatus: sub.status,
         subscriptionExpiresAt: sub.expiresAt,
         ownerEmailVerifiedAt: owner.emailVerifiedAt,
+        ownerMarketingOptOutAt: owner.marketingOptOutAt,
       })
     ) {
       return { skipped: true, reason: 'not_eligible' };
@@ -86,6 +91,7 @@ export class FirstScanNudgeProcessor extends WorkerHost {
       name: owner.name,
       locale,
       appUrl: `${origin}/app`,
+      unsubscribeUrl: this.unsubscribe.unsubscribeUrl(owner.id),
     });
 
     if (result.delivered || result.skippedNoSmtp) {

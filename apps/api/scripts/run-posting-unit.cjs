@@ -12,6 +12,7 @@ require('ts-node/register/transpile-only');
   await require('../src/mail/first-scan-nudge.test.ts');
   await require('../src/mail/trial-lifecycle.test.ts');
   require('../src/mail/mail-marketing-footer.test.ts');
+  await require('../src/mail/marketing-unsubscribe.test.ts');
   await require('../src/quote-requests/quote-requests.test.ts');
   require('../src/quote-requests/quote-rate-limit.test.ts');
   require('../src/documents/document-access.test.ts');
