@@ -201,6 +201,8 @@ model Company {
   printTemplate Json?
   /// Roles that may charge other than the catalog price at the till (the owner always can).
   priceOverrideRoles UserRole[] @default([OWNER, ACCOUNTANT, SITE_MANAGER])
+  /// Set when OCR first succeeds for this company (marketing / onboarding milestone).
+  firstScanAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -321,6 +323,10 @@ model User {
   isActive     Boolean  @default(true)
   /// Set when the email is confirmed (signup code, invite accept, or Google).
   emailVerifiedAt DateTime?
+  /// UI / email language preference: `en` | `bg`.
+  locale       String   @default("en")
+  /// When the post-signup welcome email was successfully handled (sent or skipped without SMTP).
+  welcomeSentAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
