@@ -9,6 +9,7 @@
  * This script: vite build → static server → Puppeteer → write HTML into dist.
  */
 import { createServer } from 'node:http';
+import { accessSync, constants as fsConstants } from 'node:fs';
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,39 @@ import puppeteer from 'puppeteer';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(__dirname, '../dist');
 const ROUTES = (process.env.PRERENDER_ROUTES ?? '/,/bg').split(',').map((r) => r.trim()).filter(Boolean);
+
+const SYSTEM_CHROME_CANDIDATES = [
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+].filter(Boolean);
+
+function existsExecutable(path) {
+  try {
+    accessSync(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Prefer env/Docker path, then Puppeteer's downloaded Chrome, then system browsers. */
+function resolveChromePath() {
+  for (const candidate of SYSTEM_CHROME_CANDIDATES) {
+    if (existsExecutable(candidate)) return candidate;
+  }
+  try {
+    const bundled = puppeteer.executablePath();
+    if (bundled && existsExecutable(bundled)) return bundled;
+  } catch {
+    // Puppeteer cache may be empty on fresh installs.
+  }
+  return undefined;
+}
 
 async function assertDist() {
   try {
@@ -53,17 +87,26 @@ async function main() {
   await assertDist();
   const { server, port } = await startServer();
   const base = `http://127.0.0.1:${port}`;
-  // Docker/Alpine sets PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium; local uses bundled Chrome.
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+  const executablePath = resolveChromePath();
 
   console.log(`[prerender] serving ${distDir} on ${base}`);
   console.log(`[prerender] routes: ${ROUTES.join(', ')}`);
+  console.log(`[prerender] chrome: ${executablePath ?? '(puppeteer default)'}`);
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    executablePath,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      ...(executablePath ? { executablePath } : {}),
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not launch Chrome for prerender (${detail}). ` +
+        `Install Chrome, set PUPPETEER_EXECUTABLE_PATH, or run: npx puppeteer browsers install chrome`,
+    );
+  }
 
   try {
     for (const route of ROUTES) {
