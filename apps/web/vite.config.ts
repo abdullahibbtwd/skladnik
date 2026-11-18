@@ -38,9 +38,13 @@ export default defineConfig({
         'favicon.ico',
         'apple-touch-icon-180x180.png',
         'oborotix-favicon.png',
+        'oborotix-favicon.webp',
         'oborotix-logo.png',
+        'oborotix-logo.webp',
         'oborotix-logo-white.png',
+        'oborotix-logo-white.webp',
         'og-image.png',
+        'og-image.webp',
       ],
       manifest: {
         id: '/',
@@ -66,7 +70,7 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webp}'],
         /** The main bundle is a single chunk; above this size Workbox silently leaves it out and the app no longer opens offline. */
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
