@@ -78,7 +78,7 @@ export function InstallPrompt() {
       className="fixed inset-x-3 bottom-[6.5rem] z-[150] print:hidden md:inset-x-auto md:bottom-5 md:left-5 md:w-[22.5rem]"
     >
       <div className="flex items-start gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-3.5 shadow-[0_18px_40px_-18px_rgba(30,27,75,0.35)] backdrop-blur-xl">
-        <img src="/pwa-192x192.png" alt="" className="size-10 shrink-0 rounded-xl" />
+        <img src="/pwa-192x192.png" alt="Oborotix" className="size-10 shrink-0 rounded-xl" />
         <div className="min-w-0 flex-1">
           <p id="install-prompt-title" className="font-display text-[0.9rem] font-semibold text-ops-ink">
             {t('pwa.install.title')}

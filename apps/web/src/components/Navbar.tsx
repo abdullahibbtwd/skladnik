@@ -21,10 +21,12 @@ const primaryBtnClass =
   'items-center gap-2 rounded-lg bg-ops-teal px-5 py-[0.65rem] font-display text-[0.925rem] font-medium text-white shadow-[0_4px_14px_rgba(13,148,136,0.25)] transition-all hover:bg-ops-teal-hover';
 
 export const Navbar: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const user = useAuthUser();
   const logout = useLogout();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const homeLang: AppLang = i18n.language.toLowerCase().startsWith('bg') ? 'bg' : 'en';
+  const homeTo = landingPathForLang(homeLang);
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
 

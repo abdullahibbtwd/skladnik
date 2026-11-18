@@ -5,6 +5,7 @@ import { HeroSection } from './components/HeroSection';
 import { CoreFeatures } from './components/CoreFeatures';
 import { HowItWorks } from './components/HowItWorks';
 import { FaqSection } from './components/FaqSection';
+import { LandingJsonLd } from './components/LandingJsonLd';
 import { PricingSection } from './components/PricingSection';
 import { QuoteSection } from './components/QuoteSection';
 import { Footer } from './components/Footer';
@@ -156,6 +157,7 @@ export default function App() {
       className="w-full max-w-full overflow-x-hidden bg-ops-canvas pt-[4.5rem] font-sans text-ops-ink"
       data-prerender-ready="1"
     >
+      <LandingJsonLd />
       <Navbar />
 
       <main>
