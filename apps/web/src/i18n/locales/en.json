@@ -175,7 +175,7 @@
     "cardQ": "Do I need a card to start?",
     "cardA": "No card is required to start. Pricing is agreed with Oborotix when you choose a plan.",
     "afterTrialQ": "What happens after day 14?",
-    "afterTrialA": "When the trial ends, the account becomes read-only until you apply an activation code. You can still view and export data; writing and posting are blocked. Your data is kept.",
+    "afterTrialA": "After your 14-day trial, your account becomes read-only. You can still view and export data. To keep adding or editing, request an activation code.",
     "activationQ": "How does activation work?",
     "activationA": "Activation codes are issued by Oborotix after your trial. Paste the one-time code in the app to unlock the plan that matches your seats and sites."
   },

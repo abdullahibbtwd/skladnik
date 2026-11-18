@@ -36,10 +36,12 @@ export function trackEvent(name: string, props?: AnalyticsProps) {
 
 /**
  * Load a cookieless analytics script when env is set.
- * - Plausible: VITE_ANALYTICS_SCRIPT_URL=https://plausible.io/js/script.js
- *              VITE_ANALYTICS_WEBSITE_ID=oborotix.com  (data-domain)
- * - Umami:     VITE_ANALYTICS_SCRIPT_URL=https://cloud.umami.is/script.js
- *              VITE_ANALYTICS_WEBSITE_ID=<website-uuid> (data-website-id)
+ * Preferred — Umami Cloud:
+ *   VITE_ANALYTICS_SCRIPT_URL=https://cloud.umami.is/script.js
+ *   VITE_ANALYTICS_WEBSITE_ID=<website-uuid> (data-website-id)
+ * Also supported — Plausible:
+ *   VITE_ANALYTICS_SCRIPT_URL=https://plausible.io/js/script.js
+ *   VITE_ANALYTICS_WEBSITE_ID=oborotix.com  (data-domain)
  */
 export function initAnalytics() {
   const scriptUrl = import.meta.env.VITE_ANALYTICS_SCRIPT_URL?.trim();

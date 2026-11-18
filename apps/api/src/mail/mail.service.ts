@@ -205,6 +205,7 @@ export class MailService {
     });
   }
 
+  /** Internal ops notify for public quote-request leads (QUOTE_NOTIFY_EMAIL). */
   async sendQuoteRequestNotifyEmail(input: {
     to: string;
     quote: {
