@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   EXPIRY_REMINDER_DAYS,
   reminderEventPayload,
+  shouldSendExpiryReminder,
   type ExpiryReminderDays,
 } from '@skladnik/shared';
 import { MailService } from '../mail/mail.service';
@@ -84,6 +85,16 @@ export class SubscriptionRemindersService {
     for (const sub of subscriptions) {
       if (!sub.company || !sub.expiresAt) continue;
       if (this.alreadyReminded(sub.events, daysBefore, sub.expiresAt)) continue;
+      if (
+        !shouldSendExpiryReminder({
+          status: sub.status,
+          startsAt: sub.startsAt,
+          daysBefore,
+          now,
+        })
+      ) {
+        continue;
+      }
 
       const settingsUrl = this.settingsUrl();
       for (const owner of sub.company.users) {

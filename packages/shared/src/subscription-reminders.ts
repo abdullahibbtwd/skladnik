@@ -1,5 +1,7 @@
 /** Pure helpers for subscription expiry reminders and UI banners. */
 
+import { TRIAL_DAYS } from './subscription';
+
 export const EXPIRY_REMINDER_DAYS = [30, 14, 7, 1] as const;
 export type ExpiryReminderDays = (typeof EXPIRY_REMINDER_DAYS)[number];
 
@@ -8,6 +10,9 @@ export const EXPIRING_SOON_BANNER_DAYS = 30;
 
 /** Failed activation attempts on one code before a platform alert is recorded. */
 export const ACTIVATION_FAILED_ALERT_THRESHOLD = 5;
+
+/** Do not email expiry reminders for subscriptions created within this window. */
+export const EXPIRY_REMINDER_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
 export function utcDayStart(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -51,4 +56,38 @@ export function reminderEventPayload(daysBefore: ExpiryReminderDays, expiresAt: 
     daysBefore,
     forExpiresAt: expiresAt.toISOString(),
   };
+}
+
+export type ExpiryReminderEligibilityInput = {
+  status: string;
+  startsAt: Date | string | null | undefined;
+  daysBefore: number;
+  now?: Date;
+  /** Override for tests; defaults to `TRIAL_DAYS`. */
+  trialDays?: number;
+};
+
+/**
+ * Whether a matched expiry-reminder bucket should actually send mail.
+ *
+ * A brand-new 14-day trial has `expiresAt = startsAt + 14d`, so the "14 days left"
+ * cron bucket matches on signup day. Skip that (and any bucket >= trial length),
+ * and skip subscriptions younger than 24 hours.
+ */
+export function shouldSendExpiryReminder(input: ExpiryReminderEligibilityInput): boolean {
+  const now = input.now ?? new Date();
+  const trialDays = input.trialDays ?? TRIAL_DAYS;
+
+  if (input.startsAt) {
+    const startedAt = input.startsAt instanceof Date ? input.startsAt : new Date(input.startsAt);
+    if (Number.isFinite(startedAt.getTime()) && now.getTime() - startedAt.getTime() < EXPIRY_REMINDER_MIN_AGE_MS) {
+      return false;
+    }
+  }
+
+  if (input.status === 'TRIAL' && input.daysBefore >= trialDays) {
+    return false;
+  }
+
+  return true;
 }
