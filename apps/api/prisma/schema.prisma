@@ -248,24 +248,27 @@ model Company {
 
 enum QuoteRequestStatus {
   NEW
+  CONTACTED
+  CLOSED
 }
 
 /// Public marketing lead from the request-a-quote form.
 model QuoteRequest {
-  id           String             @id @default(uuid())
-  name         String
-  businessType String
-  locations    Int
+  id              String             @id @default(uuid())
+  name            String
+  businessType    String
+  locations       Int
   /// Email or phone as entered by the visitor.
-  contact      String
-  message      String?
-  locale       String             @default("en")
-  utmSource    String?
-  utmMedium    String?
-  utmCampaign  String?
-  referrer     String?
-  status       QuoteRequestStatus @default(NEW)
-  createdAt    DateTime           @default(now())
+  contact         String
+  message         String?
+  locale          String             @default("en")
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  referrer        String?
+  status          QuoteRequestStatus @default(NEW)
+  statusUpdatedAt DateTime?
+  createdAt       DateTime           @default(now())
 
   @@index([createdAt])
   @@index([status, createdAt])

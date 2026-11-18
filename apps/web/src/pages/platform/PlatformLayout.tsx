@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { CreditCard, LayoutDashboard, LogOut, Menu, Settings, X } from 'lucide-react';
+import { BarChart3, CreditCard, LayoutDashboard, LogOut, Menu, MessageSquareQuote, Settings, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BrandLogo } from '../../components/BrandLogo';
 import { LanguageSwitch } from '../../components/LanguageSwitch';
@@ -13,17 +13,24 @@ import { queryClient } from '../../lib/query-client';
 const navItems = [
   { to: '/platform', end: true, icon: LayoutDashboard, labelKey: 'platform.nav.dashboard' as const },
   { to: '/platform/subscriptions', end: false, icon: CreditCard, labelKey: 'platform.nav.subscriptions' as const },
+  { to: '/platform/quotes', end: false, icon: MessageSquareQuote, labelKey: 'platform.nav.quotes' as const },
+  { to: '/platform/analytics', end: false, icon: BarChart3, labelKey: 'platform.nav.analytics' as const },
   { to: '/platform/settings', end: false, icon: Settings, labelKey: 'platform.nav.settings' as const },
 ];
 
 function pageTitle(pathname: string, t: (key: string) => string) {
   if (pathname.startsWith('/platform/settings')) return t('platform.nav.settings');
+  if (pathname.startsWith('/platform/analytics')) return t('platform.nav.analytics');
+  if (pathname.startsWith('/platform/quotes')) return t('platform.nav.quotes');
   if (pathname.startsWith('/platform/subscriptions')) return t('platform.nav.subscriptions');
   return t('platform.nav.dashboard');
 }
 
 function browserTitle(pathname: string, t: (key: string) => string) {
   if (pathname.startsWith('/platform/settings')) return t('platform.titles.settings');
+  if (pathname.startsWith('/platform/analytics')) return t('platform.titles.analytics');
+  if (/^\/platform\/quotes\/[^/]+/.test(pathname)) return t('platform.titles.quoteDetail');
+  if (pathname.startsWith('/platform/quotes')) return t('platform.titles.quotes');
   if (/^\/platform\/subscriptions\/[^/]+/.test(pathname)) return t('platform.titles.subscriptionDetail');
   if (pathname.startsWith('/platform/subscriptions')) return t('platform.titles.subscriptions');
   return t('platform.titles.dashboard');
@@ -43,6 +50,10 @@ export function PlatformLayout() {
   useEffect(() => {
     document.title = browserTitle(location.pathname, t);
   }, [location.pathname, t]);
+
+  const onPullRefresh = useCallback(async () => {
+    await queryClient.refetchQueries({ type: 'active' });
+  }, []);
 
   if (meQuery.isLoading) {
     return (
@@ -64,10 +75,6 @@ export function PlatformLayout() {
 
   const initial = (meQuery.data.name?.trim()?.[0] || meQuery.data.email[0] || '?').toUpperCase();
   const title = pageTitle(location.pathname, t);
-
-  const onPullRefresh = useCallback(async () => {
-    await queryClient.refetchQueries({ type: 'active' });
-  }, []);
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(

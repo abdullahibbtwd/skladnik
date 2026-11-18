@@ -1,10 +1,19 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ArrowRight, CreditCard, Plus, TimerReset, Wallet } from 'lucide-react';
+import { Activity, ArrowRight, CreditCard, MessageSquareQuote, Plus, TimerReset, Wallet } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { GlassPanel, LiveBadge } from '../../components/dashboard/dashboard-ui';
-import { fetchPlatformStats, listPlatformSubscriptions } from '../../lib/platform-api';
-import { platformPrimaryBtnClass, platformSecondaryBtnClass, platformStatusTone } from './platform-ui';
+import {
+  fetchPlatformStats,
+  listPlatformSubscriptions,
+  listRecentNewPlatformQuotes,
+} from '../../lib/platform-api';
+import {
+  formatRelativeTime,
+  platformPrimaryBtnClass,
+  platformSecondaryBtnClass,
+  platformStatusTone,
+} from './platform-ui';
 
 function formatMoney(minor: number, currency = 'EUR') {
   try {
@@ -15,7 +24,7 @@ function formatMoney(minor: number, currency = 'EUR') {
 }
 
 export function PlatformDashboardPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const statsQuery = useQuery({
     queryKey: ['platform', 'stats'],
@@ -27,9 +36,15 @@ export function PlatformDashboardPage() {
     queryFn: () => listPlatformSubscriptions({ status: 'PENDING', page: 1, pageSize: 5 }),
   });
 
+  const leadsQuery = useQuery({
+    queryKey: ['platform', 'quotes', 'recent-new'],
+    queryFn: listRecentNewPlatformQuotes,
+  });
+
   const stats = statsQuery.data;
   const live = (stats?.active ?? 0) + (stats?.trial ?? 0);
   const recent = recentQuery.data?.subscriptions ?? [];
+  const leads = leadsQuery.data?.quotes ?? [];
 
   const cards = [
     {
@@ -112,7 +127,7 @@ export function PlatformDashboardPage() {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)]">
+      <div className="grid gap-4 xl:grid-cols-3">
         <GlassPanel
           title={t('platform.dashboard.pendingQueue')}
           action={
@@ -155,6 +170,52 @@ export function PlatformDashboardPage() {
           )}
         </GlassPanel>
 
+        <GlassPanel
+          title={t('platform.dashboard.newLeads')}
+          action={
+            <LiveBadge>
+              <MessageSquareQuote size={12} className="mr-1 inline" />
+              {t('platform.dashboard.newLeadsCount', { count: stats?.newQuotes ?? leads.length })}
+            </LiveBadge>
+          }
+        >
+          {leadsQuery.isLoading && (
+            <p className="font-sans text-sm text-slate-400">{t('platform.dashboard.loadingLeads')}</p>
+          )}
+          {!leadsQuery.isLoading && leads.length === 0 && (
+            <p className="font-sans text-sm text-slate-500">{t('platform.dashboard.noLeads')}</p>
+          )}
+          {leads.length > 0 && (
+            <ul className="divide-y divide-slate-100">
+              {leads.map((row) => (
+                <li key={row.id}>
+                  <Link
+                    to={`/platform/quotes/${row.id}`}
+                    className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-ops-canvas/60"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-[0.88rem] font-medium text-ops-ink">{row.name}</p>
+                      <p className="mt-0.5 truncate font-sans text-[0.72rem] text-slate-500">
+                        {row.contact} · {row.businessType}
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-sans text-[0.68rem] text-slate-400">
+                      {formatRelativeTime(row.createdAt, i18n.language)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link
+            to="/platform/quotes"
+            className="mt-3 inline-flex items-center gap-1 font-display text-[0.78rem] font-medium text-ops-teal hover:text-ops-teal-hover"
+          >
+            {t('platform.dashboard.viewLeads')}
+            <ArrowRight size={14} />
+          </Link>
+        </GlassPanel>
+
         <GlassPanel title={t('platform.dashboard.invoiceSnapshot')}>
           <dl className="grid gap-3">
             <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-ops-canvas/70 px-3.5 py-3">
@@ -177,6 +238,13 @@ export function PlatformDashboardPage() {
             </div>
           </dl>
           <p className="mt-3 font-sans text-[0.72rem] text-slate-400">{t('platform.dashboard.currencyNote')}</p>
+          <Link
+            to="/platform/analytics"
+            className="mt-3 inline-flex items-center gap-1 font-display text-[0.78rem] font-medium text-ops-accent hover:text-ops-accent/80"
+          >
+            {t('platform.dashboard.openAnalytics')}
+            <ArrowRight size={14} />
+          </Link>
         </GlassPanel>
       </div>
     </div>

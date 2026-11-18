@@ -18,6 +18,9 @@ import { PlatformLoginPage } from './pages/platform/PlatformLoginPage';
 import { PlatformDashboardPage } from './pages/platform/PlatformDashboardPage';
 import { PlatformSubscriptionsPage } from './pages/platform/PlatformSubscriptionsPage';
 import { PlatformSubscriptionDetailPage } from './pages/platform/PlatformSubscriptionDetailPage';
+import { PlatformQuotesPage } from './pages/platform/PlatformQuotesPage';
+import { PlatformQuoteDetailPage } from './pages/platform/PlatformQuoteDetailPage';
+import { PlatformAnalyticsPage } from './pages/platform/PlatformAnalyticsPage';
 import { PlatformSettingsPage } from './pages/platform/PlatformSettingsPage';
 import { OverviewPanel } from './components/dashboard/OverviewPanel';
 import { InventoryPanel } from './components/dashboard/InventoryPanel';
@@ -213,6 +216,9 @@ export default function App() {
         <Route index element={<PlatformDashboardPage />} />
         <Route path="subscriptions" element={<PlatformSubscriptionsPage />} />
         <Route path="subscriptions/:id" element={<PlatformSubscriptionDetailPage />} />
+        <Route path="quotes" element={<PlatformQuotesPage />} />
+        <Route path="quotes/:id" element={<PlatformQuoteDetailPage />} />
+        <Route path="analytics" element={<PlatformAnalyticsPage />} />
         <Route path="settings" element={<PlatformSettingsPage />} />
       </Route>
       <Route path="/app" element={<DashboardPage />}>

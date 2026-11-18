@@ -144,7 +144,7 @@ export class PlatformSubscriptionsService {
   }
 
   async stats() {
-    const [statusGroups, invoiceGroups, paidSum] = await Promise.all([
+    const [statusGroups, invoiceGroups, paidSum, newQuotes] = await Promise.all([
       this.prisma.subscription.groupBy({
         by: ['status'],
         _count: { _all: true },
@@ -157,6 +157,7 @@ export class PlatformSubscriptionsService {
         where: { status: 'PAID' },
         _sum: { totalMinor: true },
       }),
+      this.prisma.quoteRequest.count({ where: { status: 'NEW' } }),
     ]);
 
     const byStatus = Object.fromEntries(statusGroups.map((row) => [row.status, row._count._all])) as Partial<
@@ -185,6 +186,7 @@ export class PlatformSubscriptionsService {
       paidInvoices: byInvoice.PAID ?? 0,
       voidInvoices: byInvoice.VOID ?? 0,
       totalPaidMinor: paidSum._sum.totalMinor ?? 0,
+      newQuotes,
     };
   }
 

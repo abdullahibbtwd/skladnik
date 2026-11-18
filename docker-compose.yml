@@ -28,7 +28,8 @@ services:
       timeout: 3s
       retries: 10
   minio:
-    image: minio/minio:latest
+    # Official minio/minio was removed from Docker Hub (2026); Silo is the S3-compatible drop-in.
+    image: docker.io/pgsty/silo:RELEASE.2026-11-12T00-00-00Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     expose:
@@ -39,7 +40,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      test: ["CMD", "silo", "healthcheck", "ready"]
       interval: 5s
       timeout: 5s
       retries: 12

@@ -56,14 +56,31 @@ export function platformPlanSelectOptions(t: TFunction): SelectOption<Subscripti
 }
 
 export function platformStatusTone(status: string): string {
-  if (status === 'ACTIVE' || status === 'TRIAL') {
+  if (status === 'ACTIVE' || status === 'TRIAL' || status === 'CONTACTED') {
     return 'border-ops-teal/20 bg-teal-50 text-ops-teal';
   }
-  if (status === 'PENDING' || status === 'QUEUED') {
+  if (status === 'PENDING' || status === 'QUEUED' || status === 'NEW') {
     return 'border-ops-accent/20 bg-indigo-50 text-ops-accent';
   }
-  if (status === 'SUSPENDED' || status === 'EXPIRED' || status === 'SUPERSEDED') {
+  if (status === 'SUSPENDED' || status === 'EXPIRED' || status === 'SUPERSEDED' || status === 'CLOSED') {
     return 'border-ops-warn/25 bg-orange-50 text-ops-warn';
   }
   return 'border-ops-danger/20 bg-ops-danger/5 text-ops-danger';
+}
+
+export function formatRelativeTime(iso: string, locale = 'en'): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const diffSec = Math.round((then - Date.now()) / 1000);
+  const abs = Math.abs(diffSec);
+  const rtf = new Intl.RelativeTimeFormat(locale.startsWith('bg') ? 'bg' : 'en', { numeric: 'auto' });
+  if (abs < 60) return rtf.format(diffSec, 'second');
+  const diffMin = Math.round(diffSec / 60);
+  if (Math.abs(diffMin) < 60) return rtf.format(diffMin, 'minute');
+  const diffHour = Math.round(diffMin / 60);
+  if (Math.abs(diffHour) < 48) return rtf.format(diffHour, 'hour');
+  const diffDay = Math.round(diffHour / 24);
+  if (Math.abs(diffDay) < 30) return rtf.format(diffDay, 'day');
+  const diffMonth = Math.round(diffDay / 30);
+  return rtf.format(diffMonth, 'month');
 }

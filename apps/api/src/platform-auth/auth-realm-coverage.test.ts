@@ -19,6 +19,11 @@ import { PlatformAuthController } from '../platform-auth/platform-auth.controlle
 import { PlatformSettingsController } from '../platform-settings/platform-settings.controller';
 import { PlatformSubscriptionsController } from '../subscriptions/platform-subscriptions.controller';
 import { TenantSubscriptionsController } from '../subscriptions/tenant-subscriptions.controller';
+import { QuoteRequestsController } from '../quote-requests/quote-requests.controller';
+import {
+  PlatformAnalyticsController,
+  PlatformQuotesController,
+} from '../quote-requests/platform-quotes.controller';
 import { RecipesController } from '../recipes/recipes.controller';
 import { ExportProfilesController } from '../reports/export-profiles.controller';
 import { ReportsController } from '../reports/reports.controller';
@@ -45,6 +50,9 @@ const CONTROLLERS: (new (...args: never[]) => unknown)[] = [
   PlatformAuthController,
   PlatformSettingsController,
   PlatformSubscriptionsController,
+  PlatformQuotesController,
+  PlatformAnalyticsController,
+  QuoteRequestsController,
   TenantSubscriptionsController,
   RecipesController,
   ExportProfilesController,

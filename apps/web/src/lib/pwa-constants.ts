@@ -44,6 +44,12 @@ export const API_PATH_PREFIXES = [
 
 /**
  * Multi-segment API mounts that must not steal the `/platform` SPA routes
- * (`/platform/login`, `/platform/subscriptions` UI, …).
+ * (`/platform`, `/platform/login`, `/platform/subscriptions` UI, …).
+ * HTML navigations still bypass to the SPA via vite proxy `bypass`.
  */
-export const API_NESTED_PATH_PREFIXES = ['platform/subscriptions'] as const;
+export const API_NESTED_PATH_PREFIXES = [
+  'platform/subscriptions',
+  'platform/quotes',
+  'platform/analytics',
+  'platform/settings',
+] as const;

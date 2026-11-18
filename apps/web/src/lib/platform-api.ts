@@ -1,4 +1,9 @@
-import type { InvoiceStatus, SubscriptionPlan, SubscriptionStatus } from '@skladnik/shared';
+import type {
+  InvoiceStatus,
+  QuoteRequestStatus,
+  SubscriptionPlan,
+  SubscriptionStatus,
+} from '@skladnik/shared';
 
 export type PlatformSessionUser = {
   id: string;
@@ -266,6 +271,56 @@ export type PlatformStats = {
   paidInvoices: number;
   voidInvoices: number;
   totalPaidMinor: number;
+  newQuotes: number;
+};
+
+export type PlatformQuote = {
+  id: string;
+  name: string;
+  businessType: string;
+  locations: number;
+  contact: string;
+  message: string | null;
+  locale: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  referrer: string | null;
+  status: QuoteRequestStatus;
+  statusUpdatedAt: string | null;
+  createdAt: string;
+};
+
+export type PlatformQuotesPage = {
+  quotes: PlatformQuote[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type PlatformAnalyticsSummary = {
+  days: 30 | 90;
+  since: string;
+  metrics: {
+    quotesInRange: number;
+    companiesInRange: number;
+    firstScansInRange: number;
+    topUtmSource: string | null;
+    topUtmCount: number;
+  };
+  series: {
+    quotesByDay: { date: string; count: number }[];
+    signupsByDay: { date: string; count: number }[];
+  };
+  quotesByStatus: { NEW: number; CONTACTED: number; CLOSED: number };
+  utmSources: { source: string; count: number }[];
+  funnel: {
+    companiesCreated: number;
+    firstScan: number;
+    stillTrial: number;
+    activated: number;
+  };
 };
 
 export async function listPlatformSubscriptions(params?: {
@@ -287,6 +342,43 @@ export async function listPlatformSubscriptions(params?: {
 
 export async function fetchPlatformStats(): Promise<PlatformStats> {
   return platformJson('/platform/subscriptions/stats');
+}
+
+export async function listPlatformQuotes(params?: {
+  status?: QuoteRequestStatus;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<PlatformQuotesPage> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set('status', params.status);
+  if (params?.q?.trim()) query.set('q', params.q.trim());
+  if (params?.page != null) query.set('page', String(params.page));
+  if (params?.pageSize != null) query.set('pageSize', String(params.pageSize));
+  const qs = query.toString();
+  return platformJson(`/platform/quotes${qs ? `?${qs}` : ''}`);
+}
+
+export async function listRecentNewPlatformQuotes(): Promise<{ quotes: PlatformQuote[] }> {
+  return platformJson('/platform/quotes/recent-new');
+}
+
+export async function getPlatformQuote(id: string): Promise<{ quote: PlatformQuote }> {
+  return platformJson(`/platform/quotes/${id}`);
+}
+
+export async function updatePlatformQuoteStatus(
+  id: string,
+  status: QuoteRequestStatus,
+): Promise<{ quote: PlatformQuote }> {
+  return platformJson(`/platform/quotes/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function fetchPlatformAnalyticsSummary(days: 30 | 90 = 30): Promise<PlatformAnalyticsSummary> {
+  return platformJson(`/platform/analytics/summary?days=${days}`);
 }
 
 export async function getPlatformSubscription(id: string): Promise<{ subscription: PlatformSubscriptionDetail }> {

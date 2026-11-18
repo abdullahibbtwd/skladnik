@@ -390,3 +390,4 @@ export * from './create-platform-subscription';
 export * from './invoice';
 export * from './locale';
 export * from './contact';
+export * from './quote-request';
