@@ -33,7 +33,39 @@ export type MailLayoutInput = {
   footnoteHtml?: string;
   /** Absolute site origin for footer link, e.g. https://oborotix.com */
   siteUrl?: string;
+  /**
+   * Marketing / soft-opt-in emails: already-escaped HTML line shown in the
+   * card footer (unsubscribe). Transactional mail should omit this.
+   */
+  marketingFooterHtml?: string;
 };
+
+/** Mailto unsubscribe target used until a one-click preference centre exists. */
+export function marketingUnsubscribeMailto(replyToEmail: string): string {
+  const to = replyToEmail.trim() || 'oborotix@oborotix.com';
+  return `mailto:${to}?subject=${encodeURIComponent('Unsubscribe from Oborotix emails')}`;
+}
+
+export function marketingUnsubscribeFooterHtml(input: {
+  locale: 'en' | 'bg';
+  unsubscribeUrl: string;
+}): string {
+  const label = input.locale === 'bg' ? 'Отпишете се' : 'Unsubscribe';
+  const lead =
+    input.locale === 'bg'
+      ? 'Не желаете подобни писма?'
+      : 'Prefer not to get these emails?';
+  return `${escapeHtml(lead)} <a href="${escapeHtml(input.unsubscribeUrl)}" style="color:${TEAL};text-decoration:underline;">${escapeHtml(label)}</a>`;
+}
+
+export function marketingUnsubscribeTextLine(input: {
+  locale: 'en' | 'bg';
+  unsubscribeUrl: string;
+}): string {
+  return input.locale === 'bg'
+    ? `Отписване: ${input.unsubscribeUrl}`
+    : `Unsubscribe: ${input.unsubscribeUrl}`;
+}
 
 export function renderMailHtml(input: MailLayoutInput): string {
   const preheader = escapeHtml(input.preheader);
@@ -116,6 +148,11 @@ export function renderMailHtml(input: MailLayoutInput): string {
               <div style="border-top:1px solid ${BORDER};padding-top:18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:${MUTED};">
                 © ${year} ${MAIL_BRAND} · Smart retail &amp; stock management<br />
                 <a href="${escapeHtml(siteUrl)}" style="color:${TEAL};text-decoration:none;">${escapeHtml(siteUrl.replace(/^https?:\/\//, ''))}</a>
+                ${
+                  input.marketingFooterHtml
+                    ? `<br /><span style="display:inline-block;margin-top:8px;">${input.marketingFooterHtml}</span>`
+                    : ''
+                }
               </div>
             </td>
           </tr>

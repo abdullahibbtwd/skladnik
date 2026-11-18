@@ -6,6 +6,9 @@ import {
   MAIL_BRAND,
   escapeHtml,
   mailParagraph,
+  marketingUnsubscribeFooterHtml,
+  marketingUnsubscribeMailto,
+  marketingUnsubscribeTextLine,
   renderMailHtml,
 } from './mail-layout';
 import { firstScanNudgeCopyForLocale } from './first-scan-nudge-copy';
@@ -291,6 +294,15 @@ export class MailService {
     });
   }
 
+  private marketingFooter(locale: AppLocale) {
+    const unsubscribeUrl = marketingUnsubscribeMailto(this.replyTo ?? 'oborotix@oborotix.com');
+    return {
+      unsubscribeUrl,
+      html: marketingUnsubscribeFooterHtml({ locale, unsubscribeUrl }),
+      text: marketingUnsubscribeTextLine({ locale, unsubscribeUrl }),
+    };
+  }
+
   private async sendLifecycleCopy(input: {
     copy: { subject: string; preheader: string; heading: string; greeting: (n: string) => string; body: string; ctaLabel: string; footnote: string };
     to: string;
@@ -300,10 +312,12 @@ export class MailService {
     failureLabel: string;
   }) {
     const displayName = input.name.trim() || (input.locale === 'bg' ? 'колега' : 'there');
+    const marketing = this.marketingFooter(input.locale);
     const text =
       `${input.copy.greeting(displayName)}\n\n` +
       `${input.copy.body}\n\n` +
-      `${input.copy.ctaLabel}: ${input.ctaUrl}\n`;
+      `${input.copy.ctaLabel}: ${input.ctaUrl}\n\n` +
+      `${marketing.text}\n`;
 
     return this.send({
       to: input.to,
@@ -317,12 +331,14 @@ export class MailService {
         cta: { label: input.copy.ctaLabel, url: input.ctaUrl },
         footnoteHtml: escapeHtml(input.copy.footnote),
         siteUrl: this.siteUrl,
+        marketingFooterHtml: marketing.html,
       }),
       text,
       missingLog: `${input.failureLabel} for ${input.to} (locale=${input.locale})`,
       failureLabel: input.failureLabel,
       replyTo: this.replyTo,
       allowMissingSmtp: true,
+      listUnsubscribe: marketing.unsubscribeUrl,
     });
   }
 
@@ -334,10 +350,12 @@ export class MailService {
   }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
     const copy = firstScanNudgeCopyForLocale(input.locale);
     const displayName = input.name.trim() || (input.locale === 'bg' ? 'колега' : 'there');
+    const marketing = this.marketingFooter(input.locale);
     const text =
       `${copy.greeting(displayName)}\n\n` +
       `${copy.body}\n\n` +
-      `${copy.ctaLabel}: ${input.appUrl}\n`;
+      `${copy.ctaLabel}: ${input.appUrl}\n\n` +
+      `${marketing.text}\n`;
 
     return this.send({
       to: input.to,
@@ -351,12 +369,14 @@ export class MailService {
         cta: { label: copy.ctaLabel, url: input.appUrl },
         footnoteHtml: escapeHtml(copy.footnote),
         siteUrl: this.siteUrl,
+        marketingFooterHtml: marketing.html,
       }),
       text,
       missingLog: `First-scan nudge for ${input.to} (locale=${input.locale})`,
       failureLabel: 'first-scan nudge',
       replyTo: this.replyTo,
       allowMissingSmtp: true,
+      listUnsubscribe: marketing.unsubscribeUrl,
     });
   }
 
@@ -428,6 +448,8 @@ export class MailService {
     replyTo?: string;
     /** When true, missing SMTP returns skippedNoSmtp instead of only delivered:false. */
     allowMissingSmtp?: boolean;
+    /** Marketing mails: RFC 2369 List-Unsubscribe (mailto until a preference centre exists). */
+    listUnsubscribe?: string;
   }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
     if (!this.transporter) {
       this.logger.warn(`SMTP is not configured. ${input.missingLog}`);
@@ -444,6 +466,9 @@ export class MailService {
         html: input.html,
         text: input.text,
         ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+        ...(input.listUnsubscribe
+          ? { headers: { 'List-Unsubscribe': `<${input.listUnsubscribe}>` } }
+          : {}),
       });
       return { delivered: true };
     } catch (error) {
