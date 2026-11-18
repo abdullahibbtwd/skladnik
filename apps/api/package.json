@@ -13,6 +13,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:ready": "prisma generate && prisma migrate deploy",
     "platform:create-admin": "node scripts/create-platform-admin.cjs",
+    "mail:test-welcome": "node scripts/send-test-welcome.cjs",
     "test": "node scripts/run-posting-unit.cjs"
   },
   "dependencies": {
