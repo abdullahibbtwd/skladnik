@@ -7,7 +7,7 @@ Multi-tenant ERP for Bulgarian shops and cafés. This document covers the runtim
 | Piece | Role |
 | --- | --- |
 | `apps/web` | Vite + React SPA / PWA. Talks to the API only through same-origin proxies (Vite/nginx). |
-| `apps/api` | NestJS API, Prisma, BullMQ workers (OCR), Resend mail, cron jobs. |
+| `apps/api` | NestJS API, Prisma, BullMQ workers (OCR), nodemailer SMTP mail, cron jobs. |
 | `packages/shared` | Shared types and pure helpers (roles, VAT, entitlement, invoice totals, reminder day math). |
 | Postgres | Source of truth for tenants, stock ledger, subscriptions, platform invoices. |
 | Redis | Refresh-token sessions, BullMQ, create idempotency keys, TOTP replay / reveal lockout. |
@@ -85,9 +85,9 @@ Background jobs (OCR, company-scoped invite mail) call `assertCompanyCanWrite` s
 
 | Email | Trigger |
 | --- | --- |
-| Expiry reminder | Daily cron (`@nestjs/schedule`, 08:00 UTC) for **30 / 14 / 7 / 1** days before `expiresAt`. Deduped via `SubscriptionEvent` `NOTE` payload. |
+| Expiry reminder | Daily cron (`@nestjs/schedule`, 08:00 UTC) for **30 / 14 / 7 / 1** days before `expiresAt`. Deduped via `SubscriptionEvent` `NOTE` payload. Trials skip buckets ≥ trial length and subscriptions younger than 24h. |
 | Activation confirmation | After successful redeem, emailed to active company OWNERS. |
-| Invite / password reset | Existing Resend flows (password reset is not entitlement-gated). |
+| Invite / password reset | SMTP via nodemailer (password reset is not entitlement-gated). |
 
 Repeated failed redemptions on a known code hash increment `ActivationCode.failedAttempts`. At threshold **5**, a `PlatformAuditLog` (`ACTIVATION_FAILED_THRESHOLD`) and a subscription `NOTE` are written. Client responses stay generic (`ACTIVATION_FAILED`).
 

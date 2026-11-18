@@ -8,7 +8,7 @@ Turborepo with a Vite + React web app, a NestJS API, a shared package, and Postg
 
 | Area | Status |
 | --- | --- |
-| Signup, login, invites (emailed with Resend, or a copyable link), roles, sites, site assignments | Done |
+| Signup, login, invites (emailed via SMTP/nodemailer, or a copyable link), roles, sites, site assignments | Done |
 | Catalog: product groups, partners, products, barcodes, supplier codes, unit aliases | Done |
 | Documents: invoice, goods receipt, dispatch, credit note; photo / PDF capture, OCR auto-fill, review, post, cancel | Done |
 | Stock: on hand per site, batches and expiry (FEFO), movement history, weighted-average cost, reorder suggestions | Done |
@@ -31,7 +31,7 @@ packages/shared   roles, document types, VAT / compliance / report helpers used 
 
 | Layer | Technology |
 | --- | --- |
-| API | NestJS 11, Prisma 6, Passport (local + JWT), BullMQ, ioredis, AWS S3 SDK (MinIO), Resend, Zod |
+| API | NestJS 11, Prisma 6, Passport (local + JWT), BullMQ, ioredis, AWS S3 SDK (MinIO), nodemailer (SMTP), Zod |
 | Web | React 19, Vite 7, React Router 7, TanStack Query 5, Zustand, i18next, vite-plugin-pwa |
 | Data | PostgreSQL 16, Redis 7 (queue + refresh tokens), MinIO (private `invoices` bucket) |
 | OCR | Z.AI GLM vision (`glm-5.3-flash`, falls back to `glm-4.6v-flash`) |
