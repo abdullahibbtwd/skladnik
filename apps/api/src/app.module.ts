@@ -15,6 +15,7 @@ import { InvitesModule } from './invites/invites.module';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueueModule } from './queue/queue.module';
+import { QuoteRequestsModule } from './quote-requests/quote-requests.module';
 import { RedisModule } from './redis/redis.module';
 import { PartnersModule } from './partners/partners.module';
 import { ProductGroupsModule } from './product-groups/product-groups.module';
@@ -48,6 +49,7 @@ import { UsersModule } from './users/users.module';
     MailModule,
     QueueModule,
     ScheduleModule.forRoot(),
+    QuoteRequestsModule,
     AuthModule,
     PlatformAuthModule,
     PlatformSettingsModule,

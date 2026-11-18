@@ -9,8 +9,10 @@ import { registerServiceWorker } from './lib/pwa';
 import { Toaster } from './components/ui/Toaster';
 import { DialogHost } from './components/ui/Dialog';
 import { InstallPrompt } from './components/InstallPrompt';
+import { captureAttributionFromLocation } from './lib/attribution';
 import './index.css';
 
+captureAttributionFromLocation();
 registerServiceWorker();
 
 createRoot(document.getElementById('root')!).render(

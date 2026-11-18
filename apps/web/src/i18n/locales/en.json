@@ -163,7 +163,25 @@
     "multiF5": "Onboarding help from Oborotix",
     "startTrial": "Start 14-day trial",
     "contactSales": "Talk to Oborotix",
-    "footnote": "Activation codes are issued by Oborotix after your trial."
+    "footnote": "Activation codes are issued by Oborotix after your trial.",
+    "getQuoteLink": "Not sure which plan? Get a quote"
+  },
+  "quote": {
+    "badge": "Request a quote",
+    "title": "Tell us about your stores",
+    "subtitle": "Pricing is agreed with Oborotix. Share a few details and we will follow up — no card required.",
+    "name": "Your name",
+    "businessType": "Business type",
+    "businessTypePlaceholder": "Grocery, café, bakery…",
+    "locations": "Number of locations",
+    "contact": "Email or phone",
+    "message": "Anything else? (optional)",
+    "submit": "Request a quote",
+    "submitting": "Sending…",
+    "successTitle": "Request received",
+    "successBody": "Thanks — we will contact you soon about pricing for your stores.",
+    "errorGeneric": "Could not send your request. Please try again.",
+    "honeypotLabel": "Website"
   },
   "footer": {
     "blurb": "Stock management for Bulgarian shops. Turns paper supplier invoices into live stock, expiry alerts and a complete audit trail.",

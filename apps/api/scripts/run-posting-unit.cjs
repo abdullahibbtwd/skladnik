@@ -7,6 +7,8 @@ require('ts-node/register/transpile-only');
   require('../src/auth/accountant-allowlist.test.ts');
   require('../src/auth/parse-locale.test.ts');
   await require('../src/mail/welcome-mail.test.ts');
+  await require('../src/quote-requests/quote-requests.test.ts');
+  require('../src/quote-requests/quote-rate-limit.test.ts');
   require('../src/documents/document-access.test.ts');
   require('../src/documents/amount-in-words-bg.test.ts');
   require('../src/documents/opening-balance.test.ts');

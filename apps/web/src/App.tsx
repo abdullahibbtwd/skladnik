@@ -5,6 +5,7 @@ import { HeroSection } from './components/HeroSection';
 import { CoreFeatures } from './components/CoreFeatures';
 import { HowItWorks } from './components/HowItWorks';
 import { PricingSection } from './components/PricingSection';
+import { QuoteSection } from './components/QuoteSection';
 import { Footer } from './components/Footer';
 import { AuthModal } from './components/AuthModal';
 import { AuthPage } from './pages/AuthPage';
@@ -159,6 +160,7 @@ export default function App() {
         <CoreFeatures />
         <HowItWorks />
         <PricingSection />
+        <QuoteSection />
       </main>
 
       <Footer />

@@ -205,6 +205,57 @@ export class MailService {
     });
   }
 
+  async sendQuoteRequestNotifyEmail(input: {
+    to: string;
+    quote: {
+      id: string;
+      name: string;
+      businessType: string;
+      locations: number;
+      contact: string;
+      message: string | null;
+      locale: string;
+      utmSource: string | null;
+      utmMedium: string | null;
+      utmCampaign: string | null;
+      referrer: string | null;
+      createdAt: Date;
+    };
+  }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
+    const q = input.quote;
+    const subject = `Oborotix quote request from ${q.name}`;
+    const lines = [
+      `Name: ${q.name}`,
+      `Business: ${q.businessType}`,
+      `Locations: ${q.locations}`,
+      `Contact: ${q.contact}`,
+      `Locale: ${q.locale}`,
+      `Message: ${q.message?.trim() || '(none)'}`,
+      `UTM: ${[q.utmSource, q.utmMedium, q.utmCampaign].filter(Boolean).join(' / ') || '(none)'}`,
+      `Referrer: ${q.referrer || '(none)'}`,
+      `Id: ${q.id}`,
+      `Created: ${q.createdAt.toISOString()}`,
+    ];
+    const bodyHtml = lines.map((line) => mailParagraph(escapeHtml(line))).join('');
+    const text = lines.join('\n');
+
+    return this.send({
+      to: input.to,
+      subject,
+      html: renderMailHtml({
+        preheader: `New quote request from ${q.name}`,
+        heading: 'New quote request',
+        bodyHtml,
+        siteUrl: this.siteUrl,
+      }),
+      text,
+      missingLog: `Quote notify for ${q.id} → ${input.to}`,
+      failureLabel: 'quote notify',
+      replyTo: this.replyTo,
+      allowMissingSmtp: true,
+    });
+  }
+
   async sendWelcomeEmail(input: {
     to: string;
     name: string;

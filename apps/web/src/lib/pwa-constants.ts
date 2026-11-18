@@ -19,6 +19,7 @@ export const FRESH_DATA_MS = 5 * 60 * 1000;
 export const API_PATH_PREFIXES = [
   'auth',
   'platform-auth',
+  'public',
   'subscriptions',
   'tenancy',
   'sites',

@@ -58,6 +58,7 @@ export const PricingSection: React.FC = () => {
       ],
       ctaText: t('pricing.startTrial'),
       ctaTo: '/signup',
+      showQuoteLink: true,
       featured: false,
       isPrimary: false,
     },
@@ -77,6 +78,7 @@ export const PricingSection: React.FC = () => {
       ],
       ctaText: t('pricing.startTrial'),
       ctaTo: '/signup',
+      showQuoteLink: true,
       featured: true,
       isPrimary: true,
     },
@@ -95,8 +97,8 @@ export const PricingSection: React.FC = () => {
         t('pricing.multiF5'),
       ],
       ctaText: t('pricing.contactSales'),
-      // TODO(phase-3): replace #quote with the real request-a-quote form once it ships.
       ctaTo: '#quote',
+      showQuoteLink: false,
       featured: false,
       isPrimary: false,
     },
@@ -172,6 +174,14 @@ export const PricingSection: React.FC = () => {
                   isPrimary={plan.isPrimary}
                   label={plan.ctaText}
                 />
+                {plan.showQuoteLink ? (
+                  <a
+                    href="#quote"
+                    className="mt-3 block text-center font-sans text-[0.78rem] font-medium text-ops-teal hover:underline"
+                  >
+                    {t('pricing.getQuoteLink')}
+                  </a>
+                ) : null}
                 <p className="mt-3 text-center font-sans text-[0.72rem] text-slate-400">{t('pricing.footnote')}</p>
               </div>
             </div>
