@@ -1,8 +1,10 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Languages } from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { AppLang } from '../i18n';
+import { isLandingPath, landingPathForLang } from '../lib/landing-seo';
 
 const OPTIONS: { id: AppLang; label: string }[] = [
   { id: 'en', label: 'EN' },
@@ -14,7 +16,10 @@ export const LanguageSwitch: React.FC<{ className?: string; compact?: boolean }>
   compact = false,
 }) => {
   const { i18n, t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const current: AppLang = i18n.language.toLowerCase().startsWith('bg') ? 'bg' : 'en';
+  const onLanding = isLandingPath(location.pathname);
 
   return (
     <div
@@ -32,7 +37,13 @@ export const LanguageSwitch: React.FC<{ className?: string; compact?: boolean }>
           <button
             key={option.id}
             type="button"
-            onClick={() => void i18n.changeLanguage(option.id)}
+            onClick={() => {
+              void i18n.changeLanguage(option.id);
+              if (onLanding) {
+                const next = landingPathForLang(option.id);
+                if (next !== location.pathname) navigate(next);
+              }
+            }}
             className={cn(
               'rounded-full px-2 py-1 font-display text-[0.68rem] font-semibold tracking-wide transition-all',
               active ? 'bg-ops-teal text-white shadow-sm' : 'text-slate-500 hover:text-ops-ink',

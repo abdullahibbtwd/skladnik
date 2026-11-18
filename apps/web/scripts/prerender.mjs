@@ -17,7 +17,7 @@ import puppeteer from 'puppeteer';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(__dirname, '../dist');
-const ROUTES = (process.env.PRERENDER_ROUTES ?? '/').split(',').map((r) => r.trim()).filter(Boolean);
+const ROUTES = (process.env.PRERENDER_ROUTES ?? '/,/bg').split(',').map((r) => r.trim()).filter(Boolean);
 
 async function assertDist() {
   try {

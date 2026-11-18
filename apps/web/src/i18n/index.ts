@@ -19,7 +19,18 @@ function storedLang(): AppLang | null {
   return null;
 }
 
+function pathLang(): AppLang | null {
+  if (typeof window === 'undefined') return null;
+  const path = window.location.pathname;
+  if (path === '/bg' || path.startsWith('/bg/')) return 'bg';
+  if (path === '/') return 'en';
+  return null;
+}
+
 export function detectLang(): AppLang {
+  // Public landing URLs own the language for SEO (/ and /bg).
+  const fromPath = pathLang();
+  if (fromPath) return fromPath;
   const stored = storedLang();
   if (stored) return stored;
   const nav = typeof navigator !== 'undefined' ? navigator.language : 'en';

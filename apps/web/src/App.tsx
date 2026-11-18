@@ -53,6 +53,8 @@ import { HelpGuidePanel } from './components/dashboard/help/HelpGuidePanel';
 import { appReturnPath, useMeQuery } from './lib/auth-session';
 import { useIsAuthenticated } from './lib/auth-store';
 import { useTranslation } from 'react-i18next';
+import { isLandingPath, landingLangFromPath, syncLandingSeo } from './lib/landing-seo';
+import { persistLang, type AppLang } from './i18n';
 
 const RecipesPanel = lazy(() =>
   import('./components/dashboard/RecipesPanel').then((m) => ({ default: m.RecipesPanel })),
@@ -104,23 +106,6 @@ function LazyRoute({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
 }
 
-function syncLandingMeta(t: (key: string) => string, lang: string) {
-  const title = t('auth.homeTitle');
-  const description = t('auth.homeDescription');
-  document.title = title;
-  const setMeta = (selector: string, content: string) => {
-    const el = document.querySelector(selector);
-    if (el) el.setAttribute('content', content);
-  };
-  setMeta('meta[name="description"]', description);
-  setMeta('meta[property="og:title"]', title);
-  setMeta('meta[property="og:description"]', description);
-  setMeta('meta[property="og:image:alt"]', title);
-  setMeta('meta[name="twitter:title"]', title);
-  setMeta('meta[name="twitter:description"]', description);
-  setMeta('meta[property="og:locale"]', lang.startsWith('bg') ? 'bg_BG' : 'en_GB');
-}
-
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -133,8 +118,22 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
 
   useEffect(() => {
-    if (location.pathname !== '/') return;
-    syncLandingMeta(t, i18n.language);
+    const fromPath = landingLangFromPath(location.pathname);
+    if (!fromPath) return;
+    if ((i18n.language.startsWith('bg') ? 'bg' : 'en') !== fromPath) {
+      void i18n.changeLanguage(fromPath);
+    }
+    persistLang(fromPath);
+  }, [location.pathname, i18n]);
+
+  useEffect(() => {
+    if (!isLandingPath(location.pathname)) return;
+    const lang: AppLang = landingLangFromPath(location.pathname) ?? 'en';
+    syncLandingSeo({
+      lang,
+      title: t('auth.homeTitle'),
+      description: t('auth.homeDescription'),
+    });
   }, [location.pathname, t, i18n.language]);
 
   useEffect(() => {
@@ -369,6 +368,7 @@ export default function App() {
         </Route>
       </Route>
       <Route path="/" element={landing} />
+      <Route path="/bg" element={landing} />
       <Route path="*" element={landing} />
     </Routes>
   );

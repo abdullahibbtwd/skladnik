@@ -8,6 +8,8 @@ import { useLogout } from '../lib/auth-session';
 import { useAuthUser } from '../lib/auth-store';
 import { BrandLogo } from './BrandLogo';
 import { LanguageSwitch } from './LanguageSwitch';
+import { landingPathForLang } from '../lib/landing-seo';
+import type { AppLang } from '../i18n';
 
 const navLinkClass =
   'font-display text-[0.925rem] font-medium text-slate-500 transition-colors hover:text-ops-ink';
@@ -43,7 +45,7 @@ export const Navbar: React.FC = () => {
       <header className="fixed inset-x-0 top-0 z-[80] border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-[1200px] px-4 md:px-6">
           <div className="flex h-[4.5rem] items-center justify-between gap-3">
-            <Link to="/" className="flex min-w-0 items-center" aria-label={t('brand.name')}>
+            <Link to={homeTo} className="flex min-w-0 items-center" aria-label={t('brand.name')}>
               <BrandLogo className="h-8 md:h-9" />
             </Link>
 
