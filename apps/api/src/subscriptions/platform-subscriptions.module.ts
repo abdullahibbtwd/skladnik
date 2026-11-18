@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 import { ActivationCiphertextSweepService } from './activation-ciphertext-sweep.service';
 import { ActivationFailureAlertsService } from './activation-failure-alerts.service';
+import { FirstScanNudgeCron } from './first-scan-nudge.cron';
 import { PlatformSubscriptionsController } from './platform-subscriptions.controller';
 import { PlatformSubscriptionsService } from './platform-subscriptions.service';
 import { SubscriptionRemindersService } from './subscription-reminders.service';
@@ -15,6 +16,7 @@ import { TenantSubscriptionsService } from './tenant-subscriptions.service';
     PlatformSubscriptionsService,
     TenantSubscriptionsService,
     SubscriptionRemindersService,
+    FirstScanNudgeCron,
     ActivationFailureAlertsService,
     ActivationCiphertextSweepService,
   ],

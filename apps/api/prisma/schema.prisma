@@ -203,6 +203,12 @@ model Company {
   priceOverrideRoles UserRole[] @default([OWNER, ACCOUNTANT, SITE_MANAGER])
   /// Set when OCR first succeeds for this company (marketing / onboarding milestone).
   firstScanAt DateTime?
+  /// First-scan onboarding nudge email sent (owner, verified, still on trial).
+  nudgeSentAt DateTime?
+  /// "3 days left" trial-ending email sent.
+  trialEndingSentAt DateTime?
+  /// Day-after-trial-ended email sent.
+  trialEndedSentAt DateTime?
   /// First-touch marketing attribution captured at signup.
   utmSource   String?
   utmMedium   String?

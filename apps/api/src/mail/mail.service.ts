@@ -8,6 +8,7 @@ import {
   mailParagraph,
   renderMailHtml,
 } from './mail-layout';
+import { firstScanNudgeCopyForLocale } from './first-scan-nudge-copy';
 import { welcomeCopyForLocale } from './welcome-copy';
 
 @Injectable()
@@ -252,6 +253,40 @@ export class MailService {
       text,
       missingLog: `Quote notify for ${q.id} → ${input.to}`,
       failureLabel: 'quote notify',
+      replyTo: this.replyTo,
+      allowMissingSmtp: true,
+    });
+  }
+
+  async sendFirstScanNudgeEmail(input: {
+    to: string;
+    name: string;
+    locale: AppLocale;
+    appUrl: string;
+  }): Promise<{ delivered: boolean; skippedNoSmtp?: boolean }> {
+    const copy = firstScanNudgeCopyForLocale(input.locale);
+    const displayName = input.name.trim() || (input.locale === 'bg' ? 'колега' : 'there');
+    const text =
+      `${copy.greeting(displayName)}\n\n` +
+      `${copy.body}\n\n` +
+      `${copy.ctaLabel}: ${input.appUrl}\n`;
+
+    return this.send({
+      to: input.to,
+      subject: copy.subject,
+      html: renderMailHtml({
+        preheader: copy.preheader,
+        heading: copy.heading,
+        bodyHtml:
+          mailParagraph(escapeHtml(copy.greeting(displayName))) +
+          mailParagraph(escapeHtml(copy.body)),
+        cta: { label: copy.ctaLabel, url: input.appUrl },
+        footnoteHtml: escapeHtml(copy.footnote),
+        siteUrl: this.siteUrl,
+      }),
+      text,
+      missingLog: `First-scan nudge for ${input.to} (locale=${input.locale})`,
+      failureLabel: 'first-scan nudge',
       replyTo: this.replyTo,
       allowMissingSmtp: true,
     });

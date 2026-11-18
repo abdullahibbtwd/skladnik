@@ -385,6 +385,7 @@ export * from './amount-in-words-bg';
 export * from './subscription';
 export * from './subscription-activation';
 export * from './subscription-reminders';
+export * from './trial-lifecycle-mail';
 export * from './create-platform-subscription';
 export * from './invoice';
 export * from './locale';
