@@ -69,21 +69,6 @@ export const Footer: React.FC = () => {
                   {t('footer.annexXml')}
                 </a>
               </li>
-              <li>
-                <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  {t('footer.haccp')}
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  {t('footer.encryption')}
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-sm transition-colors hover:text-ops-ink">
-                  {t('footer.privacy')}
-                </a>
-              </li>
             </ul>
           </div>
 
@@ -96,20 +81,6 @@ export const Footer: React.FC = () => {
         <div className="flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-8 text-[0.825rem] text-slate-500">
           <div>
             &copy; {new Date().getFullYear()} {t('footer.rights')}
-          </div>
-          <div className="flex gap-6">
-            <a href="#" className="hover:text-ops-ink">
-              {t('footer.terms')}
-            </a>
-            <a href="#" className="hover:text-ops-ink">
-              {t('footer.security')}
-            </a>
-            <a href="#" className="hover:text-ops-ink">
-              {t('footer.systemStatus')}
-            </a>
-            <a href="#" className="hover:text-ops-ink">
-              {t('footer.support')}
-            </a>
           </div>
         </div>
       </div>
