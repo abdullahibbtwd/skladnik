@@ -29,7 +29,8 @@ export class MailService {
     this.from =
       this.config.get<string>('MAIL_FROM')?.trim() ||
       (user ? `${MAIL_BRAND} <${user}>` : `${MAIL_BRAND} <noreply@oborotix.com>`);
-    this.replyTo = this.config.get<string>('MAIL_REPLY_TO')?.trim() || undefined;
+    this.replyTo =
+      this.config.get<string>('MAIL_REPLY_TO')?.trim() || 'oborotix@oborotix.com';
     this.siteUrl = (this.config.get<string>('WEB_ORIGIN') ?? 'https://oborotix.com').replace(/\/$/, '');
 
     if (host && user && pass) {

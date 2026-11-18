@@ -33,10 +33,7 @@ const EN: WelcomeCopy = {
   footnote: 'You are receiving this because you created an Oborotix store account.',
 };
 
-/**
- * BG copy — needs native review (machine-assisted draft from help-bg wording).
- * Do not treat as final marketing Bulgarian until a native speaker edits it.
- */
+/** Bulgarian welcome copy (native review approved). */
 const BG: WelcomeCopy = {
   subject: 'Добре дошли в Oborotix — 14-дневният пробен период е активен',
   preheader: 'Пробният период е активен. Сканирайте първата доставна бележка, за да обновите склада.',
