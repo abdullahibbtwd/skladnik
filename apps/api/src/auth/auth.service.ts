@@ -84,7 +84,13 @@ export class AuthService {
 
     const user = await this.prisma.$transaction(async (tx) => {
       const company = await tx.company.create({
-        data: { name: dto.companyName.trim() },
+        data: {
+          name: dto.companyName.trim(),
+          utmSource: dto.utmSource?.trim() || null,
+          utmMedium: dto.utmMedium?.trim() || null,
+          utmCampaign: dto.utmCampaign?.trim() || null,
+          referrer: dto.referrer?.trim() || null,
+        },
       });
       await seedUnitAliases(tx, company.id);
       await createSignupTrialSubscription(tx, company.id);
@@ -344,7 +350,17 @@ export class AuthService {
     return this.establishSession(user, res);
   }
 
-  async loginWithGoogle(credential: string, res: Response, localeRaw?: string) {
+  async loginWithGoogle(
+    credential: string,
+    res: Response,
+    localeRaw?: string,
+    attribution?: {
+      utmSource?: string;
+      utmMedium?: string;
+      utmCampaign?: string;
+      referrer?: string;
+    },
+  ) {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID')?.trim();
     if (!clientId) {
       throw new BadRequestException('Google sign-in is not configured');
@@ -389,7 +405,15 @@ export class AuthService {
 
     const created = await this.prisma.$transaction(async (tx) => {
       const companyName = `${name}'s store`.slice(0, 160);
-      const company = await tx.company.create({ data: { name: companyName } });
+      const company = await tx.company.create({
+        data: {
+          name: companyName,
+          utmSource: attribution?.utmSource?.trim() || null,
+          utmMedium: attribution?.utmMedium?.trim() || null,
+          utmCampaign: attribution?.utmCampaign?.trim() || null,
+          referrer: attribution?.referrer?.trim() || null,
+        },
+      });
       await seedUnitAliases(tx, company.id);
       await createSignupTrialSubscription(tx, company.id);
       const owner = await tx.user.create({

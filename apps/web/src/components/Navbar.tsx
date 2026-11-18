@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X, ShieldCheck } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { trackEvent } from '../lib/analytics';
 import { useTranslation } from 'react-i18next';
 import { useLogout } from '../lib/auth-session';
 import { useAuthUser } from '../lib/auth-store';
@@ -91,7 +92,11 @@ export const Navbar: React.FC = () => {
                   <Link to="/login" className={cn(ghostBtnClass, 'hidden lg:inline-flex')}>
                     {t('nav.login')}
                   </Link>
-                  <Link to="/signup" className={cn(primaryBtnClass, 'hidden lg:inline-flex')}>
+                  <Link
+                    to="/signup"
+                    className={cn(primaryBtnClass, 'hidden lg:inline-flex')}
+                    onClick={() => trackEvent('cta_signup_click', { location: 'nav' })}
+                  >
                     <span>{t('nav.signup')}</span>
                   </Link>
                 </>
@@ -182,7 +187,10 @@ export const Navbar: React.FC = () => {
               </Link>
               <Link
                 to="/signup"
-                onClick={closeMobileMenu}
+                onClick={() => {
+                  trackEvent('cta_signup_click', { location: 'nav' });
+                  closeMobileMenu();
+                }}
                 className={cn(
                   primaryBtnClass,
                   'inline-flex w-full justify-center px-3 py-[0.65rem] text-center text-[0.85rem] leading-snug',

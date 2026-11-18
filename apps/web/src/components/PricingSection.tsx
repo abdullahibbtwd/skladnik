@@ -2,16 +2,19 @@ import React from 'react';
 import { Check, ShieldCheck, ArrowRight, Users, Store } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { trackEvent } from '../lib/analytics';
 import { cn } from '../lib/cn';
 
 function PlanCta({
   to,
   isPrimary,
   label,
+  onNavigate,
 }: {
   to: string;
   isPrimary: boolean;
   label: string;
+  onNavigate?: () => void;
 }) {
   const className = cn(
     'inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 font-display text-[0.9rem] font-medium transition-all',
@@ -27,13 +30,13 @@ function PlanCta({
   );
   if (to.startsWith('#')) {
     return (
-      <a href={to} className={className}>
+      <a href={to} className={className} onClick={onNavigate}>
         {content}
       </a>
     );
   }
   return (
-    <Link to={to} className={className}>
+    <Link to={to} className={className} onClick={onNavigate}>
       {content}
     </Link>
   );
@@ -173,6 +176,11 @@ export const PricingSection: React.FC = () => {
                   to={plan.ctaTo}
                   isPrimary={plan.isPrimary}
                   label={plan.ctaText}
+                  onNavigate={
+                    plan.ctaTo === '/signup'
+                      ? () => trackEvent('cta_signup_click', { location: 'pricing' })
+                      : undefined
+                  }
                 />
                 {plan.showQuoteLink ? (
                   <a

@@ -11,6 +11,7 @@ import {
   ScanLine,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { trackEvent } from '../lib/analytics';
 import { cn } from '../lib/cn';
 import { useTranslation } from 'react-i18next';
 
@@ -46,6 +47,7 @@ export const HeroSection: React.FC = () => {
             <div className="mb-7 flex w-full max-w-[520px] flex-wrap items-center justify-center gap-3 lg:mb-9 lg:max-w-none lg:justify-start">
               <Link
                 to="/signup"
+                onClick={() => trackEvent('cta_signup_click', { location: 'hero' })}
                 className="inline-flex w-full items-center justify-center gap-[0.65rem] rounded-[0.55rem] bg-ops-teal px-5 py-[0.75rem] font-display text-[0.92rem] font-medium text-white shadow-[0_4px_14px_rgba(13,148,136,0.28)] transition-all hover:bg-ops-teal-hover sm:w-auto sm:px-[1.45rem]"
               >
                 <Camera size={17} strokeWidth={2} />

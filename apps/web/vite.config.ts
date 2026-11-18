@@ -28,6 +28,7 @@ const proxy = Object.fromEntries([
 ]);
 
 export default defineConfig({
+  envDir: resolve(webRoot, '../..'),
   plugins: [
     react(),
     tailwindcss(),

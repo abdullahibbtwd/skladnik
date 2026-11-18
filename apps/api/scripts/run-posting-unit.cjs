@@ -6,6 +6,8 @@ require('ts-node/register/transpile-only');
   require('../src/auth/cafe-role.test.ts');
   require('../src/auth/accountant-allowlist.test.ts');
   require('../src/auth/parse-locale.test.ts');
+  require('../src/auth/signup-attribution.test.ts');
+  require('../src/auth/attribution-parse.test.ts');
   await require('../src/mail/welcome-mail.test.ts');
   await require('../src/quote-requests/quote-requests.test.ts');
   require('../src/quote-requests/quote-rate-limit.test.ts');

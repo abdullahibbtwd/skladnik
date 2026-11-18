@@ -11,4 +11,24 @@ export class GoogleAuthDto {
   @IsOptional()
   @IsIn([...APP_LOCALES])
   locale?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmSource?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmMedium?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  utmCampaign?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  referrer?: string;
 }

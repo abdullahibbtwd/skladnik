@@ -84,8 +84,21 @@ export function useLoginMutation() {
 export function useGoogleAuthMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { credential: string; locale?: string }) =>
-      googleAuthRequest(input.credential, input.locale),
+    mutationFn: (input: {
+      credential: string;
+      locale?: string;
+      utmSource?: string;
+      utmMedium?: string;
+      utmCampaign?: string;
+      referrer?: string;
+    }) =>
+      googleAuthRequest(input.credential, {
+        locale: input.locale,
+        utmSource: input.utmSource,
+        utmMedium: input.utmMedium,
+        utmCampaign: input.utmCampaign,
+        referrer: input.referrer,
+      }),
     onSuccess: (user) => cacheSession(queryClient, user),
   });
 }
@@ -99,6 +112,10 @@ export function useSignupMutation() {
       name: string;
       companyName: string;
       locale?: string;
+      utmSource?: string;
+      utmMedium?: string;
+      utmCampaign?: string;
+      referrer?: string;
     }) => signupRequest(input),
     onSuccess: (result: SignupResult) => {
       if (result.status === 'OK') cacheSession(queryClient, result.user);

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Send } from 'lucide-react';
 import { FieldError, FieldLabel, textFieldClass } from './PasswordField';
+import { trackEvent } from '../lib/analytics';
 import { submitQuoteRequest } from '../lib/quote-api';
 import { cn } from '../lib/cn';
 
@@ -38,6 +39,7 @@ export const QuoteForm: React.FC = () => {
         locale: i18n.language?.startsWith('bg') ? 'bg' : 'en',
         website: website || undefined,
       });
+      trackEvent('quote_submitted');
       setDone(true);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : t('quote.errorGeneric'));

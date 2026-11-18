@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuthProvidersQuery, useGoogleAuthMutation } from '../lib/auth-session';
+import { getAttribution } from '../lib/attribution';
+import { trackEvent } from '../lib/analytics';
 import { FieldError } from './PasswordField';
 import { useTranslation } from 'react-i18next';
 
@@ -78,10 +80,18 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ mode, on
       callback: (response) => {
         void (async () => {
           try {
+            const attribution = getAttribution();
             await googleAuth.mutateAsync({
               credential: response.credential,
               locale: i18n.language?.startsWith('bg') ? 'bg' : 'en',
+              utmSource: attribution.utmSource,
+              utmMedium: attribution.utmMedium,
+              utmCampaign: attribution.utmCampaign,
+              referrer: attribution.referrer,
             });
+            if (mode === 'signup') {
+              trackEvent('signup_completed', { method: 'google' });
+            }
             onSuccessRef.current();
           } catch (error) {
             onErrorRef.current(error instanceof Error ? error.message : t('auth.genericError'));

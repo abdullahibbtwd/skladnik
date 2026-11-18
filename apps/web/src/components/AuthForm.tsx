@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { FieldError, FieldLabel, PasswordField, textFieldClass } from './PasswordField';
 import { AuthApiError } from '../lib/auth-api';
+import { getAttribution } from '../lib/attribution';
+import { trackEvent } from '../lib/analytics';
 import {
   useLoginMutation,
   useResendVerificationMutation,
@@ -98,6 +100,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
       }
       try {
         await verifyEmail.mutateAsync({ email: pendingVerifyEmail, code });
+        trackEvent('signup_completed', { method: 'email' });
         onSuccess();
       } catch (submitError) {
         setError(submitError instanceof Error ? submitError.message : t('auth.genericError'));
@@ -128,17 +131,23 @@ export const AuthForm: React.FC<AuthFormProps> = ({
           return;
         }
 
+        const attribution = getAttribution();
         const result = await signup.mutateAsync({
           email: email.trim(),
           password,
           name: storeName.trim(),
           companyName: storeName.trim(),
           locale: requestLocale,
+          utmSource: attribution.utmSource,
+          utmMedium: attribution.utmMedium,
+          utmCampaign: attribution.utmCampaign,
+          referrer: attribution.referrer,
         });
         if (result.status === 'EMAIL_VERIFICATION_REQUIRED') {
           beginVerification(result.email, result.devCode);
           return;
         }
+        trackEvent('signup_completed', { method: 'email' });
         onSuccess();
         return;
       }
