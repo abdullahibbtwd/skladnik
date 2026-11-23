@@ -19,6 +19,7 @@ export const LandingJsonLd: React.FC = () => {
     url: lang === 'bg' ? `${SITE_ORIGIN}/bg` : `${SITE_ORIGIN}/`,
     description: t('auth.homeDescription'),
     inLanguage: lang === 'bg' ? 'bg-BG' : 'en-GB',
+    sameAs: ['https://www.facebook.com/profile.php?id=61597048912397'],
     // 14-day Starter trial with no card (existing pricing copy). No invented list price.
     isAccessibleForFree: true,
     offers: {

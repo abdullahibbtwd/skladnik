@@ -3,6 +3,16 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BrandLogo } from './BrandLogo';
 
+const FACEBOOK_URL = 'https://www.facebook.com/profile.php?id=61597048912397';
+
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M22 12.07C22 6.48 17.52 2 11.93 2S1.86 6.48 1.86 12.07c0 5.02 3.66 9.18 8.44 9.93v-7.02H7.9v-2.91h2.4V9.84c0-2.37 1.4-3.69 3.56-3.69 1.03 0 2.11.19 2.11.19v2.33h-1.19c-1.17 0-1.54.73-1.54 1.48v1.78h2.62l-.42 2.91h-2.2V22c4.78-.75 8.44-4.91 8.44-9.93z" />
+    </svg>
+  );
+}
+
 export const Footer: React.FC = () => {
   const { t } = useTranslation();
   return (
@@ -14,9 +24,20 @@ export const Footer: React.FC = () => {
               <BrandLogo className="h-8" />
             </div>
             <p className="mb-5 max-w-80 text-[0.9rem] leading-relaxed">{t('footer.blurb')}</p>
-            <div className="inline-flex items-center gap-2 rounded-full border border-ops-teal/20 bg-teal-50 px-[0.7rem] py-[0.3rem] text-[0.78rem] font-medium text-ops-teal">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-ops-teal/20 bg-teal-50 px-[0.7rem] py-[0.3rem] text-[0.78rem] font-medium text-ops-teal">
               <span className="size-2 animate-pulse-dot rounded-full bg-ops-teal shadow-[0_0_8px_#0d9488]" />
               <span>{t('footer.status')}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={FACEBOOK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex size-9 items-center justify-center rounded-full border border-[#1877F2]/30 text-[#1877F2] transition-colors hover:border-[#1877F2]/50 hover:bg-[#1877F2]/5"
+                aria-label={t('footer.facebook')}
+              >
+                <FacebookIcon className="size-4" />
+              </a>
             </div>
           </div>
 
